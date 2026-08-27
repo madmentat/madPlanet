@@ -11,12 +11,13 @@ const GROUP_ICONS = {
   'Климат':       '<svg viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3 3-6 6-6s6 3 6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M5 11c1-2 2.5-1 4-3s2.5-2 5-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".6"/></svg>',
   'Атмосфера':    '<svg viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="4" stroke="currentColor" stroke-width="1.2"/><circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1.2" opacity=".3"/></svg>',
   'Магнитосфера': '<svg viewBox="0 0 18 18" fill="none"><path d="M9 2v14M5 5c2 2 2 6 0 8M13 5c-2 2-2 6 0 8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
+  'Кольца':       '<svg viewBox="0 0 18 18" fill="none"><ellipse cx="9" cy="9" rx="7.5" ry="2.6" stroke="currentColor" stroke-width="1.2"/><ellipse cx="9" cy="9" rx="4.6" ry="1.5" stroke="currentColor" stroke-width="1" opacity=".55"/></svg>',
   'Звезда':       '<svg viewBox="0 0 18 18" fill="none"><path d="M9 2l1.5 4.5L15 8l-4.5 1.5L9 14l-1.5-4.5L3 8l4.5-1.5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>',
 };
 
 const GROUP_SHORT = {
   'Планета':'ПЛ', 'Поверхность':'ПВ', 'Климат':'КЛ',
-  'Атмосфера':'АТ', 'Магнитосфера':'МГ', 'Звезда':'ЗВ'
+  'Атмосфера':'АТ', 'Магнитосфера':'МГ', 'Звезда':'ЗВ', 'Кольца':'КЦ'
 };
 
 const isMobile = () => matchMedia('(max-width:700px)').matches;
@@ -330,6 +331,9 @@ document.getElementById('rand').addEventListener('click', () => {
   state.luminosity = 0.25 + r()*0.65;
   state.distance = 0.30 + r()*0.50;
   state.rings = r() < 0.33;
+  state.ringInner = 0.2 + r()*0.6;
+  state.ringWidth = 0.25 + r()*0.7;
+  state.ringDens = 0.3 + r()*0.65;
   deriveWorld(); markRenderUniformsDirty(); syncUI(); saveHash();
 });
 

@@ -200,7 +200,7 @@
 
 <div class="mark">
   <h1>madPlanet</h1>
-  <div class="ver">v0.5.21</div>
+  <div class="ver">v0.5.22</div>
   <div class="sub">МИР <b id="seedLabel">№ —</b></div>
 </div>
 
@@ -244,7 +244,7 @@
 <script>
 'use strict';
 
-const APP_VERSION = '0.5.21';
+const APP_VERSION = '0.5.22';
 const VERT = `#version 300 es
 layout(location=0) in vec2 aPos;
 void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
@@ -268,6 +268,9 @@ uniform vec3  uMilky;
 
 uniform float uTemp, uCloudLow, uCloudMid, uCloudHigh, uSea, uCont, uTect, uIsle, uLake, uCity, uAtmo;
 uniform float uRingsOn;
+uniform float uRingInner;  /* внутренний радиус */
+uniform float uRingWidth;  /* ширина системы */
+uniform float uRingDens;   /* плотность вещества */
 uniform vec3  uStarCol;     /* спектральный цвет */
 uniform float uStarRadius;  /* относительный видимый диск */
 uniform float uStarFlux;    /* поток излучения */
@@ -393,14 +396,24 @@ vec3 tectonicBelt(vec3 sN){
      задаётся тремя компонентами, а не в касательной рамке: любая рамка от
      фиксированной оси вырождается на её полюсах, и оттуда веером расходятся
      разрывы. Радиальную часть смещения убирает normalize. */
-  vec3 wv = vec3(fbm(sN*2.2 + uSeedS*1.9 + vec3(59.0,13.0,101.0), 2),
-                 fbm(sN*2.2 + uSeedS*1.9 + vec3(163.0,71.0,29.0), 2),
-                 fbm(sN*2.2 + uSeedS*1.9 + vec3(233.0,37.0,89.0), 2));
-  sN = normalize(sN + wv*0.20);
+  vec3 wv = vec3(fbm(sN*1.9 + uSeedS*1.9 + vec3(59.0,13.0,101.0), 3),
+                 fbm(sN*1.9 + uSeedS*1.9 + vec3(163.0,71.0,29.0), 3),
+                 fbm(sN*1.9 + uSeedS*1.9 + vec3(233.0,37.0,89.0), 3));
+  /* Второй масштаб — мелкие изломы. Без него шов гнулся плавной дугой и
+     хребет читался как ровно вытянутая насыпь; настоящая цепь виляет и на
+     масштабе отдельных отрогов. */
+  vec3 wv2 = vec3(noise3(sN*7.5 + uSeedS*2.6 + vec3(17.0)),
+                  noise3(sN*7.5 + uSeedS*2.6 + vec3(83.0)),
+                  noise3(sN*7.5 + uSeedS*2.6 + vec3(149.0)));
+  sN = normalize(sN + wv*0.26 + wv2*0.045);
 
-  /* Пояс гуляет по ширине, чтобы цепь не была одинаковой по всей длине. */
-  float seg = 0.5 + 0.5*fbm(sN*2.6 + uSeedS*2.7 + vec3(211.0,17.0,53.0), 3);
-  float bw = 0.080*(0.55 + 0.95*seg);
+  /* Ширина пояса меняется дважды. Крупный масштаб задаёт регионы: где-то
+     орогенез вялый и остаётся узкая гряда, где-то целая область смятия.
+     Мелкий рвёт цепь на отрезки разной толщины. Дальше к этому добавится
+     зависимость от силы столкновения самой пары плит. */
+  float orogN = 0.5 + 0.5*fbm(sN*1.15 + uSeedS*3.1 + vec3(311.0,43.0,7.0), 2);
+  float seg   = 0.5 + 0.5*fbm(sN*2.6 + uSeedS*2.7 + vec3(211.0,17.0,53.0), 3);
+  float bw = 0.070*(0.45 + 1.15*seg)*(0.60 + 1.15*orogN);
   vec3 windS = normalize(cross(uRotS*uAxis, sN) + vec3(1e-6));
 
   /* Вклад считается по всем парам плит сразу, а не по выбранной паре
@@ -447,7 +460,10 @@ vec3 tectonicBelt(vec3 sN){
          радиусу: направление шва тогда бессмысленно и всё от него гасится. */
       float bValid = ss(0.06, 0.32, dbTl);
       float conv = dot(cross(uPlateW[i].xyz - uPlateW[j].xyz, sN), bdir)*bValid;
-      float sb = seam/bw;
+      /* Быстрое столкновение расплющивает пояс вширь — так получаются
+         нагромождения вроде Тибета, а вялое оставляет одиночную гряду. */
+      float convC = clamp(conv*2.4, -1.0, 1.0);
+      float sb = seam/(bw*(0.62 + 1.05*abs(convC)));
       float band = exp(-sb*sb);
 
       /* Сторона шва — плавная: у самого гребня она обнуляется, поэтому
@@ -458,7 +474,7 @@ vec3 tectonicBelt(vec3 sN){
       float lee = max(conv, 0.0) * ss(0.10, 0.70, dot(bdir*side, -windS))
                 * exp(-seam/0.085);
 
-      num    += wgt*band*clamp(conv*2.4, -1.0, 1.0);
+      num    += wgt*band*convC;
       leeNum += wgt*lee;
       seamNum+= wgt*seam;
       den    += wgt;
@@ -657,10 +673,15 @@ float lowCloudSuitability(float h,float temp,float moist,float lat){
   float desert=land*hot*dry;
   float humidLand=ss(0.20,0.72,moist);
   float polar=ss(0.90,0.985,lat);
-  float suit=mix(0.30+0.68*humidLand,0.98,ocean);
-  suit*=1.0-0.72*desert;
-  suit*=1.0-0.28*polar*(1.0-ocean*0.55);
-  return clamp(suit,0.10,1.0);
+  /* Разрыв между морем и сушей нарочно небольшой. Когда над океаном было
+     0.98, а над сушей могло быть втрое меньше, при высоком ползунке море
+     затягивало сплошняком, суша — нет, и граница облачности повторяла
+     береговую линию. Теперь потолок над морем ниже, пол над сушей выше, и
+     кромка покрова перестаёт совпадать с берегом. */
+  float suit=mix(0.44+0.50*humidLand,0.90,ocean);
+  suit*=1.0-0.62*desert;
+  suit*=1.0-0.26*polar*(1.0-ocean*0.55);
+  return clamp(suit,0.14,1.0);
 }
 
 /* ---------- влага вдоль наветренного следа ----------
@@ -674,11 +695,20 @@ float lowCloudSuitability(float h,float temp,float moist,float lat){
    линейке, и не возникает мгновенно в прежней конфигурации сразу за
    дальним краем засушливой зоны: за ней тянется подветренный сухой шлейф.
 
+   Берётся не среднее по следу, а ХУДШЕЕ из встреченного, с поправкой на
+   пройденное расстояние. Испарение необратимо: облако, пересёкшее жаркую
+   зону, теряет массу насовсем, и за зоной тянется настоящий след
+   разрежения. Прежнее усреднение возвращало прежнюю картину, стоило
+   облаку выйти за край, — будто ничего и не было. Поправка на расстояние
+   задаёт, как быстро воздух насыщается снова: далёкая пустыня давит
+   слабее близкой, поэтому через тысячу-другую километров облачность
+   восстанавливается — но уже другой формы, потому что само поле ушло
+   вперёд относительно поверхности.
+
    Цена держится в пределах прежней: температура и влажность меняются на
    масштабе радиана и вдоль короткого следа почти постоянны, поэтому они
-   считаются один раз, а по следу берётся только то, что действительно
-   рвётся на берегу, — макроконтур суши. Граница цикла из uDraft, поэтому
-   тело отсчёта попадает в шейдер один раз, а не по копии на отсчёт. */
+   считаются один раз, а по следу берётся только макроконтур суши. Граница
+   цикла из uDraft, поэтому тело отсчёта попадает в шейдер один раз. */
 float lowCloudClimate(vec3 dir){
   vec3 drift=cross(uAxis,dir);
   float dl=length(drift);
@@ -696,15 +726,15 @@ float lowCloudClimate(vec3 dir){
      сдвигается низкочастотным шумом в системе облаков — ступеньки виляют
      вместе с облачным полем и превращаются в рваный край. */
   float ph=0.5+0.5*noise3(uRotC*dir*22.0+uSeedC);
-  float acc=0.0,wsum=0.0;
+  float suit=1.0;
   for(int i=0;i<taps;i++){
     float fi=float(i);
-    float w=exp(-fi*0.62);
-    float h=continentH(normalize(dir-drift*((fi+ph)*0.050*(1.0+0.32*fi))));
-    acc+=w*lowCloudSuitability(h,tempBase-max(h,0.0)*0.95,moist,lat);
-    wsum+=w;
+    float back=(fi+ph)*0.050*(1.0+0.32*fi);      /* как далеко назад по следу */
+    float h=continentH(normalize(dir-drift*back));
+    float si=lowCloudSuitability(h,tempBase-max(h,0.0)*0.95,moist,lat);
+    suit=min(suit, si + back*1.55);              /* восстановление с расстоянием */
   }
-  return acc/max(wsum,1e-4);
+  return clamp(suit,0.0,1.0);
 }
 
 float cumulusRegion(vec3 p,float climate){
@@ -722,7 +752,7 @@ float cumulusRegion(vec3 p,float climate){
   float clim=clamp(cl0+jit*0.30*(4.0*cl0*(1.0-cl0)),0.0,1.0);
   float amount=clamp(uCloudLow*clim,0.0,1.0);
   float a=amount*amount*(3.0-2.0*amount);
-  float threshold=mix(0.76,0.37,a);
+  float threshold=mix(0.76,0.45,a);
   float region=ss(threshold,threshold+0.105,broad);
   /* Пустыня разрежает облачность плавно и с остатком: даже при максимальном
      ползунке она не превращается в сплошное покрывало, но и не выстригается
@@ -998,8 +1028,14 @@ vec3 atmoColor(){
 }
 
 /* ---------- кольца ---------- */
+/* Границы и плотность системы управляются ползунками. Щели заданы долями
+   ширины, а не абсолютным радиусом: иначе при узком кольце они уезжали бы
+   за его край, а при широком сбивались в кучу у внутренней кромки. */
+float ringR0(){ return mix(1.22, 2.05, uRingInner); }
+float ringR1(){ return ringR0() + mix(0.22, 1.55, uRingWidth); }
 float ringPattern(float r){
-  float t = (r-1.55)/(2.55-1.55);
+  float r0 = ringR0(), r1 = ringR1();
+  float t = (r-r0)/max(r1-r0, 1e-4);
   if(t<0.0 || t>1.0) return 0.0;
   float n  = 0.5+0.5*noise3(vec3(r*16.0, uSeedS.x, uSeedS.y));
   float n2 = 0.5+0.5*noise3(vec3(r*43.0, uSeedS.y, 7.7));
@@ -1008,8 +1044,10 @@ float ringPattern(float r){
   a *= 0.30+0.70*pow(n,1.5);
   a *= 0.45+0.55*n2;
   a *= 0.75+0.25*n3;
-  a *= ss(0.015,0.05,abs(r-2.08));            /* щель Кассини */
-  a *= 0.5+0.5*ss(0.01,0.03,abs(r-1.78));     /* вторая щель */
+  float span = max(r1-r0, 1e-4);
+  a *= ss(0.015,0.05,abs(t-0.53)*span);       /* щель Кассини */
+  a *= 0.5+0.5*ss(0.01,0.03,abs(t-0.23)*span);/* вторая щель */
+  a *= mix(0.22, 1.25, uRingDens);
   return clamp(a,0.0,1.0);
 }
 float ringShadow(vec3 pos){
@@ -1216,11 +1254,24 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
      из зелёного прямо в белый — промежуточных тонов не было вовсе.
      Скалистость ridge только усиливает переход на крутых участках: на
      пологом плече хребта лес поднимается выше. */
-  vec3 SLOPE = vec3(0.420,0.340,0.180);   /* жёлто-бурые среднегорья */
-  vec3 ALPINE= vec3(0.340,0.190,0.120);   /* буро-красные высокогорья */
+  /* Выше границы леса обнажается порода. Она серо-бурая и тёмная: жёлтая
+     охра — цвет пустынного песка, а не предгорья, и её место в биомах, а не
+     на склоне. Сухость и тепло лишь чуть отводят породу в тёплый оттенок,
+     во влажных и холодных широтах склон остаётся тёмным, как в Гималаях.
+     Пятнистость нужна, чтобы оттенок шёл местами, а не ровным поясом вдоль
+     всей цепи. */
+  float warmN = 0.5 + 0.5*fbm(sN*2.9 + uSeedS*3.3 + vec3(407.0,29.0,71.0), 3);
+  float warmRock = ss(0.40, 0.90, temp)
+                 * (1.0 - 0.78*ss(0.30, 0.70, moist))
+                 * ss(0.38, 0.78, warmN)
+                 * (1.0 - ss(0.66, 0.90, lat));
+  vec3 SLOPE = mix(vec3(0.188,0.178,0.162), vec3(0.268,0.222,0.162), warmRock);
+  vec3 ALPINE= mix(vec3(0.118,0.116,0.120), vec3(0.196,0.156,0.126), warmRock);
   float rocky2 = 0.55 + 0.45*ss(0.20,0.70,ridge);
-  float bMid  = ss(0.012, 0.075, mount*rocky2);
-  float bHigh = ss(0.065, 0.170, mount*rocky2);
+  /* Порог поднят: подножия и предгорья остаются под лесом и травой, камень
+     начинается заметно выше. */
+  float bMid  = ss(0.060, 0.145, mount*rocky2);
+  float bHigh = ss(0.125, 0.255, mount*rocky2);
   alb = mix(alb, SLOPE,  bMid *0.88*(1.0-snowM));
   alb = mix(alb, ALPINE, bHigh*0.82*(1.0-snowM));
   alb = mix(alb, ROCK, ss(0.45,0.90,ridge)*(1.0-snowM)*0.45);
@@ -1371,6 +1422,13 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float dayF = ss(-0.02, 0.12, ndlG);
   dayOut = dayF;
   float dif = max(dot(nS, uSunDir), 0.0);
+  /* Резкие тени на крутизне. Настоящей трассировки рельефа нет, но на
+     склонах ламбертов косинус спадает слишком мягко: горы выглядели
+     подсвеченными со всех сторон. На крутых участках переход к тени
+     делается заметно резче, на равнине освещение не меняется. */
+  float steep = ss(0.55, 2.60, gradH);
+  if(steep > 0.01)
+    dif = mix(dif, ss(-0.02, 0.20, dot(nS, uSunDir))*max(dot(nS,uSunDir),0.0), steep*0.75);
   float shad = ringShadow(pos);
   if(dayF > 0.01){
     /* тени от нижнего и среднего ярусов; верхний слишком тонок */
@@ -2049,7 +2107,7 @@ let usedVariant = 'none';
 const shaderFailureLog = [];
 
 const UNIFORM_NAMES = ['uRes','uTime','uCamPos','uCamMat','uFocal','uCamDist','uPixA','uRotS','uRotC','uRotCInv',
- 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle',
+ 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle','uRingInner','uRingWidth','uRingDens',
  'uLake','uCity','uAtmo','uRingsOn','uRingMat','uSeedS','uSeedC','uTex','uTexOn','uDraft','uVoid',
  'uStarCol','uMagAxis','uAtmoComp','uLowOn','uMidOn','uHighOn','uWind','uConvection','uMagField','uAurora',
  'uStarRadius','uStarFlux','uStarDist','uPlateN'];
@@ -2947,6 +3005,9 @@ const PARAMS = [
   {k:'isle',       label:'Острова',                def:0.45, group:'Планета'},
   {k:'lake',       label:'Озёра',                 def:0.45, group:'Планета'},
   {k:'city',       label:'Огни городов',           def:0.55, group:'Поверхность'},
+  {k:'ringInner',  label:'Радиус колец',           def:0.40, group:'Кольца'},
+  {k:'ringWidth',  label:'Ширина колец',           def:0.62, group:'Кольца'},
+  {k:'ringDens',   label:'Плотность колец',        def:0.60, group:'Кольца'},
   {k:'cloudLow',   label:'Нижний слой',            def:0.48, group:'Климат'},
   {k:'cloudMid',   label:'Средний слой',            def:0.44, group:'Климат'},
   {k:'cloudHigh',  label:'Верхний слой',             def:0.30, group:'Климат'},
@@ -3402,12 +3463,13 @@ const GROUP_ICONS = {
   'Климат':       '<svg viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3 3-6 6-6s6 3 6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M5 11c1-2 2.5-1 4-3s2.5-2 5-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".6"/></svg>',
   'Атмосфера':    '<svg viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="4" stroke="currentColor" stroke-width="1.2"/><circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1.2" opacity=".3"/></svg>',
   'Магнитосфера': '<svg viewBox="0 0 18 18" fill="none"><path d="M9 2v14M5 5c2 2 2 6 0 8M13 5c-2 2-2 6 0 8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
+  'Кольца':       '<svg viewBox="0 0 18 18" fill="none"><ellipse cx="9" cy="9" rx="7.5" ry="2.6" stroke="currentColor" stroke-width="1.2"/><ellipse cx="9" cy="9" rx="4.6" ry="1.5" stroke="currentColor" stroke-width="1" opacity=".55"/></svg>',
   'Звезда':       '<svg viewBox="0 0 18 18" fill="none"><path d="M9 2l1.5 4.5L15 8l-4.5 1.5L9 14l-1.5-4.5L3 8l4.5-1.5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>',
 };
 
 const GROUP_SHORT = {
   'Планета':'ПЛ', 'Поверхность':'ПВ', 'Климат':'КЛ',
-  'Атмосфера':'АТ', 'Магнитосфера':'МГ', 'Звезда':'ЗВ'
+  'Атмосфера':'АТ', 'Магнитосфера':'МГ', 'Звезда':'ЗВ', 'Кольца':'КЦ'
 };
 
 const isMobile = () => matchMedia('(max-width:700px)').matches;
@@ -3721,6 +3783,9 @@ document.getElementById('rand').addEventListener('click', () => {
   state.luminosity = 0.25 + r()*0.65;
   state.distance = 0.30 + r()*0.50;
   state.rings = r() < 0.33;
+  state.ringInner = 0.2 + r()*0.6;
+  state.ringWidth = 0.25 + r()*0.7;
+  state.ringDens = 0.3 + r()*0.65;
   deriveWorld(); markRenderUniformsDirty(); syncUI(); saveHash();
 });
 
@@ -4050,6 +4115,9 @@ function drawFrame(now){
     gl.uniform1f(U.uMidOn, state.midOn ? 1 : 0);
     gl.uniform1f(U.uHighOn, state.highOn ? 1 : 0);
     gl.uniform1f(U.uRingsOn, state.rings ? 1 : 0);
+    gl.uniform1f(U.uRingInner, state.ringInner);
+    gl.uniform1f(U.uRingWidth, state.ringWidth);
+    gl.uniform1f(U.uRingDens, state.ringDens);
     gl.uniform1f(U.uDraft, state.draft ? 1 : 0);
     gl.uniform1f(U.uVoid, state.voidbg ? 1 : 0);
     gl.uniformMatrix3fv(U.uRingMat, false, world.ringMat);

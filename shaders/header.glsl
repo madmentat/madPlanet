@@ -17,6 +17,9 @@ uniform vec3  uMilky;
 
 uniform float uTemp, uCloudLow, uCloudMid, uCloudHigh, uSea, uCont, uTect, uIsle, uLake, uCity, uAtmo;
 uniform float uRingsOn;
+uniform float uRingInner;  /* внутренний радиус */
+uniform float uRingWidth;  /* ширина системы */
+uniform float uRingDens;   /* плотность вещества */
 uniform vec3  uStarCol;     /* спектральный цвет */
 uniform float uStarRadius;  /* относительный видимый диск */
 uniform float uStarFlux;    /* поток излучения */

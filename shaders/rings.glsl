@@ -1,6 +1,12 @@
 /* ---------- кольца ---------- */
+/* Границы и плотность системы управляются ползунками. Щели заданы долями
+   ширины, а не абсолютным радиусом: иначе при узком кольце они уезжали бы
+   за его край, а при широком сбивались в кучу у внутренней кромки. */
+float ringR0(){ return mix(1.22, 2.05, uRingInner); }
+float ringR1(){ return ringR0() + mix(0.22, 1.55, uRingWidth); }
 float ringPattern(float r){
-  float t = (r-1.55)/(2.55-1.55);
+  float r0 = ringR0(), r1 = ringR1();
+  float t = (r-r0)/max(r1-r0, 1e-4);
   if(t<0.0 || t>1.0) return 0.0;
   float n  = 0.5+0.5*noise3(vec3(r*16.0, uSeedS.x, uSeedS.y));
   float n2 = 0.5+0.5*noise3(vec3(r*43.0, uSeedS.y, 7.7));
@@ -9,8 +15,10 @@ float ringPattern(float r){
   a *= 0.30+0.70*pow(n,1.5);
   a *= 0.45+0.55*n2;
   a *= 0.75+0.25*n3;
-  a *= ss(0.015,0.05,abs(r-2.08));            /* щель Кассини */
-  a *= 0.5+0.5*ss(0.01,0.03,abs(r-1.78));     /* вторая щель */
+  float span = max(r1-r0, 1e-4);
+  a *= ss(0.015,0.05,abs(t-0.53)*span);       /* щель Кассини */
+  a *= 0.5+0.5*ss(0.01,0.03,abs(t-0.23)*span);/* вторая щель */
+  a *= mix(0.22, 1.25, uRingDens);
   return clamp(a,0.0,1.0);
 }
 float ringShadow(vec3 pos){

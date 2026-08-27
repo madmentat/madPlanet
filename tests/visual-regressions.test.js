@@ -12,8 +12,8 @@ const state = read('js/state.js');
 const versionText = read('VERSION.txt');
 const version = (versionText.match(/^VERSION\s+(\d+\.\d+\.\d+)\s*$/m) || [])[1];
 
-assert.equal(version, '0.5.21', 'visual regression test belongs to release 0.5.21');
-assert.match(shell, /<div class="ver">v0\.5\.21<\/div>/, 'visible app version must match');
+assert.equal(version, '0.5.22', 'visual regression test belongs to release 0.5.22');
+assert.match(shell, /<div class="ver">v0\.5\.22<\/div>/, 'visible app version must match');
 assert.match(shell, /\.mark h1\{[^}]*font-size:19px/s, 'desktop wordmark should remain larger');
 assert.match(shell, /\.mark h1\{font-size:16px/s, 'mobile wordmark should remain compact');
 
@@ -81,5 +81,20 @@ assert.match(surface, /temp -= 2\.0\*mount;/, 'snow line must follow orogenic he
 assert.match(surface, /float arid = /, 'desertification missing');
 assert.match(surface, /0\.22\*coastal\*coastal/, 'coastal greening must compete with aridity');
 assert.match(state, /k:'tect'.*Тектоника/s, 'mountain slider must be renamed to tectonics');
+
+/* 0.5.22: испарение облака над засушливой зоной необратимо — по следу
+   берётся худшее из встреченного, а не среднее, иначе за краем зоны
+   возвращалась прежняя картина. */
+assert.ok(/suit=min\(suit,/.test(lowClimate), 'cloud moisture memory must keep the worst of the trail');
+assert.ok(!/acc\/max\(wsum/.test(lowClimate), 'the reversible trail average must not return');
+/* Кромка покрова не должна совпадать с берегом. */
+assert.match(clouds, /mix\(0\.44\+0\.50\*humidLand,0\.90,ocean\)/, 'ocean/land suitability gap must stay narrow');
+/* Охра — цвет песка, а не предгорья: склон окрашен породой. */
+assert.match(surface, /float warmRock = /, 'slope colour must be rock-based, not ochre-by-altitude');
+assert.ok(!/vec3 SLOPE = vec3\(0\.420,0\.340,0\.180\)/.test(surface), 'the sandy foothill colour must not return');
+/* Настройки колец. */
+assert.match(state, /k:'ringInner'/, 'ring radius control missing');
+assert.match(state, /k:'ringWidth'/, 'ring width control missing');
+assert.match(state, /k:'ringDens'/, 'ring density control missing');
 
 console.log('visual-regressions.test.js: OK');

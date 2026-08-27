@@ -203,6 +203,9 @@ function drawFrame(now){
     gl.uniform1f(U.uMidOn, state.midOn ? 1 : 0);
     gl.uniform1f(U.uHighOn, state.highOn ? 1 : 0);
     gl.uniform1f(U.uRingsOn, state.rings ? 1 : 0);
+    gl.uniform1f(U.uRingInner, state.ringInner);
+    gl.uniform1f(U.uRingWidth, state.ringWidth);
+    gl.uniform1f(U.uRingDens, state.ringDens);
     gl.uniform1f(U.uDraft, state.draft ? 1 : 0);
     gl.uniform1f(U.uVoid, state.voidbg ? 1 : 0);
     gl.uniformMatrix3fv(U.uRingMat, false, world.ringMat);
