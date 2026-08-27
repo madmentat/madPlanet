@@ -181,7 +181,7 @@ function drawFrame(now){
     gl.uniform1f(U.uCloudHigh, state.cloudHigh);
     gl.uniform1f(U.uSea, state.sea);
     gl.uniform1f(U.uCont, state.cont);
-    gl.uniform1f(U.uMount, state.mount);
+    gl.uniform1f(U.uTect, state.tect);
     gl.uniform1f(U.uIsle, state.isle);
     gl.uniform1f(U.uLake, state.lake);
     gl.uniform1f(U.uCity, state.city);
@@ -210,6 +210,9 @@ function drawFrame(now){
     gl.uniform3fv(U.uSeedC, world.seedC);
     gl.uniform4fv(U.uCycA, world.cycA);
     gl.uniform4fv(U.uCycB, world.cycB);
+    gl.uniform1i(U.uPlateN, world.plateN);
+    gl.uniform4fv(U.uPlateP, world.plateP);
+    gl.uniform4fv(U.uPlateW, world.plateW);
     appliedUniformRevision = renderUniformRevision;
   }
   texOn += (texReady - texOn) * 0.04;

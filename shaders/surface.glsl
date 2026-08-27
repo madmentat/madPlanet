@@ -2,8 +2,8 @@
 vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec3 n0 = normalize(pos);
   vec3 atmC = atmoColor();
-  float ridge;
-  float h = terrain(n0, ridge);
+  float ridge, mount, lee;
+  float h = terrain(n0, ridge, mount, lee);
   vec3 sN = uRotS*n0;
 
   /* нормали по конечным разностям (только у суши/мелководья) */
@@ -13,11 +13,11 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   if(h > -0.05){
     vec3 tg = normalize(cross(n0, (abs(n0.y)<0.99) ? vec3(0,1,0) : vec3(1,0,0)));
     vec3 bt = cross(n0, tg);
-    float rr1, rr2;
-    float h1 = terrain(normalize(n0 + tg*eps), rr1);
-    float h2 = terrain(normalize(n0 + bt*eps), rr2);
+    float rr1, rr2, mm1, mm2, ll1, ll2;
+    float h1 = terrain(normalize(n0 + tg*eps), rr1, mm1, ll1);
+    float h2 = terrain(normalize(n0 + bt*eps), rr2, mm2, ll2);
     gradH = length(vec2(h1-h, h2-h))/eps;
-    float bmp = (0.03 + 0.095*uMount) * (1.0 + 1.3*(1.0-ss(1.7, 3.4, uCamDist)));
+    float bmp = (0.03 + 0.095*uTect) * (1.0 + 1.3*(1.0-ss(1.7, 3.4, uCamDist)));
     nS = normalize(n0 - (tg*(h1-h) + bt*(h2-h)) * (bmp/eps));
   }
 
@@ -40,7 +40,24 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float temp = mix(-0.55, 1.55, uTemp) - pow(lat,3.0)*1.55 - max(h,0.0)*0.95
              + 0.22*fbm(sN*1.3+uSeedS*1.1+vec3(61.0),3)      /* крупные климатические лопасти */
              + 0.16*fbm(sN*3.2+uSeedS+vec3(5.5),3) + 0.10*fbm(sN*7.8+uSeedS,3);
+  /* Альпийское похолодание. Общий высотный градиент нарочно пологий, иначе
+     любое плоскогорье промерзает и планета выцветает в снег. Но снеговая
+     шапка нужна именно хребтам, поэтому добавка идёт только от орогенной
+     высоты: чем жарче у подножия, тем выше по склону уходит линия снега. */
+  temp -= 2.0*mount;
   float moist = 0.5 + 0.5*fbm(sN*2.4 + uSeedS*1.3 + vec3(17.0), 4);
+
+  /* ---- опустынивание и приморское озеленение ----
+     Сухо там, где жарко и далеко от моря, а наветренный хребет уже отжал
+     влагу из воздуха. Дождевую тень lee приносит сама тектоника: она знает
+     и направление на ближайший шов, и расстояние до него. Поэтому пустыня
+     упирается в хребет и за ним обрывается, а у берега ей противостоит
+     увлажнение с моря. */
+  float baseH = h - mount;                       /* высота до орогенеза */
+  float contin = ss(0.02, 0.30, baseH);          /* континентальность */
+  float coastal = 1.0 - contin;
+  float arid = ss(0.46, 1.00, temp) * contin * (0.30 + 0.70*ss(0.06, 0.55, lee));
+  moist = clamp(moist*(1.0 - 0.78*arid) + 0.22*coastal*coastal, 0.0, 1.0);
 
   /* биомы */
   /* Альбедо близко к настоящим: песок ~0.4, лес ~0.12, снег ~0.8.
@@ -68,7 +85,20 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     if(cdet > 0.02) snowN += cdet*0.009*fbm(sN*230.0+uSeedS+vec3(77.0),3);
   }
   float snowM = 1.0 - ss(-climAA, climAA, snowN);
-  alb = mix(alb, ROCK, ss(0.35,0.85,ridge)*(1.0-snowM)*0.8);
+  /* Гипсометрическая шкала по орогенной высоте. Зелень равнин выше лесной
+     границы сменяется обнажённой породой: сначала жёлто-бурой, затем
+     буро-красной, и лишь на вершинах ложится снег. Прежде склон переходил
+     из зелёного прямо в белый — промежуточных тонов не было вовсе.
+     Скалистость ridge только усиливает переход на крутых участках: на
+     пологом плече хребта лес поднимается выше. */
+  vec3 SLOPE = vec3(0.420,0.340,0.180);   /* жёлто-бурые среднегорья */
+  vec3 ALPINE= vec3(0.340,0.190,0.120);   /* буро-красные высокогорья */
+  float rocky2 = 0.55 + 0.45*ss(0.20,0.70,ridge);
+  float bMid  = ss(0.012, 0.075, mount*rocky2);
+  float bHigh = ss(0.065, 0.170, mount*rocky2);
+  alb = mix(alb, SLOPE,  bMid *0.88*(1.0-snowM));
+  alb = mix(alb, ALPINE, bHigh*0.82*(1.0-snowM));
+  alb = mix(alb, ROCK, ss(0.45,0.90,ridge)*(1.0-snowM)*0.45);
   vec3 snowC = SNOW*(0.88+0.16*(0.5+0.5*fbm(sN*16.0+uSeedS+vec3(9.0),3)));
   if(cdet > 0.02){
     /* трещины и надувы: без них шапка читается как гладкая белая заливка */

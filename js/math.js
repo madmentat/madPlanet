@@ -5,6 +5,12 @@ function m3axis(ax, a){          // столбцовая mat3 поворота �
            t*x*y-s*z, t*y*y+c,   t*y*z+s*x,
            t*x*z+s*y, t*y*z-s*x, t*z*z+c ];
 }
+/* столбцовая mat3 на вектор */
+function m3v(m,v){
+  return [m[0]*v[0]+m[3]*v[1]+m[6]*v[2],
+          m[1]*v[0]+m[4]*v[1]+m[7]*v[2],
+          m[2]*v[0]+m[5]*v[1]+m[8]*v[2]];
+}
 function m3t(m){ return [m[0],m[3],m[6], m[1],m[4],m[7], m[2],m[5],m[8]]; }
 function m3mul(a,b){
   const r = new Array(9);

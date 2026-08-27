@@ -115,10 +115,10 @@ let usedVariant = 'none';
 const shaderFailureLog = [];
 
 const UNIFORM_NAMES = ['uRes','uTime','uCamPos','uCamMat','uFocal','uCamDist','uPixA','uRotS','uRotC','uRotCInv',
- 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uMount','uIsle',
+ 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle',
  'uLake','uCity','uAtmo','uRingsOn','uRingMat','uSeedS','uSeedC','uTex','uTexOn','uDraft','uVoid',
  'uStarCol','uMagAxis','uAtmoComp','uLowOn','uMidOn','uHighOn','uWind','uConvection','uMagField','uAurora',
- 'uStarRadius','uStarFlux','uStarDist'];
+ 'uStarRadius','uStarFlux','uStarDist','uPlateN'];
 
 /* Один и тот же объект U переиспользуется при смене программы: render.js
    держит на него ссылку, поэтому поля переписываются на месте. */
@@ -129,6 +129,8 @@ function bindUniforms(p){
   U.uTexMean = gl.getUniformLocation(p, 'uTexMean[0]');
   U.uCycA = gl.getUniformLocation(p, 'uCycA[0]');
   U.uCycB = gl.getUniformLocation(p, 'uCycB[0]');
+  U.uPlateP = gl.getUniformLocation(p, 'uPlateP[0]');
+  U.uPlateW = gl.getUniformLocation(p, 'uPlateW[0]');
 }
 
 function buildProgram(fragSrc){

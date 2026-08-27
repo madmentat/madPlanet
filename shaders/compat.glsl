@@ -18,7 +18,7 @@ uniform float uMidOn;
 uniform float uHighOn;
 uniform float uSea;
 uniform float uCont;
-uniform float uMount;
+uniform float uTect;
 uniform float uAtmo;
 uniform vec3 uStarCol;
 uniform float uStarFlux;
@@ -62,7 +62,7 @@ void main(){
     float macro=fb(q*1.55+uSeedS*0.7)+0.32*fb(q*3.6+uSeedS*1.3);
     float ridge=abs(fb(q*6.0+vec3(9.0)));
     float sea=mix(-0.14,0.24,uSea)+mix(-0.12,0.10,uCont);
-    float h=macro*0.30+ridge*0.08*uMount-sea;
+    float h=macro*0.30+ridge*0.08*uTect-sea;
     float land=smoothstep(-0.012,0.018,h);
     float lat=abs(dot(n,normalize(uAxis)));
     float temp=mix(-0.25,1.20,uTemp)-lat*lat*1.0-max(h,0.0)*0.45;

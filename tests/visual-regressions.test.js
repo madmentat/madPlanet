@@ -12,8 +12,8 @@ const state = read('js/state.js');
 const versionText = read('VERSION.txt');
 const version = (versionText.match(/^VERSION\s+(\d+\.\d+\.\d+)\s*$/m) || [])[1];
 
-assert.equal(version, '0.5.19', 'visual regression test belongs to release 0.5.19');
-assert.match(shell, /<div class="ver">v0\.5\.19<\/div>/, 'visible app version must match');
+assert.equal(version, '0.5.20', 'visual regression test belongs to release 0.5.20');
+assert.match(shell, /<div class="ver">v0\.5\.20<\/div>/, 'visible app version must match');
 assert.match(shell, /\.mark h1\{[^}]*font-size:19px/s, 'desktop wordmark should remain larger');
 assert.match(shell, /\.mark h1\{font-size:16px/s, 'mobile wordmark should remain compact');
 
@@ -64,5 +64,22 @@ assert.match(clouds, /region\*mix\(0\.24,1\.0,ss\(0\.05,0\.62,clim\)\)/, 'arid z
 /* 0.5.8: рассеяние вперёд гасится освещённостью — иначе вся ночная
    облачность вспыхивала «подсветкой», когда камера смотрит в сторону звезды. */
 assert.match(clouds, /vec3\(1\.0,0\.94,0\.86\)\*fwd\*lit\*/, 'forward scattering must be gated by cloud illumination');
+
+/* 0.5.20: горы рождаются на швах тектонических плит, а не ridged-шумом,
+   размазанным поясами по всей суше. */
+const terrainSrc = read('shaders/terrain.glsl');
+assert.match(terrainSrc, /vec3 tectonicBelt\(/, 'tectonic plate model missing');
+assert.ok(!/float belts = /.test(terrainSrc), 'the old smooth mountain-belt noise must not return');
+assert.match(terrainSrc, /uPlateW\[i\]\.xyz - uPlateW\[j\]\.xyz/, 'range/rift sign must come from relative plate motion');
+assert.match(terrainSrc, /sN = normalize\(sN \+ wv\*/, 'plate seams must be warped: straight Voronoi arcs read as artificial');
+/* Поле должно быть непрерывным: выбор «ближайший + второй сосед» рвал его у
+   тройных стыков, и по рельефу шли прямые борозды. Сумма по всем парам от
+   выбора не зависит. */
+assert.match(terrainSrc, /for\(int j=0;j<12;j\+\+\)/, 'belt must sum over plate pairs, not a selected pair');
+assert.ok(!/else if\(d < d2\)/.test(terrainSrc), 'second-neighbour selection must not return');
+assert.match(surface, /temp -= 2\.0\*mount;/, 'snow line must follow orogenic height, not total elevation');
+assert.match(surface, /float arid = /, 'desertification missing');
+assert.match(surface, /0\.22\*coastal\*coastal/, 'coastal greening must compete with aridity');
+assert.match(state, /k:'tect'.*Тектоника/s, 'mountain slider must be renamed to tectonics');
 
 console.log('visual-regressions.test.js: OK');

@@ -3,7 +3,7 @@ const PARAMS = [
   {k:'temp',       label:'Температура',           def:0.52, group:'Планета'},
   {k:'sea',        label:'Океан',                 def:0.58, group:'Планета'},
   {k:'cont',       label:'Материки',              def:0.45, group:'Планета'},
-  {k:'mount',      label:'Горы',                  def:0.55, group:'Планета'},
+  {k:'tect',       label:'Тектоника',             def:0.55, group:'Планета'},
   {k:'isle',       label:'Острова',                def:0.45, group:'Планета'},
   {k:'lake',       label:'Озёра',                 def:0.45, group:'Планета'},
   {k:'city',       label:'Огни городов',           def:0.55, group:'Поверхность'},
@@ -124,6 +124,31 @@ function deriveWorld(){
               tropical ? 1.5 + r()*1.0 : 0.6 + r()*0.7,        // закрутка
               r()*Math.PI*2 - Math.PI);                        // азимут фронта
   }
+  /* ---- тектонические плиты ----
+     Мозаика Вороного на сфере: точки раскладываются по спирали Фибоначчи,
+     чтобы плиты вышли сопоставимого размера, затем сбиваются джиттером и
+     поворачиваются целиком — иначе у всех миров швы легли бы одинаково.
+     Каждой плите даётся вектор Эйлера: скорость её точки равна w x r, а
+     знак сближения соседей на шве решает, вырастет там хребет или рифт. */
+  const plateN = 9 + Math.floor(r()*5);
+  const plateP = [], plateW = [];
+  const golden = Math.PI*(3-Math.sqrt(5));
+  const plateRot = m3axis(norm3([rv(), rv(), rv()]), r()*6.2831853);
+  for(let i=0;i<plateN;i++){
+    const y = 1 - 2*(i+0.5)/plateN;
+    const ring = Math.sqrt(Math.max(0, 1-y*y));
+    const th = golden*i;
+    let p = norm3([Math.cos(th)*ring + rv()*0.30,
+                   y             + rv()*0.30,
+                   Math.sin(th)*ring + rv()*0.30]);
+    p = m3v(plateRot, p);
+    plateP.push(p[0], p[1], p[2], 0);
+    const w = norm3([rv(), rv(), rv()]);
+    const rate = 0.30 + r()*0.95;
+    plateW.push(w[0]*rate, w[1]*rate, w[2]*rate, 0);
+  }
+  while(plateP.length < 48){ plateP.push(0,0,1,0); plateW.push(0,0,0,0); }
+
   /* кольца лежат в экваториальной плоскости (нормаль ~ ось планеты) */
   const rn = norm3([axis[0]+rv()*0.10, axis[1], axis[2]+rv()*0.10]);
   const rt = norm3(cross3(rn, [0,0,1]));
@@ -134,6 +159,7 @@ function deriveWorld(){
     axis,
     magAxis,
     cycA, cycB,
+    plateN, plateP, plateW,
     milky: norm3([rv(), rv(), rv()]),
     ringMat: [rt[0],rt[1],rt[2], rn[0],rn[1],rn[2], rb[0],rb[1],rb[2]],
     surfOff: r()*6.28,

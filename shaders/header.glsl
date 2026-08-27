@@ -15,7 +15,7 @@ uniform vec3  uSunDir;
 uniform vec3  uAxis;
 uniform vec3  uMilky;
 
-uniform float uTemp, uCloudLow, uCloudMid, uCloudHigh, uSea, uCont, uMount, uIsle, uLake, uCity, uAtmo;
+uniform float uTemp, uCloudLow, uCloudMid, uCloudHigh, uSea, uCont, uTect, uIsle, uLake, uCity, uAtmo;
 uniform float uRingsOn;
 uniform vec3  uStarCol;     /* спектральный цвет */
 uniform float uStarRadius;  /* относительный видимый диск */
@@ -36,4 +36,7 @@ uniform mat3  uRingMat;
 uniform vec3  uSeedS, uSeedC;
 uniform vec4  uCycA[5];   /* xyz — центр циклона, w — сила */
 uniform vec4  uCycB[5];   /* x — радиус, y — знак вращения, z — закрутка, w — азимут фронта */
+uniform int   uPlateN;    /* число тектонических плит */
+uniform vec4  uPlateP[12];/* xyz — центр плиты в системе поверхности */
+uniform vec4  uPlateW[12];/* xyz — вектор Эйлера плиты (ось x скорость) */
 

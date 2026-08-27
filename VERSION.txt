@@ -1,4 +1,4 @@
-VERSION 0.5.19
-Base: 0.5.7 (ветка C:\Codex_workshop\madPlanet; 0.5.9-0.5.18 из madPlanet_opencode в неё не входят)
-Changes: non-blocking shader startup with immediate compact renderer, sharply reduced ANGLE/D3D link cost, upwind-averaged cloud climate instead of a hard arid-zone cut, forward scattering gated by illumination so night clouds no longer glow.
+VERSION 0.5.20
+Base: 0.5.19
+Changes: tectonic plates replace the old mountain noise - ranges and rifts grow on plate seams, snow line follows orogenic height, rain shadow and coastal moisture drive desertification.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

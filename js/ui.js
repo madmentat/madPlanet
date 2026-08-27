@@ -318,7 +318,7 @@ document.getElementById('rand').addEventListener('click', () => {
   state.convection = 0.25 + r()*0.75;
   state.sea   = 0.35 + r()*0.5;
   state.cont  = r();
-  state.mount = 0.25 + r()*0.7;
+  state.tect = 0.25 + r()*0.7;
   state.isle  = r();
   state.lake  = r();
   state.city  = r() < 0.2 ? r()*0.15 : 0.35+r()*0.6;
@@ -373,7 +373,7 @@ function loadHash(){
   }
 
   /* Legacy 0.5.6 and earlier hashes used one shared cloud amount. */
-  const legacyKeys=['temp','sea','cont','mount','isle','lake','city','cloud','wind','convection',
+  const legacyKeys=['temp','sea','cont','tect','isle','lake','city','cloud','wind','convection',
                     'atmo','atmoComp','magnet','magTilt','magAzimuth','aurora','star','luminosity','distance'];
   if(parts.length < legacyKeys.length+2) return;
   const seed=parseInt(parts[0],10);
