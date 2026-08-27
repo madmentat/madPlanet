@@ -1,4 +1,4 @@
-VERSION 0.5.20
-Base: 0.5.19
-Changes: tectonic plates replace the old mountain noise - ranges and rifts grow on plate seams, snow line follows orogenic height, rain shadow and coastal moisture drive desertification.
+VERSION 0.5.21
+Base: 0.5.20
+Changes: dropped the Google Fonts stylesheet; the app now loads no third-party resources at all and uses system font stacks.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

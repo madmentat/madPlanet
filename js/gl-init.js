@@ -196,8 +196,11 @@ function setBadge(text, tone){
   if(!statusBadge){
     statusBadge = document.createElement('div');
     statusBadge.id = 'shaderStatus';
+    /* Ниже вордмарки: на первой загрузке плашка висит минутами, и в левом
+       верхнем углу она закрывала собой название приложения. */
     Object.assign(statusBadge.style,{
-      position:'fixed',left:'12px',top:'12px',zIndex:'10000',padding:'7px 10px',
+      position:'fixed',left:'22px',top:'86px',zIndex:'10000',padding:'7px 10px',
+      maxWidth:'calc(100vw - 44px)',
       font:'12px/1.35 system-ui,sans-serif',borderRadius:'7px',pointerEvents:'none'
     });
     document.body.appendChild(statusBadge);

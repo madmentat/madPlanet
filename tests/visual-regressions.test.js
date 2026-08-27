@@ -12,8 +12,8 @@ const state = read('js/state.js');
 const versionText = read('VERSION.txt');
 const version = (versionText.match(/^VERSION\s+(\d+\.\d+\.\d+)\s*$/m) || [])[1];
 
-assert.equal(version, '0.5.20', 'visual regression test belongs to release 0.5.20');
-assert.match(shell, /<div class="ver">v0\.5\.20<\/div>/, 'visible app version must match');
+assert.equal(version, '0.5.21', 'visual regression test belongs to release 0.5.21');
+assert.match(shell, /<div class="ver">v0\.5\.21<\/div>/, 'visible app version must match');
 assert.match(shell, /\.mark h1\{[^}]*font-size:19px/s, 'desktop wordmark should remain larger');
 assert.match(shell, /\.mark h1\{font-size:16px/s, 'mobile wordmark should remain compact');
 

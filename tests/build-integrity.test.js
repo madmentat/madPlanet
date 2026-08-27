@@ -35,4 +35,10 @@ assert.ok(currentVersion, 'current version must be readable');
 assert.match(html, new RegExp("const APP_VERSION = '" + currentVersion.replace(/\./g,'\\.') + "';"), 'build version stamp must match VERSION.txt');
 assert.match(html, new RegExp('<div class=\"ver\">v' + currentVersion.replace(/\./g,'\\.') + '<\/div>'), 'visible UI version must match VERSION.txt');
 
+/* Приложение должно быть самодостаточным: ни одного стороннего ресурса.
+   Единственная внешняя загрузка — атлас биомов рядом с index.html. */
+assert.ok(!/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(html), 'Google Fonts must not be referenced');
+const externalRefs = html.match(/(?:href|src)\s*=\s*["']https?:\/\/[^"']+/gi) || [];
+assert.deepEqual(externalRefs, [], 'index.html must not reference external resources: ' + externalRefs.join(', '));
+
 console.log('build-integrity.test.js: OK');
