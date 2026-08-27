@@ -1,0 +1,21 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const root=path.resolve(__dirname,'..');
+const read=p=>fs.readFileSync(path.join(root,p),'utf8');
+const compat=read('shaders/compat.glsl');
+const init=read('js/gl-init.js');
+const main=read('shaders/main.glsl');
+const atmo=read('shaders/atmosphere.glsl');
+const deploy=read('deploy.ps1');
+
+assert.ok(Buffer.byteLength(compat,'utf8') < 8000, 'compat shader must stay compact enough for ANGLE');
+assert.ok(!/sampler2DArray|textureLod|uTexMean|uCycA|uCycB/.test(compat), 'compat shader must avoid texture arrays and large uniform arrays');
+assert.match(init, /COMPAT_FRAG/, 'runtime must compile compatibility shader after full variants fail');
+assert.match(init, /balanced-compat/, 'compatibility renderer must have an explicit runtime mode');
+const compileBody=(init.match(/function compile\(type, src\)\{([\s\S]*?)\n\}/)||[])[1]||'';
+assert.ok(!/showFatal\s*\(/.test(compileBody), 'a failed full shader attempt must not leave a fatal overlay before fallback succeeds');
+assert.ok(!/auroraGlow\s*\(/.test(main+atmo), 'main program must not contain aurora implementation');
+assert.match(deploy, /Building a fresh temporary index\.html before deploy/, 'deploy must build fresh output by default');
+assert.match(deploy, /stale index\.html: APP_VERSION/, 'deploy must reject a stale built version');
+console.log('chromium-compat.test.js: OK');

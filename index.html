@@ -1,0 +1,4017 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<title>madPlanet</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;500&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400,500&display=swap">
+<style>
+  :root{
+    --void:#05070c;
+    --glass:rgba(13,20,32,.58);
+    --glass2:rgba(13,20,32,.72);
+    --line:rgba(159,194,255,.14);
+    --txt:#e8edf5;
+    --mut:#8b96a8;
+    --acc:#9fc2ff;
+    --warm:#e8a35c;
+    --sans:'IBM Plex Sans',system-ui,'Segoe UI',sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;
+    --disp:'Unbounded',var(--sans);
+    --safe-b:max(10px,env(safe-area-inset-bottom));
+    --safe-t:max(10px,env(safe-area-inset-top));
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{background:var(--void);color:var(--txt);font-family:var(--sans);font-size:13px;
+       -webkit-user-select:none;user-select:none;touch-action:none}
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+  #gl.grab{cursor:grabbing}
+  #magOverlay{position:fixed;inset:0;width:100%;height:100%;display:block;pointer-events:none;z-index:3}
+
+  /* ── вордмарка ─────────────────────────────── */
+  .mark{position:fixed;top:max(18px,var(--safe-t));left:22px;pointer-events:none;z-index:5}
+  .mark h1{font-family:var(--disp);font-weight:300;font-size:19px;letter-spacing:.34em;
+           line-height:1.08;color:rgba(238,244,255,.94);
+           text-shadow:0 1px 18px rgba(86,132,210,.16),0 2px 14px rgba(0,0,0,.72)}
+  .mark .ver{margin-top:6px;font-family:var(--mono);font-size:8px;letter-spacing:.22em;
+             text-transform:uppercase;color:rgba(159,194,255,.62)}
+  .mark .sub{margin-top:5px;font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--mut)}
+  .mark .sub b{color:var(--warm);font-weight:500}
+
+  /* ── рубрикатор (сетка кнопок справа) ─────── */
+  .rubric{position:fixed;z-index:8;right:var(--safe-b);top:50%;transform:translateY(-50%);
+          display:flex;flex-direction:column;gap:6px;
+          transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .3s}
+  .rubric.hidden{transform:translateY(-50%) translateX(60px);opacity:0;pointer-events:none}
+  .rubric-btn{
+    width:44px;height:44px;border-radius:12px;border:1px solid var(--line);
+    background:var(--glass2);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    color:var(--acc);cursor:pointer;display:grid;place-items:center;
+    font-family:var(--sans);font-size:9px;letter-spacing:.06em;text-transform:uppercase;
+    line-height:1.1;text-align:center;padding:4px;
+    transition:background .15s,transform .15s,border-color .15s;
+    box-shadow:0 2px 12px rgba(0,0,0,.35)}
+  .rubric-btn:hover{background:rgba(159,194,255,.18);border-color:rgba(159,194,255,.35)}
+  .rubric-btn.active{background:rgba(159,194,255,.22);border-color:var(--acc);transform:scale(1.08)}
+  .rubric-btn:focus-visible{outline:1px solid var(--acc)}
+  .rubric-btn svg{width:18px;height:18px;flex:none}
+
+  /* кнопка toggle рубрикатора */
+  .rub-toggle{
+    position:fixed;z-index:9;right:var(--safe-b);bottom:var(--safe-b);
+    width:40px;height:40px;border-radius:10px;border:1px solid var(--line);
+    background:var(--glass2);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    color:var(--mut);cursor:pointer;display:grid;place-items:center;
+    transition:color .15s,background .15s}
+  .rub-toggle:hover{color:var(--txt);background:rgba(159,194,255,.14)}
+  .rub-toggle svg{width:16px;height:16px}
+
+  /* ── панель параметров (перетаскиваемая) ────── */
+  .param-panel{
+    position:fixed;z-index:7;
+    width:272px;max-height:min(80vh,520px);
+    background:var(--glass2);border:1px solid var(--line);border-radius:14px;
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    box-shadow:0 8px 40px rgba(0,0,0,.5);
+    display:none;flex-direction:column;overflow:hidden;
+    transition:opacity .2s}
+  .param-panel.open{display:flex}
+  .param-panel .p-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 14px 8px;cursor:grab;touch-action:none;
+    border-bottom:1px solid rgba(159,194,255,.08)}
+  .param-panel .p-head:active{cursor:grabbing}
+  .param-panel .p-head span{
+    font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--mut);font-weight:500}
+  .param-panel .p-close{
+    background:none;border:none;color:var(--mut);cursor:pointer;padding:2px;
+    line-height:0;border-radius:6px}
+  .param-panel .p-close:hover{color:var(--txt)}
+  .param-panel .p-body{
+    padding:8px 14px 14px;overflow-y:auto;flex:1;
+    -webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+
+  .row{margin-bottom:10px}
+  .row label{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+             color:var(--mut);margin-bottom:2px}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;
+    background:transparent;cursor:pointer;--fill:50%}
+  input[type=range]::-webkit-slider-runnable-track{height:2px;border-radius:1px;
+    background:linear-gradient(90deg,var(--acc) var(--fill),rgba(255,255,255,.13) var(--fill))}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;
+    background:#dce8ff;margin-top:-4.5px;box-shadow:0 0 8px rgba(159,194,255,.55)}
+  input[type=range]::-moz-range-track{height:2px;border-radius:1px;
+    background:linear-gradient(90deg,var(--acc) var(--fill),rgba(255,255,255,.13) var(--fill))}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border:none;border-radius:50%;
+    background:#dce8ff;box-shadow:0 0 8px rgba(159,194,255,.55)}
+  input[type=range]:focus-visible{outline:1px solid var(--acc);outline-offset:2px;border-radius:4px}
+  .slval{font-size:11px;opacity:.7;min-width:5em;text-align:right;float:right;margin-top:-17px;
+         font-family:var(--mono);font-size:10px}
+
+  /* ── утилитарная полоса (сид, тоглы, кнопки) ── */
+  .util-bar{
+    position:fixed;z-index:7;left:14px;bottom:var(--safe-b);
+    display:flex;align-items:center;gap:8px;
+    background:var(--glass2);border:1px solid var(--line);border-radius:12px;
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    padding:8px 12px;
+    box-shadow:0 4px 20px rgba(0,0,0,.4);
+    transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .3s}
+  .util-bar.hidden{transform:translateY(60px);opacity:0;pointer-events:none}
+  .util-bar label{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
+  #seed{width:80px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:6px;
+        color:var(--txt);font-family:var(--mono);font-size:11px;padding:4px 6px;font-variant-numeric:tabular-nums}
+  #seed:focus-visible{outline:1px solid var(--acc)}
+  .icobtn{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:6px;color:var(--acc);
+          width:28px;height:28px;cursor:pointer;line-height:0;flex:none;display:grid;place-items:center}
+  .icobtn:hover{background:rgba(159,194,255,.14)}
+  .icobtn svg{width:12px;height:12px}
+
+  .tg{position:relative;width:30px;height:16px;flex:none;cursor:pointer}
+  .tg input{position:absolute;opacity:0;inset:0;cursor:pointer}
+  .tg i{position:absolute;inset:0;border-radius:8px;background:rgba(255,255,255,.12);transition:background .2s}
+  .tg i::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;
+               background:#aab6c8;transition:transform .2s,background .2s}
+  .tg input:checked+i{background:rgba(159,194,255,.4)}
+  .tg input:checked+i::after{transform:translateX(14px);background:#dce8ff}
+  .tg input:focus-visible+i{outline:1px solid var(--acc);outline-offset:2px}
+  .tg-lbl{font-size:9px;color:var(--mut);letter-spacing:.08em}
+
+  .util-sep{width:1px;height:20px;background:rgba(159,194,255,.12);flex:none}
+
+  .act-btn{
+    background:rgba(159,194,255,.08);border:1px solid rgba(159,194,255,.25);border-radius:8px;
+    color:#cfe0ff;font-family:var(--sans);font-size:10px;letter-spacing:.04em;
+    padding:6px 10px;cursor:pointer;white-space:nowrap;
+    transition:background .15s}
+  .act-btn:hover{background:rgba(159,194,255,.18)}
+
+  /* ── подсказка ─────────────────────────────── */
+  .hint{position:fixed;left:50%;bottom:max(60px,var(--safe-b));transform:translateX(-50%);
+        z-index:4;pointer-events:none;font-size:10px;letter-spacing:.10em;color:rgba(139,150,168,.85);
+        background:rgba(5,7,12,.35);padding:6px 14px;border-radius:16px;backdrop-filter:blur(6px);
+        animation:hintfade 1s ease 8s forwards;white-space:nowrap}
+  @keyframes hintfade{to{opacity:0}}
+
+  /* ── модал скриншота ───────────────────────── */
+  .shot{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
+        flex-direction:column;gap:16px;background:rgba(5,7,12,.88);backdrop-filter:blur(10px);padding:24px}
+  .shot.on{display:flex}
+  .shot img{max-width:min(92vw,1200px);max-height:70vh;border-radius:10px;border:1px solid var(--line);
+            box-shadow:0 20px 80px rgba(0,0,0,.6)}
+  .shot .srow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .shot a.act-btn{flex:none;text-decoration:none;padding:8px 18px}
+  .shot .note{font-size:10px;color:var(--mut);text-align:center;max-width:420px;line-height:1.5}
+
+  .err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:30;
+       background:var(--void);color:var(--mut);font-size:13px;text-align:center;padding:30px;line-height:1.6}
+
+  /* ── мобильный ─────────────────────────────── */
+  @media (max-width:700px){
+    .rubric{
+      right:auto;left:50%;top:auto;bottom:var(--safe-b);
+      transform:translateX(-50%);flex-direction:row;gap:5px}
+    .rubric.hidden{transform:translateX(-50%) translateY(60px);opacity:0}
+    .rubric-btn{width:40px;height:40px;font-size:8px;border-radius:10px}
+    .rub-toggle{right:auto;left:50%;bottom:auto;top:var(--safe-t);transform:translateX(-50%)}
+    .param-panel{
+      left:8px!important;right:8px!important;top:auto!important;bottom:calc(56px + var(--safe-b))!important;
+      width:auto!important;max-height:min(55vh,400px);border-radius:14px 14px 0 0}
+    .util-bar{
+      left:8px;right:8px;bottom:calc(50px + var(--safe-b));
+      justify-content:center;flex-wrap:wrap;gap:6px;padding:6px 10px}
+    .hint{bottom:auto;top:calc(50px + var(--safe-t));left:auto;right:10px;transform:none}
+    .mark{left:14px;top:max(14px,var(--safe-t))}
+    .mark h1{font-size:16px;letter-spacing:.30em}
+    .mark .ver{font-size:7px;margin-top:5px}
+    .mark .sub{font-size:9px;margin-top:4px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .param-panel,.rubric,.rub-toggle,.util-bar{transition:none}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="gl"></canvas>
+<canvas id="magOverlay" aria-hidden="true"></canvas>
+
+<div class="mark">
+  <h1>madPlanet</h1>
+  <div class="ver">v0.5.19</div>
+  <div class="sub">МИР <b id="seedLabel">№ —</b></div>
+</div>
+
+<!-- Рубрикатор: вертикальная полоса кнопок справа -->
+<div class="rubric" id="rubric"></div>
+
+<!-- Кнопка toggle рубрикатора -->
+<button class="rub-toggle" id="rubToggle" aria-label="Показать меню">
+  <svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+</button>
+
+<!-- Утилитарная полоса: сид + тоглы + кнопки -->
+<div class="util-bar" id="utilBar">
+  <label for="seed">Сид</label>
+  <input id="seed" inputmode="numeric" autocomplete="off">
+  <button class="icobtn" id="reroll" aria-label="Новый сид" title="Новый сид">
+    <svg viewBox="0 0 14 14" fill="none"><path d="M11.5 7a4.5 4.5 0 1 1-1.3-3.2M11.5 1v3h-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <div class="util-sep"></div>
+  <label class="tg"><input type="checkbox" id="rings"><i></i></label><span class="tg-lbl">Кольца</span>
+  <label class="tg"><input type="checkbox" id="texOn"><i></i></label><span class="tg-lbl">Текстуры</span>
+  <label class="tg"><input type="checkbox" id="draft"><i></i></label><span class="tg-lbl">Черновик</span>
+  <div class="util-sep"></div>
+  <button class="act-btn" id="rand">Случайный</button>
+  <button class="act-btn" id="shotBtn">Скриншот</button>
+</div>
+
+<div class="hint" id="hint">лкм — планета · пкм — солнце · колесо или щипок — зум</div>
+
+<div class="shot" id="shot">
+  <img id="shotImg" alt="Скриншот планеты">
+  <div class="srow">
+    <a class="act-btn" id="shotSave" download="planeta.png">Сохранить PNG</a>
+    <button class="act-btn" id="shotClose">Закрыть</button>
+  </div>
+  <div class="note">Если кнопка не работает — нажмите на изображение правой кнопкой (или удерживайте на телефоне) и выберите «Сохранить изображение».</div>
+</div>
+
+<div class="err" id="err">Для рендеринга планеты нужен WebGL.<br>Обновите браузер или включите аппаратное ускорение.</div>
+
+<script>
+'use strict';
+
+const APP_VERSION = '0.5.19';
+const VERT = `#version 300 es
+layout(location=0) in vec2 aPos;
+void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
+const FRAG = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+
+uniform vec2  uRes;
+uniform float uTime;
+uniform vec3  uCamPos;
+uniform mat3  uCamMat;
+uniform float uFocal;
+uniform float uCamDist;
+uniform float uPixA;      /* радиан на пиксель */
+uniform mat3  uRotS;      /* мир -> пространство выборки поверхности */
+uniform mat3  uRotC;      /* мир -> пространство облаков */
+uniform mat3  uRotCInv;
+uniform vec3  uSunDir;
+uniform vec3  uAxis;
+uniform vec3  uMilky;
+
+uniform float uTemp, uCloudLow, uCloudMid, uCloudHigh, uSea, uCont, uMount, uIsle, uLake, uCity, uAtmo;
+uniform float uRingsOn;
+uniform vec3  uStarCol;     /* спектральный цвет */
+uniform float uStarRadius;  /* относительный видимый диск */
+uniform float uStarFlux;    /* поток излучения */
+uniform float uStarDist;    /* расстояние до звезды, AU */
+uniform float uAtmoComp;    /* состав атмосферы 0= земля … 1= газовый гигант */
+uniform float uWind;
+uniform float uConvection;
+uniform float uLowOn, uMidOn, uHighOn;  /* включение/выключение ярусов облаков */
+uniform mat3  uRotC2;     /* средний ярус облаков */
+uniform mat3  uRotC3;     /* верхний ярус облаков */
+uniform mediump sampler2DArray uTex;
+uniform float uTexOn;
+uniform float uDraft;     /* 1 — черновик: дорогие слои выключены */
+uniform float uVoid;      /* 1 — космос заливается чёрным */
+uniform vec3  uTexMean[20];   /* средний цвет каждого тайла */
+uniform mat3  uRingMat;
+uniform vec3  uSeedS, uSeedC;
+uniform vec4  uCycA[5];   /* xyz — центр циклона, w — сила */
+uniform vec4  uCycB[5];   /* x — радиус, y — знак вращения, z — закрутка, w — азимут фронта */
+
+
+/* ---------- шум ---------- */
+vec3 hash33(vec3 p){
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yxz + 33.33);
+  return fract((p.xxy + p.yxx) * p.zyx);
+}
+float noise3(vec3 p){
+  vec3 i = floor(p), f = fract(p);
+  vec3 u = f*f*(3.0-2.0*f);
+  float a = dot(hash33(i)                -0.5, f);
+  float b = dot(hash33(i+vec3(1,0,0))    -0.5, f-vec3(1,0,0));
+  float c = dot(hash33(i+vec3(0,1,0))    -0.5, f-vec3(0,1,0));
+  float d = dot(hash33(i+vec3(1,1,0))    -0.5, f-vec3(1,1,0));
+  float e = dot(hash33(i+vec3(0,0,1))    -0.5, f-vec3(0,0,1));
+  float g = dot(hash33(i+vec3(1,0,1))    -0.5, f-vec3(1,0,1));
+  float h = dot(hash33(i+vec3(0,1,1))    -0.5, f-vec3(0,1,1));
+  float k = dot(hash33(i+vec3(1,1,1))    -0.5, f-vec3(1,1,1));
+  return 2.0*mix(mix(mix(a,b,u.x),mix(c,d,u.x),u.y),
+                 mix(mix(e,g,u.x),mix(h,k,u.x),u.y),u.z);
+}
+const mat3 M3 = mat3( 0.00, 0.80, 0.60,
+                     -0.80, 0.36,-0.48,
+                     -0.60,-0.48, 0.64);
+float fbm(vec3 p, int oct){
+  float a = 0.5, s = 0.0;
+  for(int i=0;i<8;i++){
+    if(i>=oct) break;
+    s += a*noise3(p);
+    p = M3*p*2.03 + vec3(3.1);
+    a *= 0.5;
+  }
+  return s;
+}
+float ridged(vec3 p, int oct){
+  float a = 0.55, s = 0.0;
+  for(int i=0;i<6;i++){
+    if(i>=oct) break;
+    float n = 1.0 - abs(noise3(p));
+    s += n*n*a;
+    a *= 0.5; p = M3*p*2.15;
+  }
+  return s;
+}
+/* curl noise: искривляет координаты для завитков облаков */
+vec3 curlNoise(vec3 p){
+  float e = 0.1;
+  float n1, n2;
+  n1 = noise3(p + vec3(0,e,0)); n2 = noise3(p - vec3(0,e,0));
+  float cx = (n1 - n2) / (2.0*e);
+  n1 = noise3(p + vec3(0,0,e)); n2 = noise3(p - vec3(0,0,e));
+  float cy = (n1 - n2) / (2.0*e);
+  n1 = noise3(p + vec3(e,0,0)); n2 = noise3(p - vec3(e,0,0));
+  float cz = (n1 - n2) / (2.0*e);
+  return vec3(cz - cy, cx - cz, cy - cx);
+}
+
+/* плавный шаг, безопасный для перевёрнутых краёв */
+float ss(float a, float b, float x){
+  float t = clamp((x-a)/(b-a), 0.0, 1.0);
+  return t*t*(3.0-2.0*t);
+}
+
+/* ---------- рельеф ---------- */
+float contFreq(){ return mix(0.7, 2.6, uCont); }
+float seaLvl(){ return mix(-0.25, 0.34, uSea); }
+
+/* Только макроконтур материков: ни островов, ни среднего масштаба, ни
+   хребтов. Это втрое дешевле terrain() и ровно то, что нужно карте влаги —
+   знать, над океаном или над материком шёл воздух. Начало намеренно
+   повторяет terrain(): удешевление здесь важнее, чем общий код, потому что
+   поле берётся несколькими отсчётами на каждый пиксель. */
+float continentH(vec3 dir){
+  vec3 sN = uRotS * dir;
+  vec3 p = sN*contFreq() + uSeedS;
+  vec3 w = vec3(fbm(p+vec3(1.7,9.2,3.1),2),
+                fbm(p+vec3(8.3,2.8,5.9),2),
+                fbm(p+vec3(4.6,7.1,0.7),2));
+  return fbm(p + 0.9*w, 5)*0.95 - seaLvl();
+}
+
+float terrain(vec3 dir, out float ridgeOut){
+  vec3 sN = uRotS * dir;
+  vec3 p = sN*contFreq() + uSeedS;
+  vec3 w = vec3(fbm(p+vec3(1.7,9.2,3.1),2),
+                fbm(p+vec3(8.3,2.8,5.9),2),
+                fbm(p+vec3(4.6,7.1,0.7),2));
+  vec3 q = p + 0.9*w;
+  float c = fbm(q,5);
+  c += 0.14*fbm(q*3.1+vec3(7.0),3);
+  float isl = fbm(sN*5.5 + uSeedS*1.7 + vec3(23.1),4);
+  float h = c*0.95 + uIsle*0.6*max(isl-0.22,0.0) - seaLvl();
+  ridgeOut = 0.0;
+  if(h > -0.06){
+    float belts = 0.3 + 0.7*ss(-0.1,0.4, fbm(sN*1.8+uSeedS+vec3(13.7),3));
+    float r = ridged(sN*4.2 + uSeedS*2.0, 5);
+    ridgeOut = r * belts * ss(-0.02,0.12,h);
+    h += (0.08 + 0.5*uMount) * ridgeOut * 0.38;
+    h += 0.02*fbm(sN*12.0+uSeedS,2);
+  }
+  /* Мелкий рельеф проявляется при приближении: без него вблизи нет ни
+     светотени, ни изрезанного берега — поверхность читается как заливка.
+     Гребневой шум, а не обычный: даёт сеть хребтов и долин вместо ряби,
+     и слабеет на равнинах, где эрозия всё сгладила. */
+  float det = (uDraft > 0.5) ? 0.0 : 1.0-ss(1.7, 3.4, uCamDist);
+  if(det > 0.02){
+    float rough = 0.07 + 1.15*ss(0.0,0.30,ridgeOut) + 0.22*ss(0.10,0.40,h);
+    h += det*0.030*(ridged(sN*32.0 + uSeedS*2.3, 4) - 0.55)*rough;
+    float det2 = 1.0-ss(1.12, 1.9, uCamDist);
+    if(det2 > 0.02)
+      h += det2*0.010*(ridged(sN*160.0 + uSeedS*3.7, 3) - 0.55)*rough;
+  }
+  return h;
+}
+
+float iSphere(vec3 ro, vec3 rd, float r);   /* определена ниже */
+
+
+/* ---------- ОБЛАКА v4: изотропное 3D-поле вместо зональных полос ----------
+   Важный принцип:
+   облако НЕ растягивается вдоль экватора/меридиана. Ветровые пояса и
+   циклоны влияют на перенос и количество влаги, но не диктуют форму ячейки.
+   Поэтому отдельная куча может быть круглой, слитой из нескольких масс,
+   рваной по краям или почти целиком закрывать планету.
+*/
+const float R_LOW_B  = 1.010;
+const float R_MID_B  = 1.021;
+const float R_HIGH_B = 1.034;
+float R_LOW, R_MID, R_HIGH;
+
+vec4 gWx;
+vec4 gSyn;
+/* Климат нижнего/среднего яруса считается один раз на пиксель в main():
+   раньше lowCloudClimate() разворачивался в шейдер по одному разу на
+   каждый ярус и на каждую карту теней, а внутри каждой копии лежал
+   полный terrain(). */
+float gClimLow, gClimMid;
+
+/* ---------- циклоны: только крупный перенос поля ---------- */
+vec3 vortexWarp(vec3 p){
+  for(int i=0;i<5;i++){
+    vec4 A = uCycA[i];
+    if(A.w < 0.02) continue;
+    float R = uCycB[i].x;
+    float d = distance(p, A.xyz);
+    if(d > R*2.0) continue;
+    float a = uCycB[i].y * A.w * 1.45 * exp(-d*d/(R*R*0.7));
+    vec3 ax = A.xyz;
+    float cc = cos(a), sn = sin(a);
+    p = p*cc + cross(ax,p)*sn + ax*dot(ax,p)*(1.0-cc);
+  }
+  return p;
+}
+
+vec4 synoptic(vec3 sd){
+  float arms=0.0, head=0.0, front=0.0, pat=0.0, near=0.0;
+  for(int i=0;i<5;i++){
+    vec4 A=uCycA[i];
+    if(A.w<0.02) continue;
+    vec4 B=uCycB[i];
+    vec3 C=normalize(A.xyz);
+    float cd=dot(sd,C);
+    float r=sqrt(max(2.0-2.0*cd,0.0));
+    if(r>B.x*3.0) continue;
+    float edge=1.0-smoothstep(B.x*1.5,B.x*3.0,r);
+    vec3 v=sd-C*cd;
+    float vl=length(v);
+    if(vl<1e-5) continue;
+    vec3 e1=normalize(cross(C,uAxis)+vec3(1e-5));
+    vec3 e2=cross(C,e1);
+    v/=vl;
+    float th=atan(dot(v,e2),dot(v,e1));
+    float rn=clamp(r/B.x,0.02,3.0);
+    float arm=0.5+0.5*sin(th*1.25+B.y*B.z*log(rn+0.05)*2.3);
+    float env=A.w*exp(-rn*rn*0.85);
+    float eye=ss(0.03,0.16,rn);
+    arms+=arm*arm*env*eye*edge;
+    float prox=A.w*ss(1.6,0.45,rn)*eye*edge;
+    if(prox>near){near=prox;pat=arm;}
+    float dth=th-B.w;
+    dth-=6.2831853*floor(dth/6.2831853+0.5);
+    float crest=0.5+0.5*cos(dth-B.y*1.7);
+    head+=exp(-pow((rn-0.33)*1.7,2.0))*env*eye*(0.35+0.9*crest)*edge;
+    front+=exp(-dth*dth*2.6)*ss(0.18,0.62,rn)*exp(-rn*rn*0.33)*A.w*edge;
+  }
+  return vec4(clamp(arms,0.0,1.0),clamp(head,0.0,1.0),clamp(front,0.0,1.0),pat*clamp(near,0.0,1.0));
+}
+
+/* ---------- изотропная форма облаков ----------
+   Никакого zonalStretch: именно он создавал «три спицы».  Координата
+   вращается/переносится целиком, поэтому статистика формы одинаковая
+   во всех направлениях.
+*/
+vec3 cloudCoord(vec3 dir, float scale, float speed, vec3 seed){
+  vec3 p = normalize(dir) * scale + seed;
+  p += vec3(uTime*speed, 0.0, -uTime*speed*0.61);
+  vec3 w = vec3(
+    fbm(p*0.62 + vec3(7.0), 3),
+    fbm(p*0.62 + vec3(19.0), 3),
+    fbm(p*0.62 + vec3(31.0), 3)
+  ) - 0.08;
+  return p + w*0.72;
+}
+
+/* Мягкое пятнистое поле для сросшихся облачных масс. */
+float cellNoise(vec3 p){
+  return 0.5 + 0.5*noise3(p);
+}
+
+/* ---------- нижний кучевой слой v7 ----------
+   Форма больше не строится ни из Worley-ячеек, ни из порога на billow,
+   который в 0.5.6 давал химическую "каракуль". Сначала создаётся одна
+   связная крупномасштабная облачная масса, затем только её край получает
+   неровности масштаба отдельных кучевых башенок. Это ближе к спутниковой
+   картинке: облачный банк читается целиком, но его граница состоит из
+   пышных выступов, а не из одинаковых пузырей. */
+vec3 cumulusCoord(vec3 dir,float scale,vec3 seed){
+  vec3 p=normalize(dir)*scale+seed;
+  p+=vec3(uTime*0.0044,-uTime*0.0016,uTime*0.0029);
+  /* Очень слабый изотропный domain warp. Он ломает идеальные изолинии, но
+     слишком мал, чтобы вытянуть облако в спицу или длинную колбасу. */
+  vec3 w=vec3(noise3(p*0.31+vec3(7.0)),
+              noise3(p*0.31+vec3(19.0)),
+              noise3(p*0.31+vec3(31.0)));
+  return p+w*0.055;
+}
+
+float cumulusShape(vec3 p){
+  float broad=0.5+0.5*fbm(p*0.66+vec3(13.0,3.0,29.0),4);
+  float bank =0.5+0.5*fbm(p*1.42+vec3(37.0,11.0,5.0),3);
+  float lobe =0.5+0.5*fbm(p*3.15+vec3(71.0,17.0,43.0),2);
+  /* Макроформа доминирует. Более мелкие масштабы только мнут границу. */
+  float body=broad*0.72+bank*0.22+lobe*0.06;
+  float scallop=0.5+0.5*fbm(p*5.8+vec3(101.0,7.0,53.0),2);
+  body+=(scallop-0.5)*0.085;
+  return clamp(body,0.0,1.0);
+}
+
+/* Та же температурно-влажностная карта, что визуально формирует биомы на
+   поверхности. Нижние облака любят океан и влажную сушу и постепенно редеют
+   над горячими сухими континентальными областями — но не исчезают там
+   полностью и не обрываются по контуру зоны. */
+float lowCloudSuitability(float h,float temp,float moist,float lat){
+  /* Береговая линия больше не работает как нож, но и шельф не должен
+     считаться сушей: пространственное размытие даёт выборка вдоль
+     наветренного следа, здесь достаточно перехода шириной с шельф.
+     Самая сухая суша при этом сохраняет заметный остаток облачности. */
+  float ocean=1.0-ss(-0.030,0.016,h);
+  float land=1.0-ocean;
+  float hot=ss(0.60,1.02,temp);
+  float dry=1.0-ss(0.24,0.56,moist);
+  float desert=land*hot*dry;
+  float humidLand=ss(0.20,0.72,moist);
+  float polar=ss(0.90,0.985,lat);
+  float suit=mix(0.30+0.68*humidLand,0.98,ocean);
+  suit*=1.0-0.72*desert;
+  suit*=1.0-0.28*polar*(1.0-ocean*0.55);
+  return clamp(suit,0.10,1.0);
+}
+
+/* ---------- влага вдоль наветренного следа ----------
+   Нижний ярус обгоняет поверхность, то есть воздух приходит с наветренной
+   стороны. Пригодность берётся не в точке под облаком, а как взвешенное
+   среднее по следу длиной ~1000 км против сноса: масса теряет влагу
+   постепенно, пока идёт над сушей и пустыней, и так же постепенно
+   насыщается снова над океаном.
+
+   Именно поэтому облако больше не срезается по береговой линии, как по
+   линейке, и не возникает мгновенно в прежней конфигурации сразу за
+   дальним краем засушливой зоны: за ней тянется подветренный сухой шлейф.
+
+   Цена держится в пределах прежней: температура и влажность меняются на
+   масштабе радиана и вдоль короткого следа почти постоянны, поэтому они
+   считаются один раз, а по следу берётся только то, что действительно
+   рвётся на берегу, — макроконтур суши. Граница цикла из uDraft, поэтому
+   тело отсчёта попадает в шейдер один раз, а не по копии на отсчёт. */
+float lowCloudClimate(vec3 dir){
+  vec3 drift=cross(uAxis,dir);
+  float dl=length(drift);
+  drift=(dl>1e-4)?drift/dl:vec3(0.0);
+  vec3 sN=uRotS*dir;
+  float lat=abs(dot(dir,uAxis));
+  float tempBase=mix(-0.55,1.55,uTemp)-pow(lat,3.0)*1.55
+                +0.22*fbm(sN*1.3+uSeedS*1.1+vec3(61.0),3)
+                +0.16*fbm(sN*3.2+uSeedS+vec3(5.5),3);
+  float moist=0.5+0.5*fbm(sN*2.4+uSeedS*1.3+vec3(17.0),4);
+  int taps=(uDraft>0.5)?1:3;
+  /* Отсчётов мало, и при равном шаге они дают несколько смещённых копий
+     береговой линии: на косой границе это читается как правильная
+     «гребёнка». Поэтому шаг растёт от отсчёта к отсчёту, а фаза всего следа
+     сдвигается низкочастотным шумом в системе облаков — ступеньки виляют
+     вместе с облачным полем и превращаются в рваный край. */
+  float ph=0.5+0.5*noise3(uRotC*dir*22.0+uSeedC);
+  float acc=0.0,wsum=0.0;
+  for(int i=0;i<taps;i++){
+    float fi=float(i);
+    float w=exp(-fi*0.62);
+    float h=continentH(normalize(dir-drift*((fi+ph)*0.050*(1.0+0.32*fi))));
+    acc+=w*lowCloudSuitability(h,tempBase-max(h,0.0)*0.95,moist,lat);
+    wsum+=w;
+  }
+  return acc/max(wsum,1e-4);
+}
+
+float cumulusRegion(vec3 p,float climate){
+  float broad=0.5+0.5*fbm(p*0.30+uSeedC*0.37+vec3(67.0),3);
+  /* Граница засушливой зоны — не геометрический контур: её размывает
+     отдельное облачное поле, поэтому край рваный и дрейфует вместе с
+     облаками, а не стоит неподвижно по берегу.
+     Поле именно отдельное, не broad: с broad дрожание совпало бы с тем,
+     что и так задаёт порог области, и вместо размытия границы просто
+     подняло бы контраст, выбив всю полуоформленную облачность.
+     Вес гасит дрожание у краёв диапазона, чтобы над открытым океаном и в
+     сердцевине пустыни количество облаков осталось прежним. */
+  float jit=fbm(p*1.35+uSeedC*0.83+vec3(149.0,37.0,211.0),2);
+  float cl0=clamp(climate,0.0,1.0);
+  float clim=clamp(cl0+jit*0.30*(4.0*cl0*(1.0-cl0)),0.0,1.0);
+  float amount=clamp(uCloudLow*clim,0.0,1.0);
+  float a=amount*amount*(3.0-2.0*amount);
+  float threshold=mix(0.76,0.37,a);
+  float region=ss(threshold,threshold+0.105,broad);
+  /* Пустыня разрежает облачность плавно и с остатком: даже при максимальном
+     ползунке она не превращается в сплошное покрывало, но и не выстригается
+     по линейке. */
+  return region*mix(0.24,1.0,ss(0.05,0.62,clim));
+}
+
+float cumulusDensityFromShape(vec3 p,float shape,float foot,float climate){
+  float amount=clamp(uCloudLow*climate,0.0,1.0);
+  float a=amount*amount*(3.0-2.0*amount);
+  float edge=mix(0.675,0.445,a);
+  float aa=clamp(foot*3.6,0.0055,0.027);
+  float puff=ss(edge-aa,edge+aa,shape);
+  return clamp(puff*cumulusRegion(p,climate),0.0,1.0);
+}
+float cumulusDensity(vec3 p,float foot,float climate){
+  return cumulusDensityFromShape(p,cumulusShape(p),foot,climate);
+}
+
+/* Облака с «барашками»: curl noise + ridge noise для резких завитков */
+float cloudBody(vec3 p){
+  /* Искривляем координаты — даёт закручивающиеся структуры */
+  vec3 w1 = p + curlNoise(p * 0.7) * 1.2;
+  vec3 w2 = p + curlNoise(p*1.3 + vec3(20.0)) * 0.8;
+
+  float broad = 0.5 + 0.5*fbm(w1*0.95, 4);
+  float ridge = ridged(w1*1.8 + vec3(7.0), 4);
+  float mid = 0.5 + 0.5*fbm(w2*2.35 + vec3(43.0), 3);
+  float fine = 0.5 + 0.5*fbm(w1*4.8 + vec3(71.0), 2);
+
+  float body = broad*0.38 + ridge*0.30 + mid*0.22 + fine*0.10;
+  return clamp(body,0.0,1.0);
+}
+
+/* Пышность с барашками: мелкие закрученные структуры */
+float puffDetail(vec3 p){
+  vec3 wp = p + curlNoise(p*0.9) * 0.6;
+  float a = 0.5 + 0.5*fbm(wp*3.2 + vec3(5.0), 3);
+  float b = 0.5 + 0.5*fbm(wp*6.7 + vec3(17.0), 2);
+  float c = 0.5 + 0.5*fbm(wp*10.5 + vec3(29.0), 2);
+  float r = ridged(wp*5.0 + vec3(13.0), 3);
+  return clamp(0.40*a + 0.25*b + 0.12*c + 0.23*r,0.0,1.0);
+}
+
+float coverageMask(float coverage,float amount){
+  float ca=amount*amount*(3.0-2.0*amount);
+  float blanket=smoothstep(0.90,0.995,amount);
+  float thr=mix(0.82,0.27,ca);
+  float m=ss(thr,thr+0.12,coverage);
+  return mix(m,1.0,blanket);
+}
+
+float detailFade(float freq,float foot){
+  float lam=6.2831853/freq;
+  return 1.0-ss(lam*0.30,lam*0.95,foot);
+}
+
+/* ---------- климат: только широкие вероятности типов облака ---------- */
+vec4 weather(vec3 dir, vec3 sd){
+  float lat=abs(dot(dir,uAxis));
+  float solar=clamp(uStarFlux,0.25,1.8);
+  float itcz=exp(-pow(lat*6.0,2.0))*(0.65+0.35*solar);
+  float subtr=exp(-pow((lat-0.58)*5.0,2.0));
+  float midl=exp(-pow((lat-0.78)*4.5,2.0));
+  float polar=exp(-pow((lat-0.93)*4.0,2.0));
+  float conv= mix(0.18,0.95,uConvection) * (0.45+0.55*(0.5+0.5*fbm(sd*2.1+uSeedC*1.7+vec3(51.0),3)));
+  float inst=0.5+0.5*fbm(sd*4.2+uSeedC*3.1+vec3(19.0),2);
+  float fr=0.5+0.5*fbm(sd*1.55+uSeedC*2.3+vec3(7.0),3);
+  float fz=clamp(fr*(midl*1.8+subtr*0.35+0.08),0.0,1.0);
+  float cu=clamp(itcz*1.8*ss(0.34,0.70,conv)+midl*0.7*ss(0.40,0.72,conv),0.0,1.0);
+  float sc=clamp(subtr*1.45*ss(0.26,0.64,1.0-conv)+polar*0.85*ss(0.18,0.52,conv),0.0,1.0);
+  float iw=clamp(itcz*2.4*uConvection*ss(0.58,0.84,inst)+midl*1.1*ss(0.50,0.80,inst),0.0,1.0);
+  return vec4(cu,sc,fz,iw);
+}
+
+/* ---------- тонкие карты для теней ---------- */
+float lowCover(vec3 dir,float climate){
+  if(uCloudLow<0.015) return 0.0;
+  vec3 p=cumulusCoord(uRotC*dir,2.58,uSeedC+vec3(3.0,9.0,15.0));
+  float mask=cumulusDensity(p,0.0055,climate);
+  return pow(mask,1.10);
+}
+float midCover(vec3 dir){
+  if(uCloudMid<0.025) return 0.0;
+  vec3 p=cloudCoord(uRotC2*dir,3.1,-0.0062,uSeedC*1.7+vec3(23.0,5.0,37.0));
+  float body=cloudBody(p);
+  return coverageMask(body,uCloudMid*gClimMid)*0.88;
+}
+
+/* ---------- нижний ярус: связные поля настоящих кучевых облаков ---------- */
+vec3 lowDeck(vec3 dir,float foot,float climate){
+  if(uCloudLow<0.015) return vec3(0.0);
+  vec3 p=cumulusCoord(uRotC*dir,2.58,uSeedC+vec3(3.0,9.0,15.0));
+  float shape=cumulusShape(p);
+  float density=cumulusDensityFromShape(p,shape,foot,climate);
+
+  /* Синоптика может усилить уже разрешённое климатом облако, но не способна
+     вернуть плотную кучевую шапку в центр горячей пустыни. */
+  float weatherBoost=clamp(0.88+0.15*gWx.x+0.08*gWx.z+0.06*gSyn.y,0.82,1.12);
+  density*=weatherBoost;
+
+  /* Мелкая неоднородность работает только внутри белого тела. Она не режет
+     силуэт на отдельные кружки. */
+  float fd=detailFade(82.0,foot);
+  if(fd>0.02){
+    float micro=0.5+0.5*fbm(p*8.2+vec3(83.0),2);
+    density*=mix(0.94,1.055,micro*fd);
+  }
+
+  float cauliflower=0.5+0.5*fbm(p*4.6+vec3(131.0,17.0,29.0),2);
+  float typ=clamp(0.76+0.18*uConvection+0.08*gWx.w,0.70,1.0);
+  return vec3(clamp(density,0.0,1.0),cauliflower,typ);
+}
+
+/* ---------- средний ярус: существующая удачная землеподобная морфология ---------- */
+vec3 midDeck(vec3 dir,float foot){
+  if(uCloudMid<0.025) return vec3(0.0);
+  vec3 p=cloudCoord(uRotC2*dir,3.35,-0.0075,uSeedC*1.55+vec3(23.0,5.0,37.0));
+  float body=cloudBody(p*0.95+vec3(4.0));
+  float detail=puffDetail(p*1.1+vec3(9.0));
+  float cover=coverageMask(body,uCloudMid*gClimMid)*0.88;
+  float scMask=clamp(0.55*gWx.y+0.55*gWx.z+0.25*gWx.w,0.0,1.0);
+  float density=cover*(0.72+0.34*detail)*mix(0.72,1.08,scMask);
+  float cells=cellNoise(p*2.7+vec3(47.0));
+  density*=mix(0.62,1.18,cells);
+  float fd=detailFade(70.0,foot);
+  if(fd>0.02) density*=mix(0.94,1.08,fbm(p*9.0+vec3(101.0),2)*0.5+0.25);
+  return vec3(clamp(density,0.0,0.92),body,clamp(0.35*gWx.z+0.65*gWx.w,0.0,1.0));
+}
+
+/* ---------- верхний ярус: независимая редкая перистая облачность ---------- */
+vec3 highDeck(vec3 dir,float foot){
+  if(uCloudHigh<0.02 || uDraft>0.5) return vec3(0.0);
+  vec3 p=cloudCoord(uRotC3*dir,4.0,-0.011,uSeedC*1.3+vec3(31.0,11.0,53.0));
+  float ca=uCloudHigh*uCloudHigh*(3.0-2.0*uCloudHigh);
+  float cloudPatch=0.5+0.5*fbm(p*0.75+vec3(127.0),3);
+  float pth=mix(0.72,0.50,ca);
+  cloudPatch=ss(pth,pth+0.12,cloudPatch);
+  float body=0.5+0.5*fbm(p*1.45,3);
+  float wispBase=0.5+0.5*fbm(p*4.1+vec3(71.0),3);
+  float wispFine=0.5+0.5*fbm(p*8.2+vec3(13.0),2);
+  float local=clamp(wispBase*0.72+wispFine*0.28,0.0,1.0);
+  float density=cloudPatch*(0.22+0.48*body)*local*mix(0.28,0.62,ca);
+  density*=smoothstep(0.18,0.55,uWind+0.15);
+  return vec3(clamp(density,0.0,0.55),body,0.85);
+}
+
+/* ---------- освещение ---------- */
+vec4 shadeDeck(int deck,vec3 nc,vec3 rd,vec3 m,float self,float boost,float foot){
+  float d=m.x;
+  if(d<0.004) return vec4(0.0);
+  float ndl=dot(nc,uSunDir);
+  float lit=ss(-0.25,0.10,ndl);
+  float nightFloor=0.035;
+  float effLit=max(lit,nightFloor);
+
+  /* Более явный объём: сердцевина темнее, край светлее. */
+  float fakeH=1.0-clamp(d*1.35,0.0,1.0);
+  float volumeShade=mix(0.40,1.0,fakeH);
+  effLit*=volumeShade;
+
+  float tex=0.92+0.10*(0.5+0.5*fbm(nc*((deck==0)?38.0:24.0)+uSeedC*2.2,2));
+  if(deck==0) tex*=mix(0.90,1.10,m.y);
+  float term=exp(-pow((ndl-0.02)*6.0,2.0));
+  vec3 sunTint=mix(vec3(1.0),vec3(1.25,0.60,0.33),term*0.8);
+  float lgt=max(ndl,0.0)*self*(0.42+0.58*tex)*mix(0.62,1.0,fakeH);
+  lgt*=1.0+(1.0-abs(dot(rd,nc)))*0.25;
+
+  vec3 darkS=vec3(0.16,0.18,0.24),darkC=vec3(0.10,0.12,0.18);
+  vec3 brtS=vec3(1.20,1.18,1.15),brtC=vec3(1.36,1.33,1.28);
+  vec3 dark,brt;
+  float typ=m.z;
+  if(deck==0){dark=mix(darkS,darkC,typ);brt=mix(brtS,brtC,typ);}
+  else if(deck==1){dark=mix(vec3(0.22,0.24,0.30),vec3(0.17,0.19,0.25),typ);brt=mix(vec3(1.10,1.10,1.12),vec3(1.22,1.22,1.24),typ);}
+  else {dark=vec3(0.28,0.32,0.40);brt=vec3(1.02,1.06,1.16);}
+  vec3 ccol=mix(dark,brt*boost,ss(0.0,0.70,lgt))*sunTint*effLit;
+  ccol+=vec3(0.02,0.03,0.05)*effLit;
+  /* Просвет на просвет: свет, прошедший облако насквозь. Он возможен
+     только там, где солнце вообще освещает этот кусок облака, то есть у
+     терминатора и на лимбе. Раньше множитель зависел лишь от угла между
+     лучом и направлением на звезду — а он максимален как раз тогда, когда
+     смотришь на ночную сторону, и вся ночная облачность вспыхивала
+     «подсветкой». Теперь вклад гасится освещённостью lit. */
+  float fwd=pow(max(dot(rd,uSunDir),0.0),(deck==2)?14.0:6.0);
+  ccol+=vec3(1.0,0.94,0.86)*fwd*lit*(1.0-d)*d*((deck==2)?1.2:0.6);
+
+  float k=(deck==0)?mix(4.6,7.0,typ):((deck==1)?4.7:1.45);
+  float a=1.0-exp(-d*k);
+  if(deck==2)a=min(a,0.45);
+  return vec4(ccol,clamp(a,0.0,1.0));
+}
+
+/* ---------- настоящий многослойный объём низкого яруса ---------- */
+vec4 volumeLow(vec3 ro,vec3 rd,float t0,float span,float boost,float climate){
+  vec4 acc=vec4(0.0);
+  /* Черновик — это ровно один слой вместо трёх, а не отдельная ветка со
+     своим вызовом lowDeck(). Граница цикла берётся из uDraft, поэтому
+     компилятор не разворачивает его и тело слоя попадает в шейдер один
+     раз, а не четырьмя копиями: именно на этом разворачивании линковка
+     программы в ANGLE/D3D раздувалась до минут. */
+  int N=(uDraft>0.5)?1:3;
+  for(int i=0;i<N;i++){
+    float f=(float(i)+0.5)/float(N);
+    float t=t0+span*f;
+    vec3 nc=normalize(ro+rd*t);
+    vec3 m=lowDeck(nc,t*uPixA,climate);
+    /* Облако имеет тяжёлое основание, максимум плотности в середине,
+       затем постепенно рассыпается к верхушке. Это даёт выпуклый объём,
+       а не одинаковую полоску через всю толщину. */
+    float bottom=ss(0.03,0.20,f);
+    float top=1.0-ss(0.70,0.98,f);
+    float mid=ss(0.18,0.42,f)*(1.0-ss(0.68,0.90,f));
+    float vert=0.48*bottom+0.92*mid+0.56*top;
+    float tower=pow(ss(0.30,0.88,f),1.35)*m.z*0.35;
+    float d=m.x*((N>1)?clamp(vert+tower,0.18,1.25):1.0);
+    if(d<0.003)continue;
+    vec4 c=shadeDeck(0,nc,rd,vec3(d,m.y,m.z),1.0,boost,t*uPixA);
+    if(N>1) c.a=1.0-pow(max(1.0-c.a,0.0),0.68);
+    acc.rgb+=(1.0-acc.a)*c.rgb*c.a;
+    acc.a+=(1.0-acc.a)*c.a;
+    if(acc.a>0.985)break;
+  }
+  return acc;
+}
+
+/* ---------- текстуры биомов (атлас-массив) ---------- */
+/* LOD считаем сами: в рейтрейсере производные UV на силуэте мусорные */
+vec3 triTex(float layer, vec3 p, vec3 nrm, float sc, float foot){
+  float lod = max(0.0, log2(max(foot*sc*512.0, 1e-6)));
+  vec3 an = abs(nrm); an /= (an.x+an.y+an.z);
+  return textureLod(uTex, vec3(p.yz*sc, layer), lod).rgb*an.x
+       + textureLod(uTex, vec3(p.xz*sc, layer), lod).rgb*an.y
+       + textureLod(uTex, vec3(p.xy*sc, layer), lod).rgb*an.z;
+}
+/* foot — размер пикселя на поверхности в долях радиуса */
+vec3 biomeTex(float layer, vec3 p, vec3 nrm, float foot){
+  if(uDraft > 0.5) return triTex(layer, p, nrm, 60.0, foot)*1.06;
+  vec3 c = mix(triTex(layer, p, nrm, 60.0, foot),
+               triTex(layer, p + vec3(17.31), nrm, 230.0, foot), 0.5);
+  float fine = 1.0-ss(1.35, 2.6, uCamDist);
+  if(fine > 0.02)
+    c = mix(c, triTex(layer, p + vec3(5.7), nrm, 1000.0, foot), fine*0.5);
+  return c*1.06;
+}
+
+/* ---------- атмосфера ---------- */
+/* Состав атмосферы (uAtmoComp):
+   0.0 — N2/O2 (Земля): синее Рэлеевское рассеяние
+   0.25 — CO2 тонкий (Марс): пыльный оранжевый
+   0.5 — CO2 плотный (Венера): жёлтая дымка
+   0.75 — N2+CH4 (Титан): оранжево-зелёный
+   1.0 — H2/He+CH4 (газовый гигант): глубокий сине-зелёный */
+vec3 atmoColor(){
+  vec3 earthBlue   = vec3(0.22, 0.48, 0.95);
+  vec3 marsDust    = vec3(0.88, 0.55, 0.28);
+  vec3 venusHaze   = vec3(0.95, 0.88, 0.55);
+  vec3 titanOrange = vec3(0.45, 0.55, 0.30);
+  vec3 giantBlue   = vec3(0.25, 0.50, 0.65);
+
+  float c = uAtmoComp;
+  vec3 base;
+  if(c < 0.25){
+    base = mix(earthBlue, marsDust, c*4.0);
+  } else if(c < 0.5){
+    base = mix(marsDust, venusHaze, (c-0.25)*4.0);
+  } else if(c < 0.75){
+    base = mix(venusHaze, titanOrange, (c-0.5)*4.0);
+  } else {
+    base = mix(titanOrange, giantBlue, (c-0.75)*4.0);
+  }
+  vec3 starWash = mix(vec3(1.0), uStarCol, 0.55);
+  return base * starWash;
+}
+
+/* ---------- кольца ---------- */
+float ringPattern(float r){
+  float t = (r-1.55)/(2.55-1.55);
+  if(t<0.0 || t>1.0) return 0.0;
+  float n  = 0.5+0.5*noise3(vec3(r*16.0, uSeedS.x, uSeedS.y));
+  float n2 = 0.5+0.5*noise3(vec3(r*43.0, uSeedS.y, 7.7));
+  float n3 = 0.5+0.5*noise3(vec3(r*110.0, uSeedS.x*1.3, 3.3));
+  float a = ss(0.0,0.07,t)*(1.0-ss(0.82,1.0,t));
+  a *= 0.30+0.70*pow(n,1.5);
+  a *= 0.45+0.55*n2;
+  a *= 0.75+0.25*n3;
+  a *= ss(0.015,0.05,abs(r-2.08));            /* щель Кассини */
+  a *= 0.5+0.5*ss(0.01,0.03,abs(r-1.78));     /* вторая щель */
+  return clamp(a,0.0,1.0);
+}
+float ringShadow(vec3 pos){
+  if(uRingsOn < 0.5) return 1.0;
+  vec3 rn = uRingMat[1];
+  float dn = dot(uSunDir, rn);
+  if(abs(dn) < 1e-3) return 1.0;
+  float t = -dot(pos, rn)/dn;
+  if(t <= 0.0) return 1.0;
+  float r = length(pos + uSunDir*t);
+  return 1.0 - ringPattern(r)*0.7;
+}
+vec4 ringColor(vec3 ro, vec3 rd, float tMax, out float tR){
+  tR = -1.0;
+  if(uRingsOn < 0.5) return vec4(0.0);
+  vec3 rn = uRingMat[1];
+  float dn = dot(rd, rn);
+  if(abs(dn) < 1e-4) return vec4(0.0);
+  float t = -dot(ro, rn)/dn;
+  if(t < 0.0 || t > tMax) return vec4(0.0);
+  vec3 p = ro + rd*t;
+  float r = length(p);
+  float a = ringPattern(r)*0.88;
+  if(a < 0.003) return vec4(0.0);
+  tR = t;
+  float alongSun = dot(p, uSunDir);
+  float distAx = length(p - uSunDir*alongSun);
+  float sh = (alongSun < 0.0) ? mix(0.10, 1.0, ss(0.97, 1.06, distAx)) : 1.0;
+  float dl = clamp(abs(dot(rn, uSunDir)), 0.0, 1.0)*0.75 + 0.25;
+  float starLift = clamp(0.68 + 0.34*log(1.0 + uStarFlux), 0.55, 1.60);
+  float back = pow(max(dot(rd, uSunDir), 0.0), 3.0)*0.35;
+  float hueV = 0.5+0.5*noise3(vec3(r*7.0, uSeedS.y*0.7, 11.0));
+  vec3 base = mix(vec3(0.58,0.52,0.44), vec3(0.66,0.62,0.58), hueV);
+  vec3 c = (base*dl + uStarCol*vec3(0.82,0.74,0.62)*back)*sh*1.5*starLift;
+  return vec4(c, a);
+}
+
+
+/* ---------- туман / stratus ---------- */
+vec3 fogLayer(vec3 dir, float foot){
+  if(uLowOn < 0.5 || uCloudLow < 0.15) return vec3(0.0);
+  float lat = abs(dot(dir, uAxis));
+  /* Субтропический пояс инверсий: ширина 20-35° */
+  float inversionBelt = smoothstep(0.3, 0.5, lat) * smoothstep(0.65, 0.5, lat);
+  /* Прибрежные зоны: туман над водой у берега */
+  float coastal = smoothstep(0.2, 0.6, uSea) * smoothstep(0.2, 0.6, uCont);
+  /* Терминатор: диффузное свечение на границе день/ночь */
+  float sunDot = dot(dir, uSunDir);
+  float terminator = exp(-sunDot * sunDot * 8.0);
+  float fogMask = max(max(inversionBelt * 0.4, coastal * 0.3), terminator * 0.25);
+  fogMask *= uCloudLow;
+  if(fogMask < 0.01) return vec3(0.0);
+  /* Гладкий, низкочастотный шум — туман без текстуры */
+  vec3 fp = uRotC * dir * 3.0 + uSeedC * 0.5;
+  float fog = 0.5 + 0.5 * fbm(fp, 2);
+  fog = smoothstep(0.35, 0.65, fog) * fogMask;
+  float fade = detailFade(40.0, foot);
+  return vec3(fog * fade * 0.5, 0.0, 0.0);
+}
+
+
+/* ---------- молнии ---------- */
+/* cloudA — фактическая непрозрачность нижнего яруса в этом пикселе, уже
+   посчитанная в main(). Раньше каждая из шести грозовых ячеек проверялась
+   по weather() и lowCover() в её собственном центре. Эти величины не
+   зависят от пикселя, но цикл разворачивался, и в шейдер попадало шесть
+   копий погоды и шесть полных копий рельефа — самый дорогой фрагмент всей
+   программы при линковке и на каждый кадр. Гроза оценивается по обстановке
+   в самой точке кадра: свечение всё равно локально (радиус ~0.1 рад), а
+   main() и без того вызывает разряд только там, где есть облачная масса. */
+vec3 lightningGlow(vec3 dirW, float cloudA){
+  vec3 acc = vec3(0.0);
+  if(uLowOn < 0.5 || uCloudLow < 0.05) return acc;
+  float storm = gWx.w;
+  if(storm < 0.16) return acc;
+  if(cloudA < mix(0.10, 0.38, storm)) return acc;
+  for(int i=0;i<6;i++){
+    float fi = float(i);
+    float per = 1.1 + fi*0.53;
+    float ph = uTime/per + fi*7.77;
+    float cyc = floor(ph);
+    float fr = fract(ph);
+    /* Модель конденсатора: быстрый разряд → медленная перезарядка.
+       Первый удар — яркий, второй — 70% интенсивности. */
+    float capPhase = fract(uTime*per*0.7 + fi*3.14);
+    float discharge = exp(-capPhase * 8.0);
+    float recharge = 1.0 - exp(-capPhase * 2.0);
+    float capFlick = discharge * recharge;
+    float capPhase2 = fract(uTime*per*0.73 + fi*3.14 + 0.4);
+    float capFlick2 = exp(-capPhase2 * 12.0) * (1.0 - exp(-capPhase2 * 3.0));
+    float win = max(capFlick, capFlick2 * 0.7);
+    /* Старая модель для обратной совместимости — микс с новой */
+    float winLegacy = ss(0.0,0.012,fr)*(1.0-ss(0.025,0.08,fr))
+              + 0.7*(ss(0.10,0.112,fr)*(1.0-ss(0.125,0.17,fr)));
+    win = max(win, winLegacy * 0.5);
+    if(win < 0.002) continue;
+    vec3 hh = hash33(vec3(cyc*13.1+fi*71.7, cyc*7.7+3.3, fi*29.3) + uSeedC);
+    vec3 fpC = normalize(hh*2.0-1.0);
+    vec3 fp = uRotCInv * fpC;
+    if(dot(fp, uSunDir) > -0.1) continue;      /* только ночная сторона */
+    float ang = distance(dirW, fp);
+    /* Трёхкомпонентное свечение: ядро + ветви + диффузия */
+    float core = min(exp(-ang*ang*2500.0), 0.4) * 5.0;
+    float angAtan = atan(dirW.z - fp.z, dirW.x - fp.x);
+    float branch = exp(-ang*ang*400.0) * (1.0 + 0.3*sin(angAtan*7.0));
+    float diffuse = exp(-ang*ang*60.0) * 0.15;
+    float g = core + branch * 0.6 + diffuse;
+    acc += vec3(0.72,0.80,1.0) * g * win * 3.2;
+  }
+  return acc;
+}
+
+
+/* ---------- поверхность ---------- */
+vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
+  vec3 n0 = normalize(pos);
+  vec3 atmC = atmoColor();
+  float ridge;
+  float h = terrain(n0, ridge);
+  vec3 sN = uRotS*n0;
+
+  /* нормали по конечным разностям (только у суши/мелководья) */
+  vec3 nS = n0;
+  float gradH = 0.0;
+  float eps = clamp(tHit*uPixA*2.0, 0.0006, 0.02);
+  if(h > -0.05){
+    vec3 tg = normalize(cross(n0, (abs(n0.y)<0.99) ? vec3(0,1,0) : vec3(1,0,0)));
+    vec3 bt = cross(n0, tg);
+    float rr1, rr2;
+    float h1 = terrain(normalize(n0 + tg*eps), rr1);
+    float h2 = terrain(normalize(n0 + bt*eps), rr2);
+    gradH = length(vec2(h1-h, h2-h))/eps;
+    float bmp = (0.03 + 0.095*uMount) * (1.0 + 1.3*(1.0-ss(1.7, 3.4, uCamDist)));
+    nS = normalize(n0 - (tg*(h1-h) + bt*(h2-h)) * (bmp/eps));
+  }
+
+  /* Ширина береговой линии — ровно пиксель. Раньше порог задавался в единицах
+     высоты, и на пологом побережье, где рельеф почти горизонтален, кромка
+     расплывалась на десятки пикселей. Теперь след пикселя пересчитывается
+     через настоящий градиент высоты. */
+  float pixH = gradH * tHit * uPixA;
+  float aa = clamp(pixH*1.1, 1.0e-5, 0.02);
+  float land = ss(-aa, aa, h);
+
+  /* Поверхность океана плоская: раньше её нормаль бралась из рельефа дна,
+     и мелководье затенялось как склон — лагуны выглядели горами воды. */
+  nS = normalize(mix(n0, nS, land));
+
+  /* климат */
+  float lat = abs(dot(n0, uAxis));
+  /* Высотный градиент был вчетверо завышен: любая суша выше уровня моря
+     промерзала, и планета выцветала в снег. */
+  float temp = mix(-0.55, 1.55, uTemp) - pow(lat,3.0)*1.55 - max(h,0.0)*0.95
+             + 0.22*fbm(sN*1.3+uSeedS*1.1+vec3(61.0),3)      /* крупные климатические лопасти */
+             + 0.16*fbm(sN*3.2+uSeedS+vec3(5.5),3) + 0.10*fbm(sN*7.8+uSeedS,3);
+  float moist = 0.5 + 0.5*fbm(sN*2.4 + uSeedS*1.3 + vec3(17.0), 4);
+
+  /* биомы */
+  /* Альбедо близко к настоящим: песок ~0.4, лес ~0.12, снег ~0.8.
+     С прежними завышенными значениями подсолнечная точка выбивалась в белый
+     и вместе с ней исчезала вся детализация. */
+  vec3 SAND=vec3(0.42,0.36,0.25), REDR=vec3(0.31,0.19,0.12), STEP=vec3(0.25,0.23,0.13),
+       GRAS=vec3(0.15,0.22,0.09), FORS=vec3(0.070,0.125,0.060), JUNG=vec3(0.050,0.115,0.050),
+       TUND=vec3(0.26,0.245,0.20), ROCK=vec3(0.25,0.22,0.19), SNOW=vec3(0.78,0.81,0.86);
+  float rocky = 0.5+0.5*fbm(sN*3.7+uSeedS+vec3(27.0),3);
+  vec3 hot  = mix(mix(SAND,REDR,ss(0.35,0.75,rocky)), JUNG, ss(0.48,0.75,moist));
+  vec3 midc = mix(STEP, mix(GRAS,FORS,ss(0.35,0.7,moist)), ss(0.15,0.48,moist));
+  vec3 cold = mix(TUND, FORS*0.8+vec3(0.02), ss(0.5,0.8,moist));
+  vec3 alb = mix(cold, midc, ss(0.02,0.3,temp));
+  alb = mix(alb, hot, ss(0.55,0.95,temp));
+  /* Кромка ледника — резкая линия, как на снимках, а не плавный градиент.
+     Форму задаёт многооктавный шум, а сам переход держим шириной в пиксель:
+     раньше порог шириной 0.14 по температуре размазывал границу на градусы
+     широты, и «Арктика» получалась без очертаний. */
+  float climAA = max(2.2*tHit*uPixA, 2.0e-4);
+  float cdet = (uDraft > 0.5) ? 0.0 : 1.0-ss(1.6, 3.2, uCamDist);
+  float snowN = temp + 0.11*fbm(sN*5.5+uSeedS+vec3(31.0),3);
+  if(abs(snowN) < 0.14){          /* мелкие октавы нужны только у самой кромки */
+    snowN += 0.045*fbm(sN*19.0+uSeedS,3)
+           + 0.018*fbm(sN*64.0+uSeedS+vec3(9.0),2);
+    if(cdet > 0.02) snowN += cdet*0.009*fbm(sN*230.0+uSeedS+vec3(77.0),3);
+  }
+  float snowM = 1.0 - ss(-climAA, climAA, snowN);
+  alb = mix(alb, ROCK, ss(0.35,0.85,ridge)*(1.0-snowM)*0.8);
+  vec3 snowC = SNOW*(0.88+0.16*(0.5+0.5*fbm(sN*16.0+uSeedS+vec3(9.0),3)));
+  if(cdet > 0.02){
+    /* трещины и надувы: без них шапка читается как гладкая белая заливка */
+    float cr = ridged(sN*110.0 + uSeedS*1.4, 3);
+    snowC *= 1.0 - cdet*0.30*ss(0.52,1.0,cr);
+  }
+  alb = mix(alb, snowC, snowM);
+  float beach = ss(0.0,0.0014,h)*(1.0-ss(0.002,0.0055,h));
+  beach *= 0.35+0.65*(0.5+0.5*fbm(sN*21.0+uSeedS+vec3(43.0),2));
+  beach *= ss(0.22,0.65,temp)*(1.0-0.75*ss(0.55,0.85,moist));  /* песок — в тепле и сухости */
+  alb = mix(alb, SAND*1.02, beach*0.55*(1.0-snowM));
+  /* пятнистость растительности */
+  float veg = fbm(sN*7.5 + uSeedS*4.0, 3);
+  alb *= 1.0 + 0.18*veg;
+  /* Мозаика покрова внутри климатической зоны. Влажность и температура меняются
+     медленно, поэтому в кадре всегда один биом, и без этой мозаики материк
+     читается как ровная заливка одной краской. На снимках же рядом лежат
+     тёмный лес, оливковый кустарник, охристая почва и серый камень. */
+  vec3 bareC  = mix(vec3(0.20,0.165,0.115), REDR, ss(0.40,0.92,temp));
+  vec3 denseC = FORS*0.82;
+  float mo1 = 0.5+0.5*fbm(sN*9.0  + uSeedS*2.1 + vec3(101.0), 3);
+  float mo2 = 0.5+0.5*fbm(sN*19.0 + uSeedS*3.3 + vec3(202.0), 3);
+  float mo3 = 0.5+0.5*fbm(sN*38.0 + uSeedS*1.5 + vec3(303.0), 2);
+  alb = mix(alb, bareC,  ss(0.46,0.63,mo1)*0.80*(1.0-0.75*ss(0.52,0.70,moist)));
+  alb = mix(alb, denseC, ss(0.45,0.62,mo2)*0.70*ss(0.34,0.55,moist));
+  alb *= 0.80 + 0.42*mo3;
+
+  /* фототекстуры биомов: базовый слой по климату + накладки */
+  if(uTexOn > 0.01 && land > 0.001){
+    float hotW = ss(0.55,0.95,temp);
+    float coldW = 1.0-ss(0.02,0.3,temp);
+    float layer;
+    if(hotW > 0.5){
+      layer = (moist>0.62) ? 16.0 : (moist>0.38) ? 11.0 :
+              ((rocky>0.62) ? ((moist<0.25)?2.0:7.0) : 10.0);
+      if(h < 0.05 && moist < 0.2) layer = 8.0;               /* солончак */
+    } else if(coldW > 0.5){
+      layer = (moist>0.5) ? 0.0 : 17.0;                      /* тайга / тундра */
+    } else {
+      layer = (moist<0.28) ? 1.0 : ((moist<0.48) ? 4.0 : 14.0);
+      if(rocky>0.72) layer = 15.0;
+      if(moist>0.78 && h<0.06) layer = 19.0;                 /* болота */
+    }
+    float foot = tHit*uPixA;
+    vec3 texC  = biomeTex(layer, sN, n0, foot);
+    vec3 meanC = uTexMean[int(layer)];
+    float wRock = ss(0.45,0.8,ridge)*(1.0-snowM);
+    if(wRock>0.01){
+      texC = mix(texC, biomeTex(5.0, sN, n0, foot), wRock);
+      meanC = mix(meanC, uTexMean[5], wRock);
+    }
+    if(hotW>0.5 && ridge>0.55){
+      float wv = ss(0.55,0.85,ridge)*0.8;
+      texC = mix(texC, biomeTex(18.0, sN, n0, foot), wv);
+      meanC = mix(meanC, uTexMean[18], wv);
+    }
+    if(snowM>0.01){
+      int s = (ridge>0.5) ? 3 : 13;
+      texC = mix(texC, biomeTex(float(s), sN, n0, foot), snowM);
+      meanC = mix(meanC, uTexMean[s], snowM);
+    }
+    if(beach>0.01){
+      int s = (rocky>0.6) ? 6 : 9;
+      float wv = beach*0.8;
+      texC = mix(texC, biomeTex(float(s), sN, n0, foot), wv);
+      meanC = mix(meanC, uTexMean[s], wv);
+    }
+    /* Берём из фотографии структуру, а не цвет: на дальнем плане тайл
+       замыливается до своего среднего, и абсолютный цвет выцвел бы. */
+    vec3 detail = clamp(texC / max(meanC, vec3(0.05)), vec3(0.30), vec3(1.85));
+    alb *= mix(vec3(1.0), detail, 0.85*uTexOn);
+  }
+
+  /* реки и озёра */
+  float rv = 0.0;
+  if(h > 0.0 && snowM < 0.85){
+    float rn = fbm(sN*5.2 + uSeedS*1.9 + 0.5*vec3(fbm(sN*3.1+uSeedS,3), fbm(sN*3.1+uSeedS+vec3(7.7),3), 0.0), 4);
+    /* ширина гуляет вдоль русла, иначе река читается как проведённая линия */
+    float wVar = 0.45 + 1.15*(0.5+0.5*fbm(sN*19.0 + uSeedS + vec3(71.0), 3));
+    float wReal = mix(0.013, 0.0030, ss(0.02,0.22,h)) * wVar;   /* шире у побережья */
+    float wPix = tHit*uPixA*1.6;
+    float w = max(wReal, wPix);
+    float riv = 1.0 - ss(w*0.82, w*1.06, abs(rn) + 0.0016*fbm(sN*260.0+uSeedS,2));
+    riv *= clamp(wReal/wPix*0.8, 0.0, 1.0);              /* субпиксельные реки гаснут */
+    riv *= ss(0.30,0.48,moist) * (1.0-ss(0.16,0.30,h));
+    float lakeN = fbm(sN*3.4 + uSeedS*3.7 + vec3(53.0), 4);
+    float lth = mix(0.46, 0.20, uLake);
+    float lake = ss(lth, lth+0.07, lakeN) * (1.0-ss(0.05,0.14,h)) * ss(0.22,0.38,moist);
+    lake *= ss(0.02,0.10,uLake);
+    rv = clamp(riv + lake, 0.0, 1.0) * (1.0 - snowM*0.9);   /* реки замерзают */
+    /* тон как у прибрежной воды: раньше реки выходили светлее океана */
+    alb = mix(alb, mix(vec3(0.022,0.062,0.090), vec3(0.045,0.135,0.155),
+                       ss(0.30,0.85,temp)), rv*0.90);
+  }
+
+  /* океан: бровка шельфа неровная, глубина идёт тремя ступенями, а не двумя */
+  /* Шельф узкий и неровный: широкая плавная бирюза читалась как свечение
+     вокруг каждого острова, чего на снимках нет. */
+  float dRaw = -h + 0.0045*fbm(sN*26.0 + uSeedS + vec3(63.0), 3)
+                  + 0.0020*fbm(sN*90.0 + uSeedS + vec3(11.0), 2);
+  float depth = clamp(dRaw*46.0, 0.0, 1.0);
+  /* Бирюза бывает только на тёплом мелководье. У полярных берегов вода тёмная
+     от самой кромки — иначе каждый остров окружает ореол свечения. */
+  vec3 shallowC = mix(vec3(0.028,0.100,0.145), vec3(0.075,0.30,0.34), ss(0.30,0.85,temp));
+  vec3 oc = mix(shallowC, vec3(0.013,0.072,0.130), ss(0.0,0.5,pow(depth,0.55)));
+  oc = mix(oc, vec3(0.004,0.020,0.050), ss(0.34,1.0,pow(depth,0.45)));
+  /* рябь у поверхности — вблизи вода перестаёт быть однотонной */
+  float chop = 1.0-ss(1.5,3.0,uCamDist);
+  if(chop > 0.02)
+    oc *= 1.0 + chop*0.13*fbm(sN*420.0 + vec3(uTime*0.35, 0.0, uTime*0.2), 3);
+  /* Морской лёд: кромка ещё более изломанная, чем у ледника, но такая же резкая */
+  float iceN = temp + 0.05 + 0.13*fbm(sN*6.5+uSeedS+vec3(3.0),3);
+  if(abs(iceN) < 0.16){
+    iceN += 0.055*fbm(sN*23.0+uSeedS+vec3(51.0),3)
+          + 0.022*fbm(sN*75.0+uSeedS+vec3(19.0),2);
+    if(cdet > 0.02) iceN += cdet*0.010*fbm(sN*260.0+uSeedS+vec3(41.0),3);
+  }
+  float ice = 1.0 - ss(-climAA, climAA, iceN);
+  if(ice > 0.01){
+    vec3 iceCol = vec3(0.80,0.86,0.92)*(0.86+0.24*(0.5+0.5*fbm(sN*30.0+uSeedS,2)));
+    if(uTexOn > 0.01){
+      vec3 t12 = biomeTex(12.0, sN, n0, tHit*uPixA);
+      iceCol *= mix(vec3(1.0), clamp(t12/max(uTexMean[12], vec3(0.05)), vec3(0.45), vec3(1.8)), 0.8*uTexOn);
+    }
+    oc = mix(oc, iceCol, ice*0.95);
+  }
+  vec3 albF = mix(oc, alb, land);
+
+  /* зернистость (растительность/камень), детали появляются при зуме */
+  float g1 = fbm(sN*24.0 + uSeedS*3.0, 3);
+  albF *= 1.0 + 0.20*g1*mix(0.35,1.0,land);
+  float fade = 1.0-ss(1.6,2.8,uCamDist);
+  if(fade > 0.02){
+    float g2 = fbm(sN*75.0 + uSeedS*5.0, 3);
+    albF *= 1.0 + fade*0.22*g2*mix(0.3,1.0,land);
+  }
+  float fade2 = 1.0-ss(1.3,1.9,uCamDist);
+  if(fade2 > 0.02){
+    float g3 = fbm(sN*300.0 + uSeedS*7.0, 3);
+    albF *= 1.0 + fade2*0.18*g3*mix(0.3,1.0,land);
+  }
+
+  /* освещение */
+  float ndlG = dot(n0, uSunDir);
+  float dayF = ss(-0.02, 0.12, ndlG);
+  dayOut = dayF;
+  float dif = max(dot(nS, uSunDir), 0.0);
+  float shad = ringShadow(pos);
+  if(dayF > 0.01){
+    /* тени от нижнего и среднего ярусов; верхний слишком тонок */
+    /* Тень берёт ровно то же поле пригодности, что и видимое облако:
+       иначе тень ложилась бы по резкой карте, а облако — по сглаженной
+       вдоль наветренного следа, и они разошлись бы по краям материков. */
+    float cs = (uLowOn > 0.5) ? lowCover(normalize(n0 + uSunDir*0.030), gClimLow) : 0.0;
+    float cm = (uMidOn > 0.5) ? midCover(normalize(n0 + uSunDir*0.055)) : 0.0;
+    shad *= (1.0 - 0.76*cs*dayF) * (1.0 - 0.35*cm*dayF);
+  }
+  /* Экспозиция подобрана так, чтобы растительность легла около 0.45 по
+     яркости, а не улетала в пастель: светлыми на снимке остаются только
+     облака и снег, как на настоящих кадрах. */
+  vec3 sunC = uStarCol * 1.25 * clamp(0.34 + 0.66*sqrt(max(uStarFlux,0.0)), 0.22, 1.65);
+  vec3 col = albF * dif * shad * sunC;
+
+  /* блик солнца на воде */
+  float waterM = max((1.0-land)*(1.0-ice), rv*land*0.40);
+  if(waterM > 0.01){
+    vec3 hv = normalize(uSunDir - rd);
+    float cosH = max(dot(nS, hv), 0.0);
+    float waveTx = 0.65 + 0.7*noise3(sN*150.0 + vec3(uTime*0.6));
+    float spec = pow(cosH, 650.0)*1.5*waveTx + pow(cosH, 90.0)*0.06;
+    col += vec3(1.0,0.93,0.78) * sunC * spec * waterM * shad * dayF;
+  }
+  /* блеск льда */
+  col += sunC * pow(max(dot(nS, normalize(uSunDir-rd)),0.0), 200.0) * ice * (1.0-land) * 0.06 * dayF;
+
+  /* рассеянный свет неба днём — окрашен атмосферой и звездой */
+  vec3 skyScat = mix(atmC, uStarCol, 0.25);
+  col += albF * dayF * 0.05 * skyScat * uAtmo;
+
+  /* закатная полоса терминатора — тон звезды доминирует */
+  float twi = exp(-pow(ndlG*12.0, 2.0));
+  vec3 sunsetCol = mix(vec3(0.95,0.45,0.18), uStarCol*1.2, 0.55);
+  col += albF * twi * sunsetCol * 0.18 * uAtmo;
+
+  /* ночь: огни городов */
+  float nightF = 1.0 - dayF;
+  if(nightF > 0.01 && uCity > 0.01 && land > 0.01){
+    float pop = 0.5+0.5*fbm(sN*9.0 + uSeedS*2.7 + vec3(41.0), 4);
+    float th = mix(0.66, 0.42, uCity);
+    float gate = ss(th, th+0.26, pop);
+    if(gate > 0.003){
+      float core = ss(th+0.22, th+0.32, pop);      /* ядра мегаполисов */
+      /* где селятся люди: побережья, низины, долины рек */
+      float coast = 1.0-ss(0.0,0.045,h);
+      float low   = 1.0-ss(0.02,0.30,h);
+      float habit = 0.35 + 1.0*max(coast, low*0.65) + 0.5*rv;
+
+      /* паутина магистралей: гребни шума дают нити, а не пятна.
+         мелкие октавы проявляются при приближении — застройка фрактальна */
+      float w1 = 1.0-abs(fbm(sN*11.0 + uSeedS*1.7, 3));
+      float w2 = 1.0-abs(fbm(sN*27.0 + uSeedS*2.3 + vec3(7.0), 3));
+      float web = pow(clamp(w1,0.0,1.0), 4.0) + 0.8*pow(clamp(w2,0.0,1.0), 6.0);
+      float fine = 1.0-ss(1.3, 2.3, uCamDist);
+      if(fine > 0.02){
+        float w3 = 1.0-abs(fbm(sN*74.0 + uSeedS*3.1 + vec3(17.0), 3));
+        web += fine*0.8*pow(clamp(w3,0.0,1.0), 7.0);
+      }
+      /* густые кварталы и пустыри — иначе вблизи выходит ровная россыпь */
+      float quarters = clamp(0.55 + 0.9*fbm(sN*mix(16.0, 85.0, fine) + uSeedS*4.3, 3), 0.15, 1.6);
+      float urban = clamp(gate*habit*quarters*(0.30 + 1.0*web), 0.0, 1.0);
+      float mask = land*(1.0-snowM);
+
+      /* отдельные огни: решётка на каждом уровне повёрнута, ячейка зажигается
+         случайно с вероятностью от плотности — это и ломает регулярность */
+      vec3 pts = vec3(0.0);
+      float limb = 1.0-abs(dot(n0,-rd));
+      float twA = 0.04 + 0.11*limb;                /* сцинтилляция сильнее у лимба */
+      /* иерархия: редкие крупные города на грубой решётке, частые посёлки —
+         на мелкой; каждый уровень проявляется, когда становится различим */
+      int nLvl = (uDraft > 0.5) ? 2 : 5;
+      vec3 q = sN;
+      for(int L=0; L<5; L++){
+        if(L >= nLvl) break;
+        q = M3*q;
+        float sc = 45.0*pow(2.72, float(L));       /* 45 · 122 · 333 · 905 · 2460 */
+        float pxc = tHit*uPixA*sc;                 /* пиксель в единицах ячейки */
+        if(pxc > 2.5) continue;                    /* неразличимо — вклад ничтожен */
+        vec3 p = q*sc + uSeedS*3.0;
+        vec3 idc = floor(p), fc = fract(p);
+        vec3 ha = hash33(idc + vec3(float(L)*31.7));
+        float thr = mix(0.972, 0.20, urban);
+        float lit = ss(thr, thr+0.05, ha.z);
+        if(lit < 0.002) continue;
+        vec3 hb = hash33(idc*1.37 + vec3(11.3 + float(L)*7.1));
+        float dd = length(fc - (0.08 + 0.84*hb));  /* полный джиттер в ячейке */
+        float r0  = 0.030 + 0.050*pow(ha.x, 3.0);  /* крупный город — и ярче, и больше */
+        r0 = min(r0, max(pxc*4.0, 0.006));         /* вблизи город рассыпается на огни, а не в шар */
+        float sg  = max(r0, pxc*0.85);
+        float peak = (r0*r0)/(sg*sg);              /* субпиксельный огонь тускнеет, а не дрожит */
+        float br = (0.18 + 5.5*pow(ha.x, 5.0)) * (0.30 + 1.5*urban) * pow(0.62, float(L));
+        float tw = 1.0 - twA*(0.5+0.5*sin(uTime*(0.7+1.6*hb.x) + hb.y*61.0));
+        /* ядра выгорают почти в белый, окраины — натриевый янтарь */
+        vec3 cc = mix(vec3(1.0,0.60,0.24), vec3(1.0,0.93,0.80), clamp(br*peak*0.18,0.0,1.0));
+        cc = mix(cc, vec3(0.84,0.90,1.06), ss(0.82,0.97,hb.z)*0.65);
+        pts += cc * lit * br * peak * exp(-dd*dd/(sg*sg)) * tw;
+      }
+      /* фоновое свечение — только неразрешённая мелочь: вблизи оно уходит,
+         структуру там держат сами огни */
+      float unres = 1.0 - clamp(0.05/max(tHit*uPixA*60.0, 1e-5), 0.0, 1.0);
+      vec3 glowC = mix(vec3(1.0,0.68,0.34), vec3(0.85,0.88,1.0), ss(0.65,0.92,pop)*0.4);
+      col += nightF * uCity * mask
+           * (glowC*urban*(0.20+0.7*core)*0.25*(0.35+0.65*unres) + pts*1.1);
+    }
+  }
+  /* слабое звёздное свечение ночью */
+  col += nightF * albF * 0.020 * vec3(0.4,0.55,0.9);
+  return col;
+}
+
+/* ---------- звёзды и туманности ---------- */
+vec3 stars(vec3 rd){
+  vec3 col = vec3(0.0);
+  vec3 q = rd*2.0 + uSeedS*0.07;
+  float band = exp(-pow(dot(rd, uMilky)*2.4, 2.0));
+  if(uDraft < 0.5){
+    float n1 = fbm(q*1.9+vec3(3.1), 3);
+    float n2 = fbm(q*3.6+vec3(11.2), 2);
+    col += vec3(0.10,0.06,0.16)*ss(0.05,0.75,n1)*(0.35+0.75*band);
+    col += vec3(0.04,0.07,0.13)*ss(0.02,0.8,n2)*(0.3+0.7*band);
+    col += vec3(0.20,0.17,0.22)*band*ss(-0.05,0.7,n1+0.25*n2)*0.5;
+  } else {
+    col += vec3(0.035,0.026,0.055)*band;
+  }
+  for(int L=0; L<2; L++){
+    float sc = (L==0) ? 34.0 : 82.0;
+    vec3 p = rd*sc + uSeedS*(3.0+float(L)*1.7);
+    vec3 id = floor(p), f = fract(p);
+    vec3 hh = hash33(id);
+    vec3 sp = 0.2 + 0.6*hh;
+    float d = length(f - sp);
+    float sigma = max(uPixA*sc*1.1, 0.010);
+    float br = pow(hh.x, 22.0)*((L==0)?2.6:1.3) + pow(hh.x,70.0)*5.0;
+    vec3 stc = mix(vec3(1.0,0.78,0.58), vec3(0.72,0.82,1.15), hh.y);
+    col += stc * br * exp(-d*d/(sigma*sigma)) * (0.55+0.45*band);
+  }
+  /* солнце — цвет зависит от спектрального класса */
+  float sd = max(dot(rd, uSunDir), 0.0);
+  vec3 starDisc = mix(uStarCol, vec3(1.0), 0.35);
+  /* Видимый размер звезды определяется физическим радиусом / расстоянием,
+     а не одним лишь спектральным классом. Поэтому изменение расстояния и
+     светимости действительно меняет сам диск звезды. */
+  float apparent = max(uStarRadius / max(uStarDist, 0.03), 0.02);
+  float radius = 5200.0 / apparent;
+  float halo = 1.0 - smoothstep(0.0, 0.020 + 0.010*apparent, 1.0-sd);
+  float disc = pow(sd, radius);
+  float flare = 0.65 + 0.35*clamp(uStarFlux,0.0,3.0);
+  col += starDisc * (disc*(18.0 + 14.0*uStarFlux)*flare + halo*(0.012 + 0.020*uStarFlux));
+  return col;
+}
+
+/* ---------- пересечение сферы ---------- */
+float iSphere(vec3 ro, vec3 rd, float r){
+  float b = dot(ro, rd);
+  float c = dot(ro, ro) - r*r;
+  float hh = b*b - c;
+  if(hh < 0.0) return -1.0;
+  return -b - sqrt(hh);
+}
+
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy - 0.5*uRes)/uRes.y;
+  vec3 rd = normalize(uCamMat * normalize(vec3(uv, uFocal)));
+  vec3 ro = uCamPos;
+  float R_ATM = 1.035 + 0.085*uAtmo;
+  /* Высоты облаков: чем толще атмосфера, тем выше и разбросаннее слои */
+  float atmoScale = 0.6 + 0.8 * uAtmo;   /* 0.6 (тонкая) → 1.4 (толстая) */
+  R_LOW  = R_LOW_B  + (R_LOW_B  - 1.0) * (atmoScale - 1.0);
+  R_MID  = R_MID_B  + (R_MID_B  - 1.0) * (atmoScale - 1.0);
+  R_HIGH = R_HIGH_B + (R_HIGH_B - 1.0) * (atmoScale - 1.0);
+  vec3 atmC = atmoColor();
+
+  float tP = iSphere(ro, rd, 1.0);
+  float tLo = iSphere(ro, rd, R_LOW);
+  /* Синоптическая обстановка считается один раз на пиксель: все три яруса
+     и тени на поверхности берут её готовой, иначе шум гонялся бы четырежды. */
+  {
+    float tw = (tLo > 0.0) ? tLo : iSphere(ro, rd, R_HIGH);
+    vec3 wd = (tw > 0.0) ? normalize(ro + rd*tw) : rd;
+    vec3 wc = uRotC*wd;
+    gSyn = synoptic(wc);
+    gWx = weather(wd, vortexWarp(wc));
+    /* Климат облачных ярусов — тоже один раз на пиксель. Раньше его
+       пересчитывали нижний ярус, средний ярус и обе карты теней, и в
+       каждой копии сидел полный terrain(). */
+    bool needClim = (uLowOn > 0.5 && uCloudLow > 0.015)
+                 || (uMidOn > 0.5 && uCloudMid > 0.025);
+    gClimLow = needClim ? lowCloudClimate(wd) : 1.0;
+    /* Средняя облачность меньше привязана к поверхности, но пустынный
+       провал всё равно заметен. */
+    gClimMid = clamp(0.48 + 0.52*gClimLow, 0.48, 1.0);
+  }
+
+  /* Три яруса считаются здесь, один раз на пиксель. Раньше композитинг был
+     продублирован в ветках поверхности и лимба, cloudLayer инлайнился шесть
+     раз вместе с телами всех ярусов, и компилятор шейдеров не справлялся
+     с размером кода. */
+  float boost = (tP > 0.0) ? 1.0 : 1.12;
+  vec4 cl0 = vec4(0.0), cl1 = vec4(0.0), cl2 = vec4(0.0);
+  if(uLowOn > 0.5 && uCloudLow > 0.015 && tLo > 0.0){
+    float span = max(0.010, R_MID-R_LOW + 0.006 + 0.006*uConvection);
+    cl0 = volumeLow(ro,rd,tLo,span,boost,gClimLow);
+  }
+  float tMd = iSphere(ro, rd, R_MID);
+  if(uMidOn > 0.5 && uCloudMid > 0.025 && tMd > 0.0){
+    vec3 nc = normalize(ro + rd*tMd);
+    float ft = tMd*uPixA;
+    /* Собственная тень среднего яруса раньше требовала ещё одного полного
+       midCover() со своим cloudBody() — вторая по стоимости ветка облаков
+       при линковке ради 16 % затемнения. Объёмное затемнение по плотности
+       в shadeDeck() даёт тот же эффект даром. */
+    cl1 = shadeDeck(1, nc, rd, midDeck(nc, ft), 1.0, boost, ft);
+  }
+  float tHi = iSphere(ro, rd, R_HIGH);
+  if(uHighOn > 0.5 && uCloudHigh > 0.02 && tHi > 0.0){
+    vec3 nc = normalize(ro + rd*tHi);
+    float ft = tHi*uPixA;
+    cl2 = shadeDeck(2, nc, rd, highDeck(nc, ft), 1.0, boost, ft);
+  }
+
+  /* Свечение молний одинаково для обеих веток композитинга: раньше вызов
+     стоял и в ветке поверхности, и в ветке лимба, то есть весь грозовой
+     блок попадал в шейдер дважды. */
+  vec3 bolt = vec3(0.0);
+  if(uLowOn > 0.5 && cl0.a > 0.08 && tLo > 0.0)
+    bolt = lightningGlow(normalize(ro + rd*tLo), cl0.a) * (0.25 + cl0.a*1.7);
+
+  vec3 col;
+
+  if(tP > 0.0){
+    vec3 pos = ro + rd*tP;
+    vec3 n0 = normalize(pos);
+    float dayF;
+    col = shadeSurface(pos, rd, tP, dayF);
+
+    /* туман: низкий, полупрозрачный слой над поверхностью */
+    vec3 fogC = fogLayer(n0, tP*uPixA);
+    if(fogC.r > 0.002){
+      float fogAlbedo = 0.5 + 0.5*dot(n0, uSunDir);
+      col = mix(col, vec3(fogAlbedo), fogC.r * 0.35);
+    }
+
+    /* композитинг от дальнего к ближнему: нижний, средний, верхний */
+    col = mix(col, cl0.rgb, cl0.a);
+    col += bolt;
+    col = mix(col, cl1.rgb, cl1.a);
+    col = mix(col, cl2.rgb, cl2.a);
+    /* Воздушная перспектива по длине пути луча внутри оболочки, а не по углу
+       к нормали: иначе с низкой орбиты весь кадр затягивает молочной пеленой,
+       хотя смотреть сквозь атмосферу приходится всего десяток километров. */
+    float alit = ss(-0.3, 0.4, dot(n0, uSunDir));
+    float tIn = iSphere(ro, rd, R_ATM);
+    float pathA = max(tP - max(tIn, 0.0), 0.0) / max(R_ATM-1.0, 1e-4);
+    /* Пропускание и рассеяние по отдельности. Раньше дымка подмешивалась
+       как готовый яркий синий цвет и почти вдвое поднимала синий канал даже
+       при взгляде в надир — зелень уходила в шалфейный. Степень 1.6 держит
+       рассеяние малым вблизи надира и полным на лимбе. */
+    float trans = exp(-pathA * 0.30 * uAtmo);
+    float scat  = pow(1.0 - trans, 1.6);
+    col = col*trans + atmC * scat * 0.80 * alit;
+    /* свечение атмосферы на ночном лимбе — окрашено составом и звездой */
+    vec3 nightGlow = mix(atmC*0.5, uStarCol*0.3, 0.4);
+    col += nightGlow * pow(scat, 3.0) * (1.0-alit) * 0.35 * uAtmo;
+
+    /* кольца перед планетой */
+    float tR;
+    vec4 rg = ringColor(ro, rd, tP, tR);
+    col = mix(col, rg.rgb, rg.a);
+  } else {
+    col = (uVoid > 0.5) ? vec3(0.0) : stars(rd);
+    /* ореол атмосферы */
+    float tca = -dot(ro, rd);
+    if(tca > 0.0){
+      float b2 = dot(ro,ro) - tca*tca;
+      float bb = sqrt(max(b2, 0.0));
+      if(bb < R_ATM){
+        float x = clamp((bb-1.0)/(R_ATM-1.0), 0.0, 1.0);
+        float g = exp(-x*3.4)*(1.0-x*0.4);
+        vec3 cp = normalize(ro + rd*tca);
+        float litp = dot(cp, uSunDir);
+        float lit = ss(-0.35, 0.45, litp);
+        float sunset = exp(-pow(litp*3.2, 2.0));
+        vec3 sunsetWash = mix(vec3(1.0,0.42,0.16), uStarCol*1.1, 0.35);
+        vec3 ac = mix(atmC, sunsetWash, sunset*0.7);
+        col += ac * g * (lit*2.0 + 0.015) * uAtmo * 1.25;
+        vec3 limbNight = mix(atmC*0.5, uStarCol*0.3, 0.3);
+        col += limbNight * exp(-pow((x-0.10)*7.0,2.0)) * (1.0-lit) * 0.30 * uAtmo;
+      }
+    }
+    /* облака на лимбе + кольца, в порядке глубины */
+    float tR;
+    vec4 rg = ringColor(ro, rd, 1e9, tR);
+    col += bolt;
+    if(rg.a > 0.0 && (tLo < 0.0 || tR > tLo)){
+      col = mix(col, rg.rgb, rg.a);      /* кольцо за облачным лимбом */
+      col = mix(col, cl0.rgb, cl0.a);
+    } else {
+      col = mix(col, cl0.rgb, cl0.a);
+      col = mix(col, rg.rgb, rg.a);
+    }
+    col = mix(col, cl1.rgb, cl1.a);
+    col = mix(col, cl2.rgb, cl2.a);
+  }
+
+  /* тонмап + виньетка + дизеринг */
+  col = clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14), 0.0, 1.0);
+  col = pow(col, vec3(1.0/2.2));
+  col *= 1.0 - 0.16*pow(length(uv)*1.15, 2.4);
+  col += (hash33(vec3(gl_FragCoord.xy, uTime)).x - 0.5)/255.0;
+  fragColor = vec4(col, 1.0);
+}
+`;
+const COMPAT_FRAG = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 uRes;
+uniform float uTime;
+uniform vec3 uCamPos;
+uniform mat3 uCamMat;
+uniform float uFocal;
+uniform mat3 uRotS;
+uniform mat3 uRotC;
+uniform vec3 uSunDir;
+uniform vec3 uAxis;
+uniform float uTemp;
+uniform float uCloudLow;
+uniform float uCloudMid;
+uniform float uCloudHigh;
+uniform float uLowOn;
+uniform float uMidOn;
+uniform float uHighOn;
+uniform float uSea;
+uniform float uCont;
+uniform float uMount;
+uniform float uAtmo;
+uniform vec3 uStarCol;
+uniform float uStarFlux;
+uniform float uVoid;
+uniform vec3 uSeedS;
+uniform vec3 uSeedC;
+
+float h31(vec3 p){
+  p=fract(p*0.1031); p+=dot(p,p.yzx+33.33); return fract((p.x+p.y)*p.z);
+}
+float n3(vec3 p){
+  vec3 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+  float a=h31(i+vec3(0,0,0)), b=h31(i+vec3(1,0,0));
+  float c=h31(i+vec3(0,1,0)), d=h31(i+vec3(1,1,0));
+  float e=h31(i+vec3(0,0,1)), g=h31(i+vec3(1,0,1));
+  float h=h31(i+vec3(0,1,1)), j=h31(i+vec3(1,1,1));
+  return mix(mix(mix(a,b,f.x),mix(c,d,f.x),f.y),mix(mix(e,g,f.x),mix(h,j,f.x),f.y),f.z)*2.0-1.0;
+}
+float fb(vec3 p){
+  float a=0.0,w=0.55; for(int i=0;i<4;i++){ a+=w*n3(p); p=p*2.03+vec3(1.7,2.9,4.1); w*=0.5; } return a;
+}
+float iSphere(vec3 ro,vec3 rd,float r){
+  float b=dot(ro,rd), c=dot(ro,ro)-r*r, q=b*b-c; if(q<0.0)return -1.0; return -b-sqrt(q);
+}
+vec3 starField(vec3 rd){
+  if(uVoid>0.5)return vec3(0.0);
+  vec3 p=rd*120.0, id=floor(p), f=fract(p)-0.5;
+  float k=h31(id+uSeedS*7.0), d=length(f);
+  float s=smoothstep(0.055,0.0,d)*pow(k,22.0)*2.5;
+  float sun=max(dot(rd,normalize(uSunDir)),0.0);
+  return vec3(s)+uStarCol*pow(sun,3400.0)*(8.0+8.0*uStarFlux);
+}
+void main(){
+  vec2 uv=(gl_FragCoord.xy-0.5*uRes)/uRes.y;
+  vec3 rd=normalize(uCamMat*normalize(vec3(uv,uFocal)));
+  vec3 ro=uCamPos;
+  float tp=iSphere(ro,rd,1.0);
+  vec3 col=starField(rd);
+  if(tp>0.0){
+    vec3 n=normalize(ro+rd*tp), q=uRotS*n;
+    float macro=fb(q*1.55+uSeedS*0.7)+0.32*fb(q*3.6+uSeedS*1.3);
+    float ridge=abs(fb(q*6.0+vec3(9.0)));
+    float sea=mix(-0.14,0.24,uSea)+mix(-0.12,0.10,uCont);
+    float h=macro*0.30+ridge*0.08*uMount-sea;
+    float land=smoothstep(-0.012,0.018,h);
+    float lat=abs(dot(n,normalize(uAxis)));
+    float temp=mix(-0.25,1.20,uTemp)-lat*lat*1.0-max(h,0.0)*0.45;
+    float moist=0.5+0.5*fb(q*2.3+vec3(17.0));
+    vec3 ocean=mix(vec3(0.012,0.060,0.125),vec3(0.025,0.14,0.18),smoothstep(-0.08,0.02,h));
+    vec3 sand=vec3(0.31,0.25,0.15), grass=vec3(0.10,0.19,0.075), forest=vec3(0.045,0.11,0.050);
+    vec3 ground=mix(sand,mix(grass,forest,smoothstep(0.48,0.78,moist)),smoothstep(0.05,0.55,temp));
+    float snow=1.0-smoothstep(-0.08,0.08,temp+0.08*fb(q*5.0));
+    ground=mix(ground,vec3(0.78,0.82,0.86),snow);
+    ground*=0.82+0.22*(0.5+0.5*fb(q*18.0));
+    vec3 base=mix(ocean,ground,land);
+    float ndl=dot(n,normalize(uSunDir));
+    float day=max(ndl,0.0), ambient=0.055+0.055*uAtmo;
+    col=base*(ambient+day*1.15*uStarCol);
+    float rim=pow(max(0.0,1.0-dot(n,-rd)),3.0);
+    col+=vec3(0.10,0.28,0.72)*rim*(0.12+0.25*uAtmo)*max(0.2,day);
+
+    float dryHot=land*smoothstep(0.62,0.95,temp)*(1.0-smoothstep(0.30,0.56,moist));
+    float lowClimate=mix(0.98,0.18,dryHot);
+    if(uLowOn>0.5 && uCloudLow>0.015){
+      vec3 cq=uRotC*n;
+      float syn=0.70*fb(cq*1.75+uSeedC)+0.30*fb(cq*4.2+uSeedC*1.7+vec3(uTime*0.006,0,0));
+      float detail=fb(cq*9.0+vec3(0,uTime*0.010,0));
+      float amt=uCloudLow*lowClimate;
+      float th=mix(0.70,0.02,amt);
+      float cm=smoothstep(th,th+0.24,syn+0.12*detail);
+      float lit=0.34+0.66*max(ndl,0.0);
+      vec3 cc=mix(vec3(0.55,0.58,0.62),vec3(1.0,0.99,0.95),lit);
+      col=mix(col,cc,cm*0.78);
+    }
+    if(uMidOn>0.5 && uCloudMid>0.02){
+      vec3 mq=uRotC*n+vec3(17.0);
+      float mf=0.68*fb(mq*1.15)+0.32*fb(mq*3.6+vec3(uTime*-0.004,0,0));
+      float mm=smoothstep(mix(0.72,0.08,uCloudMid),mix(0.92,0.30,uCloudMid),mf);
+      vec3 mc=vec3(0.78,0.80,0.84)*(0.42+0.58*max(ndl,0.0));
+      col=mix(col,mc,mm*0.48);
+    }
+    if(uHighOn>0.5 && uCloudHigh>0.02){
+      vec3 hq=uRotC*n+vec3(41.0);
+      float hf=fb(hq*4.8+vec3(0,uTime*0.004,0));
+      float hm=smoothstep(mix(0.82,0.28,uCloudHigh),mix(0.96,0.52,uCloudHigh),hf);
+      col=mix(col,vec3(0.90,0.93,1.0),hm*0.22);
+    }
+  } else {
+    float ta=iSphere(ro,rd,1.08+0.05*uAtmo);
+    if(ta>0.0){
+      vec3 n=normalize(ro+rd*ta);
+      float rim=pow(max(0.0,1.0-abs(dot(n,-rd))),3.0);
+      col+=vec3(0.08,0.24,0.70)*rim*0.10*uAtmo;
+    }
+  }
+  col=clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14),0.0,1.0);
+  col=pow(col,vec3(1.0/2.2));
+  fragColor=vec4(col,1.0);
+}
+`;
+const AURORA_FRAG = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 uRes;
+uniform float uTime;
+uniform vec3 uCamPos;
+uniform mat3 uCamMat;
+uniform float uFocal;
+uniform vec3 uSunDir;
+uniform vec3 uMagAxis;
+uniform float uMagField;
+uniform float uAurora;
+uniform float uAtmo;
+uniform float uStarFlux;
+
+float h31(vec3 p){p=fract(p*0.1031);p+=dot(p,p.yzx+33.33);return fract((p.x+p.y)*p.z);}
+float n3(vec3 p){
+  vec3 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);
+  return mix(mix(mix(h31(i),h31(i+vec3(1,0,0)),f.x),
+                 mix(h31(i+vec3(0,1,0)),h31(i+vec3(1,1,0)),f.x),f.y),
+             mix(mix(h31(i+vec3(0,0,1)),h31(i+vec3(1,0,1)),f.x),
+                 mix(h31(i+vec3(0,1,1)),h31(i+vec3(1,1,1)),f.x),f.y),f.z)*2.0-1.0;
+}
+float fb(vec3 p){float a=0.0,w=0.55;for(int i=0;i<3;i++){a+=w*n3(p);p=p*2.03+vec3(1.7,2.9,4.1);w*=0.5;}return a;}
+
+vec2 sphRange(vec3 ro,vec3 rd,float r){
+  float b=dot(ro,rd),c=dot(ro,ro)-r*r,q=b*b-c;
+  if(q<0.0)return vec2(-1.0);
+  float s=sqrt(q); return vec2(-b-s,-b+s);
+}
+float sphNear(vec3 ro,vec3 rd,float r){
+  vec2 q=sphRange(ro,rd,r); if(q.x<0.0&&q.y<0.0)return -1.0;
+  return q.x>0.0?q.x:q.y;
+}
+
+/* Emission from one point in the auroral volume. The structure is deliberately
+   noise-driven, not a periodic angular grille: broad active sectors break
+   the oval into arcs, while medium noise makes irregular curtain folds. */
+vec3 auroraEmission(vec3 p,vec3 rd,float activity,float innerR,float outerR){
+  float r=length(p); if(r<innerR||r>outerR)return vec3(0.0);
+  vec3 n=p/r, ma=normalize(uMagAxis);
+  float pole=dot(n,ma);
+  float lat=abs(asin(clamp(pole,-1.0,1.0)));
+  vec3 ref=abs(ma.y)<0.92?vec3(0,1,0):vec3(1,0,0);
+  vec3 mt=normalize(cross(ma,ref)), mb=cross(ma,mt);
+  vec3 mq=vec3(dot(n,mt),dot(n,mb),pole);
+
+  float timeA=uTime*(0.018+0.055*activity);
+  float daySide=clamp(dot(n,uSunDir)*0.5+0.5,0.0,1.0);
+  float baseCenter=radians(mix(75.0,59.5,activity));
+  float wander=fb(mq*3.1+vec3(timeA,-timeA*0.7,11.0));
+  float center=baseCenter+radians(1.35)*wander+radians(1.0)*(daySide*2.0-1.0);
+  float hw=radians(mix(1.15,4.2,activity));
+  float d=(lat-center)/max(hw,1e-4);
+
+  /* Large irregular sectors: no full luminous ring. */
+  float broad=0.5+0.5*fb(mq*2.35+vec3(timeA*0.45,17.0,-timeA*0.30));
+  float cut=mix(0.64,0.40,activity);
+  float sector=smoothstep(cut,cut+0.16,broad);
+  float arc0=exp(-2.35*d*d)*sector;
+
+  /* During stronger activity a second broken arc may appear, offset from the
+     main one rather than forming a mathematically perfect concentric ring. */
+  float broad2=0.5+0.5*fb(mq*2.8+vec3(31.0,-timeA*0.34,9.0));
+  float sector2=smoothstep(0.56,0.74,broad2)*smoothstep(0.35,0.72,activity);
+  float d2=(lat-(center-hw*(0.72+0.22*wander)))/max(hw*0.72,1e-4);
+  float arc1=0.52*exp(-2.8*d2*d2)*sector2;
+  float arc=clamp(arc0+arc1,0.0,1.25);
+  if(arc<0.002)return vec3(0.0);
+
+  /* Curtain folds are irregular patches along the oval. They are constant
+     enough with altitude to read as vertical sheets at the limb, but there is
+     no periodic radial iris and no techno-grid. */
+  float foldA=0.5+0.5*fb(mq*11.0+vec3(-timeA*0.9,5.0,timeA*0.55));
+  float foldB=0.5+0.5*n3(mq*27.0+vec3(13.0,timeA*1.7,-7.0));
+  float folds=0.30+0.70*smoothstep(0.46,0.72,foldA*0.76+foldB*0.24);
+  float ragged=0.76+0.24*(0.5+0.5*n3(mq*7.3+vec3(43.0,-timeA,3.0)));
+
+  float night=1.0-smoothstep(-0.15,0.16,dot(n,uSunDir));
+  float power=(0.012+0.30*pow(activity,1.65))*(0.28+0.72*uMagField);
+  power*=mix(0.035,1.0,night)*smoothstep(0.02,0.18,uAtmo);
+
+  float alt=clamp((r-innerR)/max(outerR-innerR,1e-4),0.0,1.0);
+  float greenH=exp(-pow((alt-0.34)/0.30,2.0));
+  float redH=exp(-pow((alt-0.78)/0.24,2.0));
+  float violetH=exp(-pow((alt-0.18)/0.20,2.0));
+  vec3 green=vec3(0.10,0.78,0.25);
+  vec3 red=vec3(0.72,0.13,0.08);
+  vec3 violet=vec3(0.20,0.16,0.55);
+  vec3 color=green*greenH+red*redH*(0.10+0.28*activity)+violet*violetH*(0.025+0.055*activity);
+  color*=clamp(0.88+0.12*uStarFlux,0.78,1.18);
+  return color*(arc*folds*ragged*power);
+}
+
+void main(){
+  vec2 uv=(gl_FragCoord.xy-0.5*uRes)/uRes.y;
+  vec3 rd=normalize(uCamMat*normalize(vec3(uv,uFocal)));
+  vec3 ro=uCamPos;
+  if(uAurora<0.005||uMagField<0.01||uAtmo<0.02){fragColor=vec4(0);return;}
+
+  float activity=clamp(uAurora,0.0,1.0);
+  /* Roughly 90..430 km for an Earth-size visual scale. */
+  float innerR=1.0135+0.0035*uAtmo;
+  float outerR=1.0580+0.0100*uAtmo;
+  vec2 outer=sphRange(ro,rd,outerR);
+  if(outer.y<=0.0){fragColor=vec4(0);return;}
+  float ta=max(outer.x,0.0), tb=outer.y;
+  float planet=sphNear(ro,rd,1.0);
+  if(planet>0.0)tb=min(tb,planet);
+  if(tb<=ta){fragColor=vec4(0);return;}
+
+  vec3 sum=vec3(0.0);
+  const int N=6;
+  float stepLen=(tb-ta)/float(N);
+  for(int i=0;i<N;i++){
+    float t=ta+(float(i)+0.5)*stepLen;
+    sum+=auroraEmission(ro+rd*t,rd,activity,innerR,outerR);
+  }
+  /* Path-length term naturally strengthens a curtain at the limb without
+     painting the whole polar cap when viewed from above. */
+  sum*=clamp(stepLen/0.010,0.35,1.65);
+  fragColor=vec4(clamp(sum,vec3(0.0),vec3(0.72)),1.0);
+}
+`;
+/* ============ инициализация GL ============ */
+const canvas = document.getElementById('gl');
+let gl = null;
+let webglVersion = 0;
+
+function showFatal(message){
+  const errorBox = document.getElementById('err');
+  errorBox.textContent = message;
+  errorBox.style.display = 'flex';
+}
+
+/* Попытка получить контекст */
+function tryContext(version){
+  const attrs = {
+    antialias: false, alpha: false, depth: false,
+    stencil: false, powerPreference: 'high-performance',
+    preserveDrawingBuffer: false
+  };
+  if(version === 2) return canvas.getContext('webgl2', attrs);
+  return canvas.getContext('webgl', attrs) || canvas.getContext('experimental-webgl', attrs);
+}
+
+/* Пробуем WebGL2, затем WebGL1 */
+gl = tryContext(2);
+if(gl){ webglVersion = 2; }
+else {
+  gl = tryContext(1);
+  if(gl) webglVersion = 1;
+}
+
+if(!gl){
+  showFatal('Для рендеринга планеты нужен WebGL.\nОбновите браузер или включите аппаратное ускорение.');
+  throw new Error('no webgl');
+}
+
+/* Диагностика GPU */
+const dbgInfo = {
+  version: gl.getParameter(gl.VERSION),
+  renderer: gl.getParameter(gl.RENDERER),
+  vendor: gl.getParameter(gl.VENDOR),
+  shadingLang: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+};
+console.log('[madPlanet] WebGL' + webglVersion, dbgInfo);
+
+/* ── Трансформация шейдеров для WebGL1 ── */
+function transformForWebGL1(src, type){
+  let s = src;
+  s = s.replace(/#version\s+\d+\s+es\s*/g, '');
+  if(type === 'vertex'){
+    s = s.replace(/\bin\s+vec/g, 'attribute vec');
+    s = s.replace(/\bout\s+/g, 'varying ');
+  } else {
+    s = s.replace(/\bin\s+/g, 'varying ');
+    s = s.replace(/out\s+vec4\s+fragColor\s*;/g, '');
+    s = s.replace(/\bfragColor\b/g, 'gl_FragColor');
+  }
+  /* sampler2DArray → sampler2D + ручной расчёт UV */
+  s = s.replace(/mediump\s+sampler2DArray/g, 'sampler2D');
+  s = s.replace(/highp\s+sampler2DArray/g, 'sampler2D');
+  s = s.replace(/sampler2DArray/g, 'sampler2D');
+  /* textureLod(uTex, vec3(uv, layer), lod) → texture2D(uTex, vec2(uv)) — упрощённо */
+  s = s.replace(/textureLod\s*\(\s*(\w+)\s*,\s*vec3\s*\(\s*([^)]+)\)\s*,\s*([^)]+)\)/g,
+    'texture2D($1, vec2($2))');
+  s = s.replace(/textureLod\s*\(\s*(\w+)\s*,\s*([^,]+)\s*,\s*([^)]+)\)/g,
+    'texture2D($1, vec2($2.xy))');
+  return s;
+}
+
+function compile(type, src){
+  const sh = gl.createShader(type);
+  const toCompile = (webglVersion >= 2) ? src : transformForWebGL1(src, type);
+  gl.shaderSource(sh, toCompile);
+  gl.compileShader(sh);
+  if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS)){
+    const stage = type === gl.VERTEX_SHADER ? 'vertex' : 'fragment';
+    const log = gl.getShaderInfoLog(sh) || 'no compiler log';
+    const shortLog = log.split('\n').slice(0, 10).join('\n');
+    gl.deleteShader(sh);
+    /* Do not show a fatal screen here. A failed full shader is recoverable:
+       the next variant or balanced Chromium/ANGLE renderer may compile. */
+    throw new Error(stage + ' shader compile: ' + shortLog);
+  }
+  return sh;
+}
+
+/* ── Сборка программы: компактный рендер сразу, полный — в фоне ──
+   Драйверу ANGLE/D3D нужны от секунд до минут, чтобы превратить основной
+   шейдер в байткод, и почти всё это время уходит на линковку. Прежний код
+   вызывал getProgramParameter(LINK_STATUS) сразу после linkProgram(), а этот
+   вызов блокирует главный поток до конца компиляции — вкладка стояла белой
+   всё это время и выглядела зависшей.
+
+   Теперь порядок другой:
+     1. сразу линкуется компактный совместимый рендер — десятки миллисекунд,
+        планета появляется практически мгновенно;
+     2. основная программа линкуется в фоне, а готовность опрашивается через
+        KHR_parallel_shader_compile, то есть без единого блокирующего вызова;
+     3. как только она готова, рендер переключается на неё.
+   Если расширения нет, опрос всё равно идёт по кадрам: первый же
+   getProgramParameter заблокирует поток, но к этому моменту уже нарисован
+   хотя бы один кадр и показана надпись о компиляции. */
+const parallelExt = gl.getExtension('KHR_parallel_shader_compile');
+
+const shaderVariants = [
+  {name: 'original', fragMod: null},
+  {name: 'highp_tex', fragMod: s => s.replace(/mediump sampler2DArray/g, 'highp sampler2DArray')},
+  {name: 'no_tex', fragMod: s => s.replace(/uniform mediump sampler2DArray uTex;/g, '// sampler2DArray removed')
+    .replace(/textureLod\s*\([^)]+\)/g, 'vec4(0.5)')
+    .replace(/uTexOn/g, '0.0')
+    .replace(/uTexMean\[\d+\]/g, 'vec3(0.5)')},
+];
+
+let prog = null;
+let usedVariant = 'none';
+const shaderFailureLog = [];
+
+const UNIFORM_NAMES = ['uRes','uTime','uCamPos','uCamMat','uFocal','uCamDist','uPixA','uRotS','uRotC','uRotCInv',
+ 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uMount','uIsle',
+ 'uLake','uCity','uAtmo','uRingsOn','uRingMat','uSeedS','uSeedC','uTex','uTexOn','uDraft','uVoid',
+ 'uStarCol','uMagAxis','uAtmoComp','uLowOn','uMidOn','uHighOn','uWind','uConvection','uMagField','uAurora',
+ 'uStarRadius','uStarFlux','uStarDist'];
+
+/* Один и тот же объект U переиспользуется при смене программы: render.js
+   держит на него ссылку, поэтому поля переписываются на месте. */
+const U = {};
+function bindUniforms(p){
+  for(const k in U) delete U[k];
+  UNIFORM_NAMES.forEach(n => U[n] = gl.getUniformLocation(p, n));
+  U.uTexMean = gl.getUniformLocation(p, 'uTexMean[0]');
+  U.uCycA = gl.getUniformLocation(p, 'uCycA[0]');
+  U.uCycB = gl.getUniformLocation(p, 'uCycB[0]');
+}
+
+function buildProgram(fragSrc){
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fragSrc));
+  gl.linkProgram(p);
+  return p;
+}
+function linkFinished(p){
+  return parallelExt ? (gl.getProgramParameter(p, parallelExt.COMPLETION_STATUS_KHR) === true) : true;
+}
+/* Состояние уровня JS (юниформы, средние цвета тайлов, автокачество)
+   переприменяет render.js в начале кадра: первая смена программы
+   происходит ещё до того, как его переменные инициализированы. */
+let programSwapPending = false;
+function adoptProgram(p, name){
+  prog = p;
+  usedVariant = name;
+  gl.useProgram(prog);
+  bindUniforms(prog);
+  programSwapPending = true;
+}
+
+/* ---- шаг 1: компактный рендер, доступный сразу ---- */
+try{
+  const p = buildProgram(COMPAT_FRAG);
+  if(gl.getProgramParameter(p, gl.LINK_STATUS)) adoptProgram(p, 'balanced-compat');
+  else {
+    shaderFailureLog.push('balanced-compat link: ' + (gl.getProgramInfoLog(p) || '').substring(0,1200));
+    gl.deleteProgram(p);
+  }
+} catch(e){
+  shaderFailureLog.push('balanced-compat compile: ' + String(e.message || e).substring(0,1200));
+}
+
+/* ---- шаг 2: полная программа в фоне ---- */
+let variantIndex = 0;
+let pendingProgram = null;
+let pendingVariant = '';
+let fullShaderDone = false;
+const linkStartedAt = performance.now();
+
+function startNextVariant(){
+  while(variantIndex < shaderVariants.length){
+    const v = shaderVariants[variantIndex++];
+    try{
+      pendingProgram = buildProgram(v.fragMod ? v.fragMod(FRAG) : FRAG);
+      pendingVariant = v.name;
+      return true;
+    } catch(e){
+      shaderFailureLog.push(v.name + ' compile: ' + String(e.message || e).substring(0,800));
+      console.warn('[madPlanet] variant "' + v.name + '" error:', String(e.message || e).substring(0,120));
+    }
+  }
+  pendingProgram = null;
+  return false;
+}
+
+/* ---- индикатор состояния ---- */
+let statusBadge = null;
+function setBadge(text, tone){
+  if(!statusBadge){
+    statusBadge = document.createElement('div');
+    statusBadge.id = 'shaderStatus';
+    Object.assign(statusBadge.style,{
+      position:'fixed',left:'12px',top:'12px',zIndex:'10000',padding:'7px 10px',
+      font:'12px/1.35 system-ui,sans-serif',borderRadius:'7px',pointerEvents:'none'
+    });
+    document.body.appendChild(statusBadge);
+  }
+  const warm = tone === 'warn';
+  statusBadge.style.color = warm ? '#ffdca8' : '#cfe3ff';
+  statusBadge.style.background = warm ? 'rgba(32,20,8,.88)' : 'rgba(10,18,32,.85)';
+  statusBadge.style.border = '1px solid ' + (warm ? 'rgba(255,190,100,.45)' : 'rgba(130,180,255,.35)');
+  statusBadge.textContent = text;
+}
+function clearBadge(){
+  if(statusBadge){ statusBadge.remove(); statusBadge = null; }
+}
+
+/* Вызывается из основного цикла раз в кадр. */
+function pollShaderCompile(){
+  if(fullShaderDone) return;
+  if(!pendingProgram){
+    fullShaderDone = true;
+    clearBadge();
+    if(prog){
+      console.warn('[madPlanet] Полный шейдер отклонён GPU, работает совместимый рендер:', shaderFailureLog);
+      setBadge('Совместимый рендер Chromium/ANGLE: облегчённый procedural mode', 'warn');
+    } else {
+      const details = shaderFailureLog.join('\n').substring(0,2600);
+      showFatal('madPlanet v' + APP_VERSION + '\n\nWebGL есть, но GPU отклонил оба рендера.\n\n' +
+        'GPU: ' + dbgInfo.renderer + '\nGLSL: ' + dbgInfo.shadingLang + '\n\n' + details);
+      console.error('[madPlanet] All shader variants failed:', shaderFailureLog);
+    }
+    return;
+  }
+  const waited = (performance.now() - linkStartedAt)/1000;
+  if(!linkFinished(pendingProgram)){
+    setBadge('Компиляция шейдера планеты… ' + waited.toFixed(0) + ' с · пока показан упрощённый рендер');
+    return;
+  }
+  if(gl.getProgramParameter(pendingProgram, gl.LINK_STATUS)){
+    const old = prog;
+    adoptProgram(pendingProgram, pendingVariant);
+    if(old && old !== pendingProgram) gl.deleteProgram(old);
+    pendingProgram = null;
+    fullShaderDone = true;
+    clearBadge();
+    console.log('[madPlanet] Полный шейдер готов за ' + waited.toFixed(1) + ' с (variant: ' + usedVariant + ')');
+    if(usedVariant !== 'original') setBadge('Совместимый вариант WebGL: ' + usedVariant, 'warn');
+    return;
+  }
+  const log = gl.getProgramInfoLog(pendingProgram) || '';
+  shaderFailureLog.push(pendingVariant + ' link: ' + log.substring(0, 800));
+  console.warn('[madPlanet] variant "' + pendingVariant + '" link failed:', log.substring(0, 200));
+  gl.deleteProgram(pendingProgram);
+  pendingProgram = null;
+  startNextVariant();
+}
+
+startNextVariant();
+if(!prog && !pendingProgram){
+  const details = shaderFailureLog.join('\n').substring(0,2600);
+  showFatal('madPlanet v' + APP_VERSION + '\n\nWebGL есть, но GPU отклонил оба рендера.\n\n' +
+    'GPU: ' + dbgInfo.renderer + '\nGLSL: ' + dbgInfo.shadingLang + '\n\n' + details);
+  throw new Error('all shader variants failed');
+}
+setBadge('Компиляция шейдера планеты… пока показан упрощённый рендер');
+
+const errorBoxAfterShader = document.getElementById('err');
+if(errorBoxAfterShader) errorBoxAfterShader.style.display = 'none';
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+/* Aurora is a separate tiny additive pass. Keeping it out of the monolithic
+   planet shader reduces ANGLE compile pressure and means aurora can be fully
+   skipped when disabled. Failure of this optional pass never kills the app. */
+let auroraProg = null;
+const AU = {};
+try{
+  const ap = buildProgram(AURORA_FRAG);
+  if(gl.getProgramParameter(ap, gl.LINK_STATUS)){
+    auroraProg = ap;
+    ['uRes','uTime','uCamPos','uCamMat','uFocal','uSunDir','uMagAxis','uMagField','uAurora','uAtmo','uStarFlux']
+      .forEach(n => AU[n] = gl.getUniformLocation(ap,n));
+  } else {
+    console.warn('[madPlanet] Aurora pass link failed:', gl.getProgramInfoLog(ap) || '');
+    gl.deleteProgram(ap);
+  }
+} catch(e){
+  console.warn('[madPlanet] Aurora pass disabled:', String(e.message || e));
+}
+
+/* ============ математика ============ */
+function m3axis(ax, a){          // столбцовая mat3 поворота вокруг оси (Родригес)
+  const [x,y,z] = ax, c = Math.cos(a), s = Math.sin(a), t = 1-c;
+  return [ t*x*x+c,   t*x*y+s*z, t*x*z-s*y,
+           t*x*y-s*z, t*y*y+c,   t*y*z+s*x,
+           t*x*z+s*y, t*y*z-s*x, t*z*z+c ];
+}
+function m3t(m){ return [m[0],m[3],m[6], m[1],m[4],m[7], m[2],m[5],m[8]]; }
+function m3mul(a,b){
+  const r = new Array(9);
+  for(let c=0;c<3;c++) for(let rw=0;rw<3;rw++)
+    r[c*3+rw] = a[rw]*b[c*3] + a[3+rw]*b[c*3+1] + a[6+rw]*b[c*3+2];
+  return r;
+}
+function norm3(v){ const l = Math.hypot(v[0],v[1],v[2])||1; return [v[0]/l,v[1]/l,v[2]/l]; }
+function cross3(a,b){ return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function mulberry32(seed){
+  let a = seed >>> 0;
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ============ гидрология: D8 + накопление + речной граф ============
+   Чистый CPU-модуль. Не зависит от WebGL и принимает обычные 2D-матрицы.
+
+   Основной API:
+     generateRiverNetwork({ Heightmap, OceanMask, RainfallMap?, Threshold? })
+
+   Координаты во всех путях: [x, y], где x — столбец, y — строка.
+*/
+(function(root, factory){
+  const api = factory();
+  if(typeof module !== 'undefined' && module.exports) module.exports = api;
+  if(root) Object.keys(api).forEach(k => { root[k] = api[k]; });
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(){
+  'use strict';
+
+  /* Жёсткий порядок обхода при равных уклонах: по часовой стрелке от NE. */
+  const D8 = Object.freeze([
+    Object.freeze({dx: 1, dy:-1, dist:Math.SQRT2, name:'NE'}),
+    Object.freeze({dx: 1, dy: 0, dist:1,          name:'E'}),
+    Object.freeze({dx: 1, dy: 1, dist:Math.SQRT2, name:'SE'}),
+    Object.freeze({dx: 0, dy: 1, dist:1,          name:'S'}),
+    Object.freeze({dx:-1, dy: 1, dist:Math.SQRT2, name:'SW'}),
+    Object.freeze({dx:-1, dy: 0, dist:1,          name:'W'}),
+    Object.freeze({dx:-1, dy:-1, dist:Math.SQRT2, name:'NW'}),
+    Object.freeze({dx: 0, dy:-1, dist:1,          name:'N'}),
+  ]);
+
+  class MinHeap {
+    constructor(){ this.a = []; }
+    get size(){ return this.a.length; }
+    push(item){
+      const a = this.a;
+      let i = a.length;
+      a.push(item);
+      while(i > 0){
+        const p = (i-1) >> 1;
+        if(a[p].h < item.h || (a[p].h === item.h && a[p].idx <= item.idx)) break;
+        a[i] = a[p]; i = p;
+      }
+      a[i] = item;
+    }
+    pop(){
+      const a = this.a;
+      if(a.length === 0) return null;
+      const root = a[0];
+      const last = a.pop();
+      if(a.length){
+        let i = 0;
+        while(true){
+          const l = i*2+1, r = l+1;
+          if(l >= a.length) break;
+          let c = l;
+          if(r < a.length && (a[r].h < a[l].h || (a[r].h === a[l].h && a[r].idx < a[l].idx))) c = r;
+          if(a[c].h > last.h || (a[c].h === last.h && a[c].idx >= last.idx)) break;
+          a[i] = a[c]; i = c;
+        }
+        a[i] = last;
+      }
+      return root;
+    }
+  }
+
+  function assertMatrix(m, name, rows, cols){
+    if(!m || typeof m.length !== 'number' || m.length === 0)
+      throw new Error(name + ': требуется непустая двумерная матрица');
+    const r = rows == null ? m.length : rows;
+    if(m.length !== r) throw new Error(name + ': число строк не совпадает с Heightmap');
+    const c = cols == null ? (m[0] && m[0].length) : cols;
+    if(!Number.isInteger(c) || c <= 0) throw new Error(name + ': пустая первая строка');
+    for(let y=0;y<r;y++){
+      if(!m[y] || m[y].length !== c) throw new Error(name + ': матрица должна быть прямоугольной');
+    }
+    return {rows:r, cols:c};
+  }
+
+  function flattenNumeric(m, rows, cols, name){
+    const out = new Float64Array(rows*cols);
+    for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+      const v = Number(m[y][x]);
+      if(!Number.isFinite(v)) throw new Error(name + ': нечисловое значение в ['+y+']['+x+']');
+      out[y*cols+x] = v;
+    }
+    return out;
+  }
+
+  function flattenMask(m, rows, cols, name){
+    const out = new Uint8Array(rows*cols);
+    for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+      const v = Number(m[y][x]);
+      if(v !== 0 && v !== 1) throw new Error(name + ': ожидаются только 0/1, ошибка в ['+y+']['+x+']');
+      out[y*cols+x] = v;
+    }
+    return out;
+  }
+
+  function toMatrix(flat, rows, cols, integer=false){
+    const out = new Array(rows);
+    for(let y=0;y<rows;y++){
+      const row = new Array(cols);
+      const off = y*cols;
+      for(let x=0;x<cols;x++) row[x] = integer ? Number(flat[off+x]) : flat[off+x];
+      out[y] = row;
+    }
+    return out;
+  }
+
+  function xy(idx, cols){ return [idx % cols, Math.floor(idx/cols)]; }
+  function idxOf(x,y,cols){ return y*cols+x; }
+
+  function forEachNeighbor(idx, rows, cols, fn){
+    const x = idx % cols, y = Math.floor(idx/cols);
+    for(let d=0;d<8;d++){
+      const nx=x+D8[d].dx, ny=y+D8[d].dy;
+      if(nx<0 || nx>=cols || ny<0 || ny>=rows) continue;
+      fn(idxOf(nx,ny,cols), d, nx, ny);
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     ШАГ 1. Priority-Flood.
+
+     Океанские ячейки являются гарантированными выходами. Сухопутная ячейка,
+     которая лежит не выше уже обработанного порога, слегка поднимается над
+     ним на epsilon. Эта микроскопическая надбавка нужна не для рельефа как
+     такового, а чтобы D8 получил однозначный нисходящий путь через плоское
+     дно заполненной депрессии.
+
+     Если океана вообще нет, создаётся один глобальный сухопутный минимум —
+     допустимый терминал бессточного бассейна.
+  ------------------------------------------------------------------ */
+  function priorityFlood(height, ocean, rows, cols, epsilon){
+    const n = rows*cols;
+    const filled = new Float64Array(height);
+    const visited = new Uint8Array(n);
+    const parent = new Int32Array(n); parent.fill(-1);
+    const raised = new Uint8Array(n);
+    const heap = new MinHeap();
+    let oceanSeeds = 0;
+
+    for(let i=0;i<n;i++) if(ocean[i]){
+      visited[i] = 1;
+      heap.push({h:filled[i], idx:i});
+      oceanSeeds++;
+    }
+
+    let globalSink = -1;
+    if(oceanSeeds === 0){
+      let best = Infinity;
+      for(let i=0;i<n;i++) if(!ocean[i] && height[i] < best){ best=height[i]; globalSink=i; }
+      if(globalSink >= 0){
+        visited[globalSink]=1;
+        heap.push({h:filled[globalSink], idx:globalSink});
+      }
+    }
+
+    while(heap.size){
+      const cur = heap.pop();
+      const ci = cur.idx;
+      forEachNeighbor(ci, rows, cols, ni => {
+        if(visited[ni]) return;
+        visited[ni] = 1;
+        if(ocean[ni]){
+          heap.push({h:filled[ni], idx:ni});
+          return;
+        }
+        parent[ni] = ci;
+        const minDrainHeight = filled[ci] + epsilon;
+        if(filled[ni] <= filled[ci]){
+          filled[ni] = minDrainHeight;
+          raised[ni] = 1;
+        }
+        heap.push({h:filled[ni], idx:ni});
+      });
+    }
+
+    /* На корректном OceanMask сюда обычно не попадаем. Если всё же остался
+       недостижимый кусок суши, заводим для него собственный глобальный минимум. */
+    for(let seed=0;seed<n;seed++){
+      if(visited[seed] || ocean[seed]) continue;
+      let compMin = seed, compH = filled[seed];
+      const q=[seed], comp=[]; visited[seed]=2;
+      for(let qi=0;qi<q.length;qi++){
+        const i=q[qi]; comp.push(i);
+        if(filled[i] < compH){ compH=filled[i]; compMin=i; }
+        forEachNeighbor(i, rows, cols, ni => {
+          if(!ocean[ni] && visited[ni]===0){ visited[ni]=2; q.push(ni); }
+        });
+      }
+      comp.forEach(i => { visited[i]=0; });
+      visited[compMin]=1;
+      if(globalSink < 0) globalSink=compMin;
+      heap.push({h:filled[compMin],idx:compMin});
+      while(heap.size){
+        const cur=heap.pop(), ci=cur.idx;
+        forEachNeighbor(ci, rows, cols, ni => {
+          if(ocean[ni] || visited[ni]) return;
+          visited[ni]=1; parent[ni]=ci;
+          if(filled[ni] <= filled[ci]){ filled[ni]=filled[ci]+epsilon; raised[ni]=1; }
+          heap.push({h:filled[ni],idx:ni});
+        });
+      }
+    }
+
+    return {filled, parent, raised, globalSink};
+  }
+
+  /* ------------------------------------------------------------------
+     ШАГ 2. D8. При равном уклоне остаётся первое направление из D8,
+     поэтому порядок NE,E,SE,S,SW,W,NW,N является строгим tie-break.
+  ------------------------------------------------------------------ */
+  function computeFlowDir(filled, ocean, rows, cols, slopeTolerance){
+    const n=rows*cols;
+    const flowDir=new Int8Array(n); flowDir.fill(-1);
+    const flowTo=new Int32Array(n); flowTo.fill(-1);
+    const localMin=new Uint8Array(n);
+
+    for(let i=0;i<n;i++){
+      if(ocean[i]) continue;
+      const h=filled[i];
+      let bestSlope=0, bestDir=-1, bestTo=-1;
+      const x=i%cols, y=Math.floor(i/cols);
+      for(let d=0;d<8;d++){
+        const nx=x+D8[d].dx, ny=y+D8[d].dy;
+        if(nx<0||nx>=cols||ny<0||ny>=rows) continue;
+        const ni=idxOf(nx,ny,cols);
+        const drop=h-filled[ni];
+        if(drop <= 0) continue;
+        const slope=drop/D8[d].dist;
+        if(slope > bestSlope + slopeTolerance){
+          bestSlope=slope; bestDir=d; bestTo=ni;
+        }
+        /* При |slope-bestSlope| <= tolerance ничего не меняем: более раннее
+           направление по часовой стрелке уже победило. */
+      }
+      if(bestDir>=0){ flowDir[i]=bestDir; flowTo[i]=bestTo; }
+      else localMin[i]=1;
+    }
+    return {flowDir, flowTo, localMin};
+  }
+
+  function breakFlowCycles(flowDir, flowTo, localMin, filled, ocean, rows, cols){
+    const n=rows*cols;
+    const state=new Uint8Array(n); // 0 new, 1 stack, 2 done
+    const pos=new Int32Array(n); pos.fill(-1);
+    const stack=[];
+
+    for(let start=0;start<n;start++){
+      if(ocean[start] || state[start]===2) continue;
+      let cur=start;
+      stack.length=0;
+      while(cur>=0 && !ocean[cur] && state[cur]===0){
+        state[cur]=1; pos[cur]=stack.length; stack.push(cur); cur=flowTo[cur];
+      }
+      if(cur>=0 && !ocean[cur] && state[cur]===1){
+        const begin=pos[cur];
+        let cut=stack[begin];
+        for(let k=begin+1;k<stack.length;k++){
+          const i=stack[k];
+          if(filled[i] < filled[cut] || (filled[i]===filled[cut] && i<cut)) cut=i;
+        }
+        flowDir[cut]=-1; flowTo[cut]=-1; localMin[cut]=1;
+      }
+      for(const i of stack){ state[i]=2; pos[i]=-1; }
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     ШАГ 3. Накопление потока через топологическую сортировку Kahn.
+  ------------------------------------------------------------------ */
+  function flowAccumulation(flowTo, ocean, rainfall, rows, cols){
+    const n=rows*cols;
+    const indeg=new Int32Array(n);
+    const accum=new Float64Array(n);
+    let landCount=0;
+
+    for(let i=0;i<n;i++) if(!ocean[i]){
+      landCount++;
+      accum[i]=rainfall[i];
+      const to=flowTo[i];
+      if(to>=0 && !ocean[to]) indeg[to]++;
+    }
+
+    const q=new Int32Array(landCount || 1);
+    let qh=0, qt=0;
+    for(let i=0;i<n;i++) if(!ocean[i] && indeg[i]===0) q[qt++]=i;
+    const topo=new Int32Array(landCount || 1);
+    let tc=0;
+    while(qh<qt){
+      const i=q[qh++]; topo[tc++]=i;
+      const to=flowTo[i];
+      if(to>=0 && !ocean[to]){
+        accum[to]+=accum[i];
+        indeg[to]--;
+        if(indeg[to]===0) q[qt++]=to;
+      }
+    }
+    return {accum, topo:topo.subarray(0,tc), processed:tc, landCount};
+  }
+
+  function computeDrainageClass(flowTo, ocean, rows, cols){
+    const n=rows*cols;
+    const cls=new Int8Array(n); // 1 ocean, 0 sink/endorheic, -1 unknown
+    cls.fill(-1);
+    for(let i=0;i<n;i++) if(ocean[i]) cls[i]=1;
+    const seen=new Int32Array(n); seen.fill(-1);
+    let token=0;
+    for(let start=0;start<n;start++){
+      if(ocean[start] || cls[start]>=0) continue;
+      token++;
+      const path=[];
+      let cur=start, endClass=0;
+      while(cur>=0 && !ocean[cur] && cls[cur]<0 && seen[cur]!==token){
+        seen[cur]=token; path.push(cur); cur=flowTo[cur];
+      }
+      if(cur>=0){
+        if(ocean[cur]) endClass=1;
+        else if(cls[cur]>=0) endClass=cls[cur];
+        else endClass=0;
+      }
+      for(const i of path) cls[i]=endClass;
+    }
+    return cls;
+  }
+
+  function computeStrahler(channel, flowTo, topo, ocean, rows, cols){
+    const n=rows*cols;
+    const maxOrder=new Uint16Array(n);
+    const maxCount=new Uint16Array(n);
+    const order=new Uint16Array(n);
+    const incomingChannelCount=new Uint16Array(n);
+
+    for(let i=0;i<n;i++) if(channel[i]){
+      const to=flowTo[i];
+      if(to>=0 && !ocean[to] && channel[to]) incomingChannelCount[to]++;
+    }
+
+    for(let k=0;k<topo.length;k++){
+      const i=topo[k];
+      if(!channel[i]) continue;
+      let o;
+      if(incomingChannelCount[i]===0) o=1;
+      else o=maxOrder[i] + (maxCount[i]>=2 ? 1 : 0);
+      if(o<1) o=1;
+      order[i]=o;
+      const to=flowTo[i];
+      if(to>=0 && channel[to]){
+        if(o>maxOrder[to]){ maxOrder[to]=o; maxCount[to]=1; }
+        else if(o===maxOrder[to]) maxCount[to]++;
+      }
+    }
+    return {order,incomingChannelCount};
+  }
+
+  function meanTailRain(path, rainfall, cols, count){
+    const n=Math.min(count,path.length);
+    if(n===0) return 1;
+    let s=0;
+    for(let k=path.length-n;k<path.length;k++){
+      const p=path[k]; s += rainfall[idxOf(p[0],p[1],cols)];
+    }
+    return s/n;
+  }
+
+  function widthFromAccum(a, threshold){
+    const q=Math.max(1, a/Math.max(threshold,1e-9));
+    return Math.min(14, 0.85 + 0.95*Math.sqrt(q));
+  }
+
+  function markDisk(mask, cx, cy, r, rows, cols, value=1){
+    const rr=Math.max(0,Math.ceil(r));
+    for(let dy=-rr;dy<=rr;dy++) for(let dx=-rr;dx<=rr;dx++){
+      if(dx*dx+dy*dy > r*r+0.25) continue;
+      const x=cx+dx,y=cy+dy;
+      if(x>=0&&x<cols&&y>=0&&y<rows) mask[idxOf(x,y,cols)]=value;
+    }
+  }
+
+  function maxDisk(widthMap, cx, cy, r, rows, cols, value){
+    const rr=Math.max(0,Math.ceil(r));
+    for(let dy=-rr;dy<=rr;dy++) for(let dx=-rr;dx<=rr;dx++){
+      const d=Math.hypot(dx,dy);
+      if(d>r+0.25) continue;
+      const x=cx+dx,y=cy+dy;
+      if(x<0||x>=cols||y<0||y>=rows) continue;
+      const fall=Math.max(0.25,1-d/Math.max(r,1));
+      const i=idxOf(x,y,cols);
+      widthMap[i]=Math.max(widthMap[i], value*fall);
+    }
+  }
+
+  /* Упрощённое заполнение локального озера до ближайшего краевого порога. */
+  function createEndorheicLake(sinkIdx, originalHeight, filled, flowTo, drainsToOcean,
+                                lakeMask, rows, cols){
+    const sinkH=originalHeight[sinkIdx];
+    let spill=Infinity, outlet=-1;
+    forEachNeighbor(sinkIdx, rows, cols, ni => {
+      const h=originalHeight[ni];
+      if(h>=sinkH && (drainsToOcean[ni]===1 || flowTo[ni]!==sinkIdx)){
+        if(h<spill){ spill=h; outlet=ni; }
+      }
+    });
+    if(!Number.isFinite(spill)){
+      forEachNeighbor(sinkIdx, rows, cols, ni => {
+        if(originalHeight[ni]<spill){ spill=originalHeight[ni]; outlet=ni; }
+      });
+    }
+    if(!Number.isFinite(spill)) spill=filled[sinkIdx];
+
+    /* Flood только в чаше <= spill. Это не меняет Heightmap, а строит LakeMask. */
+    const seen=new Uint8Array(rows*cols);
+    const q=[sinkIdx]; seen[sinkIdx]=1;
+    for(let qi=0;qi<q.length;qi++){
+      const i=q[qi];
+      if(originalHeight[i] > spill + 1e-12) continue;
+      lakeMask[i]=1;
+      forEachNeighbor(i, rows, cols, ni => {
+        if(!seen[ni] && originalHeight[ni] <= spill + 1e-12){ seen[ni]=1; q.push(ni); }
+      });
+    }
+    return {sink:xy(sinkIdx,cols), level:spill, spillHeight:spill,
+            outlet:outlet>=0?xy(outlet,cols):null, cells:q.length};
+  }
+
+  /* Низкочастотный детерминированный value-noise для меандров. */
+  function hash2i(x,y,seed){
+    let h=(Math.imul(x|0,0x1f123bb5) ^ Math.imul(y|0,0x5f356495) ^ (seed|0))|0;
+    h=Math.imul(h^(h>>>16),0x45d9f3b); h=Math.imul(h^(h>>>16),0x45d9f3b); h^=h>>>16;
+    return (h>>>0)/4294967295;
+  }
+  function smooth01(t){ return t*t*(3-2*t); }
+  function valueNoise2(x,y,seed){
+    const x0=Math.floor(x),y0=Math.floor(y),fx=x-x0,fy=y-y0;
+    const u=smooth01(fx),v=smooth01(fy);
+    const a=hash2i(x0,y0,seed),b=hash2i(x0+1,y0,seed),c=hash2i(x0,y0+1,seed),d=hash2i(x0+1,y0+1,seed);
+    return ((a+(b-a)*u)*(1-v)+(c+(d-c)*u)*v)*2-1;
+  }
+
+  function meanderedCell(path, k, corrected, rows, cols, seed){
+    const p=path[k];
+    if(path.length<3) return p;
+    const a=path[Math.max(0,k-1)], b=path[Math.min(path.length-1,k+1)];
+    let tx=b[0]-a[0], ty=b[1]-a[1];
+    const tl=Math.hypot(tx,ty)||1; tx/=tl; ty/=tl;
+    const px=-ty, py=tx;
+    const n=valueNoise2(k*0.13, (p[0]+p[1])*0.035, seed);
+    const amp=0.85;
+    const ox=Math.round(px*n*amp), oy=Math.round(py*n*amp);
+    const x=p[0]+ox,y=p[1]+oy;
+    if(x<0||x>=cols||y<0||y>=rows) return p;
+    const i=idxOf(p[0],p[1],cols), j=idxOf(x,y,cols);
+    /* Меандр не имеет права прорезать соседний хребет. Допускается только
+       практически та же высота или более низкая ячейка. */
+    if(corrected[j] <= corrected[i] + 1e-6) return [x,y];
+    return p;
+  }
+
+  function erodeHeightmap(originalHeight, corrected, RiverGraph, rows, cols, seed){
+    const n=rows*cols;
+    const depth=new Float64Array(n);
+
+    for(let r=0;r<RiverGraph.length;r++){
+      const path=RiverGraph[r];
+      const denom=Math.max(1,path.length-1);
+      for(let k=0;k<path.length;k++){
+        const t=k/denom;
+        const d=t<0.30?0.5:(t<0.70?0.3:0.15);
+        const base=path[k];
+        const bi=idxOf(base[0],base[1],cols);
+        /* Жёсткое требование: каждая ячейка RiverGraph получает полный врез. */
+        depth[bi]=Math.max(depth[bi],d);
+        /* Низкочастотный меандр расширяет эрозионный коридор в безопасную
+           соседнюю ячейку, но не ломает гидрологический D8-граф. */
+        const p=meanderedCell(path,k,corrected,rows,cols,(seed|0)+r*977);
+        const i=idxOf(p[0],p[1],cols);
+        if(i!==bi) depth[i]=Math.max(depth[i],d*0.55);
+      }
+    }
+
+    const valley=new Float64Array(depth);
+    for(let i=0;i<n;i++) if(depth[i]>0){
+      const x=i%cols,y=Math.floor(i/cols),d=depth[i];
+      for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){
+        if(dx===0&&dy===0) continue;
+        const dist=Math.hypot(dx,dy);
+        if(dist>2.01) continue;
+        const xx=x+dx,yy=y+dy;
+        if(xx<0||xx>=cols||yy<0||yy>=rows) continue;
+        const fall=dist<=1.01?0.5:0.25;
+        const j=idxOf(xx,yy,cols);
+        valley[j]=Math.max(valley[j],d*fall);
+      }
+    }
+
+    const updated=new Float64Array(originalHeight);
+    for(let i=0;i<n;i++) updated[i]-=valley[i];
+    return {updated, erosionDepth:valley};
+  }
+
+  /* ------------------------------------------------------------------
+     Главная функция — все шесть шагов из задания.
+  ------------------------------------------------------------------ */
+  function generateRiverNetwork(input){
+    if(!input || typeof input!=='object') throw new Error('generateRiverNetwork: требуется объект параметров');
+    const Heightmap=input.Heightmap, OceanMask=input.OceanMask, RainfallMap=input.RainfallMap;
+    const dims=assertMatrix(Heightmap,'Heightmap');
+    const rows=dims.rows, cols=dims.cols, n=rows*cols;
+    assertMatrix(OceanMask,'OceanMask',rows,cols);
+    if(RainfallMap!=null) assertMatrix(RainfallMap,'RainfallMap',rows,cols);
+
+    const height=flattenNumeric(Heightmap,rows,cols,'Heightmap');
+    const ocean=flattenMask(OceanMask,rows,cols,'OceanMask');
+    const rainfall=new Float64Array(n);
+    if(RainfallMap==null){
+      for(let i=0;i<n;i++) rainfall[i]=ocean[i]?0:1;
+    } else {
+      for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+        const i=idxOf(x,y,cols),v=Number(RainfallMap[y][x]);
+        if(!Number.isFinite(v)) throw new Error('RainfallMap: нечисловое значение в ['+y+']['+x+']');
+        rainfall[i]=ocean[i]?0:Math.max(0,Math.min(1,v));
+      }
+    }
+
+    const Threshold=Number.isFinite(input.Threshold)?Math.max(0,input.Threshold):100;
+    let hMin=Infinity,hMax=-Infinity;
+    for(let i=0;i<n;i++) if(!ocean[i]){ hMin=Math.min(hMin,height[i]);hMax=Math.max(hMax,height[i]); }
+    const range=Number.isFinite(hMax-hMin)?Math.max(1,hMax-hMin):1;
+    const epsilon=Number.isFinite(input.Epsilon)?Math.max(1e-12,input.Epsilon):range*1e-9;
+    const slopeTolerance=Math.max(1e-14,epsilon*1e-3);
+
+    // Шаг 1
+    const flood=priorityFlood(height,ocean,rows,cols,epsilon);
+
+    // Шаг 2
+    const flow=computeFlowDir(flood.filled,ocean,rows,cols,slopeTolerance);
+    breakFlowCycles(flow.flowDir,flow.flowTo,flow.localMin,flood.filled,ocean,rows,cols);
+
+    // Шаг 3. После страховочного разрыва циклов граф гарантированно ацикличен.
+    let acc=flowAccumulation(flow.flowTo,ocean,rainfall,rows,cols);
+    if(acc.processed!==acc.landCount){
+      /* Крайне защитный путь: если пользователь подал патологические данные,
+         остаток становится замкнутой низиной, затем accumulation пересчитывается. */
+      const done=new Uint8Array(n); for(const i of acc.topo) done[i]=1;
+      for(let i=0;i<n;i++) if(!ocean[i]&&!done[i]){ flow.flowDir[i]=-1;flow.flowTo[i]=-1;flow.localMin[i]=1; }
+      acc=flowAccumulation(flow.flowTo,ocean,rainfall,rows,cols);
+    }
+    const drainsToOcean=computeDrainageClass(flow.flowTo,ocean,rows,cols);
+
+    // Шаг 4: русла и порядок Штралера.
+    const channel=new Uint8Array(n);
+    for(let i=0;i<n;i++) if(!ocean[i] && acc.accum[i]>Threshold) channel[i]=1;
+    const strahler=computeStrahler(channel,flow.flowTo,acc.topo,ocean,rows,cols);
+
+    const sources=[];
+    for(let i=0;i<n;i++) if(channel[i] && strahler.incomingChannelCount[i]===0) sources.push(i);
+
+    const RiverGraph=[];
+    const StreamOrder=[];
+    const RiverTerminals=[];
+    const lakeMask=new Uint8Array(n);
+    const saltFlatMask=new Uint8Array(n);
+    const widthMap=new Float64Array(n);
+    const Lakes=[];
+
+    for(let ri=0;ri<sources.length;ri++){
+      const source=sources[ri];
+      const path=[];
+      const visited=new Set();
+      let cur=source, terminal={type:'B',coord:xy(cur,cols),reason:'closed_sink'};
+
+      while(cur>=0 && !ocean[cur]){
+        if(visited.has(cur)){
+          terminal={type:'B',coord:xy(cur,cols),reason:'cycle'};
+          flow.localMin[cur]=1;
+          break;
+        }
+        visited.add(cur);
+        path.push(xy(cur,cols));
+
+        // Терминал C: средняя засушливость по последним пяти точкам.
+        const dry=meanTailRain(path,rainfall,cols,5)<0.1 && height[cur]>0;
+        if(dry){ terminal={type:'C',coord:xy(cur,cols),reason:'arid_evaporation'}; break; }
+
+        const next=flow.flowTo[cur];
+        if(next<0){
+          terminal={type:'B',coord:xy(cur,cols),reason:'local_minimum'};
+          flow.localMin[cur]=1;
+          break;
+        }
+        if(ocean[next]){
+          terminal={type:'A',coord:xy(cur,cols),oceanCell:xy(next,cols),reason:'ocean'};
+          break;
+        }
+        if(flow.localMin[next] && drainsToOcean[next]!==1){
+          path.push(xy(next,cols));
+          terminal={type:'B',coord:xy(next,cols),reason:'endorheic_minimum'};
+          cur=next;
+          break;
+        }
+        cur=next;
+      }
+
+      if(path.length===0) continue;
+      RiverGraph.push(path);
+      const last=path[path.length-1], lastIdx=idxOf(last[0],last[1],cols);
+      StreamOrder.push(Math.max(1,strahler.order[lastIdx]||1));
+      RiverTerminals.push(terminal);
+
+      /* Базовая ширина по накопленному потоку. */
+      for(const p of path){
+        const i=idxOf(p[0],p[1],cols);
+        widthMap[i]=Math.max(widthMap[i],widthFromAccum(acc.accum[i],Threshold));
+      }
+
+      if(terminal.type==='A'){
+        // Последние 10% линейно расширяются к устью.
+        const count=Math.max(1,Math.ceil(path.length*0.10));
+        for(let k=path.length-count;k<path.length;k++){
+          const p=path[k],i=idxOf(p[0],p[1],cols),t=(k-(path.length-count))/Math.max(1,count-1);
+          const base=widthFromAccum(acc.accum[i],Threshold);
+          widthMap[i]=Math.max(widthMap[i],base*(1+0.65*t));
+        }
+      } else if(terminal.type==='B'){
+        const sink=lastIdx;
+        const lake=createEndorheicLake(sink,height,flood.filled,flow.flowTo,drainsToOcean,lakeMask,rows,cols);
+        Lakes.push(lake);
+        // Последние 5–10 точек раскрываются веером без резкого обрыва.
+        const count=Math.min(path.length,Math.max(5,Math.min(10,Math.ceil(path.length*0.12))));
+        for(let k=path.length-count;k<path.length;k++){
+          const p=path[k],i=idxOf(p[0],p[1],cols),t=(k-(path.length-count))/Math.max(1,count-1);
+          const w=widthFromAccum(acc.accum[i],Threshold)*(1+1.6*t);
+          widthMap[i]=Math.max(widthMap[i],w);
+          maxDisk(widthMap,p[0],p[1],Math.max(1,w*0.35*t),rows,cols,w);
+        }
+        /* Статический уровень озера равен краевому порогу. Поэтому выход
+           разрешён только если внешний код поднимет фактический уровень выше
+           lake.spillHeight; сам эндорейный терминал его не форсирует. */
+      } else if(terminal.type==='C'){
+        const count=Math.min(path.length,Math.max(5,Math.ceil(path.length*0.12)));
+        for(let k=path.length-count;k<path.length;k++){
+          const p=path[k],i=idxOf(p[0],p[1],cols),t=(k-(path.length-count))/Math.max(1,count-1);
+          const base=widthFromAccum(acc.accum[i],Threshold);
+          /* Здесь нужно именно уменьшение, поэтому нельзя использовать max:
+             базовая ширина была записана выше для всего пути. */
+          widthMap[i]=base*(1-t);
+          markDisk(saltFlatMask,p[0],p[1],1+2*t,rows,cols,1);
+        }
+        widthMap[lastIdx]=0;
+      }
+    }
+
+    // Шаг 6: эрозия исходной Heightmap + плавная долина + безопасный меандр.
+    const erosion=erodeHeightmap(height,flood.filled,RiverGraph,rows,cols,
+      Number.isFinite(input.Seed)?input.Seed:0x51f15e);
+
+    return {
+      // Требуемые выходы
+      RiverGraph,
+      StreamOrder,
+      RiverWidthMap:toMatrix(widthMap,rows,cols),
+      UpdatedHeightmap:toMatrix(erosion.updated,rows,cols),
+      LakeMask:toMatrix(lakeMask,rows,cols,true),
+
+      // Полезная диагностическая часть — не мешает требуемому контракту.
+      FlowDir:toMatrix(flow.flowDir,rows,cols,true),
+      Accum:toMatrix(acc.accum,rows,cols),
+      CorrectedHeightmap:toMatrix(flood.filled,rows,cols),
+      LocalMinMask:toMatrix(flow.localMin,rows,cols,true),
+      SaltFlatMask:toMatrix(saltFlatMask,rows,cols,true),
+      StreamOrderMap:toMatrix(strahler.order,rows,cols,true),
+      RiverTerminals,
+      Lakes,
+      Threshold,
+      D8Order:D8.map(d=>d.name),
+    };
+  }
+
+  return { generateRiverNetwork, D8 };
+});
+
+/* ============ состояние ============ */
+const PARAMS = [
+  {k:'temp',       label:'Температура',           def:0.52, group:'Планета'},
+  {k:'sea',        label:'Океан',                 def:0.58, group:'Планета'},
+  {k:'cont',       label:'Материки',              def:0.45, group:'Планета'},
+  {k:'mount',      label:'Горы',                  def:0.55, group:'Планета'},
+  {k:'isle',       label:'Острова',                def:0.45, group:'Планета'},
+  {k:'lake',       label:'Озёра',                 def:0.45, group:'Планета'},
+  {k:'city',       label:'Огни городов',           def:0.55, group:'Поверхность'},
+  {k:'cloudLow',   label:'Нижний слой',            def:0.48, group:'Климат'},
+  {k:'cloudMid',   label:'Средний слой',            def:0.44, group:'Климат'},
+  {k:'cloudHigh',  label:'Верхний слой',             def:0.30, group:'Климат'},
+  {k:'wind',       label:'Ветры',                  def:0.55, group:'Климат'},
+  {k:'convection', label:'Конвекция',              def:0.55, group:'Климат'},
+  {k:'atmo',       label:'Плотность атмосферы',    def:0.60, group:'Атмосфера'},
+  {k:'atmoComp',   label:'Состав атмосферы',       def:0.00, group:'Атмосфера'},
+  {k:'magnet',     label:'Мощность магнитного поля', def:0.52, group:'Магнитосфера'},
+  {k:'magTilt',    label:'Наклон магнитной оси',    def:0.50, group:'Магнитосфера'},
+  {k:'magAzimuth', label:'Направление магнитной оси',def:0.50, group:'Магнитосфера'},
+  {k:'aurora',     label:'Солнечная активность (Kp)', def:0.62, group:'Магнитосфера'},
+  {k:'star',       label:'Спектральный класс',     def:0.38, group:'Звезда'},
+  {k:'luminosity', label:'Светимость',              def:0.43, group:'Звезда'},
+  {k:'distance',   label:'Расстояние',              def:0.51, group:'Звезда'},
+];
+const state = {seed: 8127344, rings: false, draft: false, voidbg: false,
+               texShow: false, lowOn: true, midOn: false, highOn: false,
+               auroraOn: true, fieldLinesOn: false, auroraFootpoints: false};
+PARAMS.forEach(p => state[p.k] = p.def);
+
+/* Спектральный класс звезды → цвет RGB.
+   Класс: M(0) K(0.17) G(0.43) F(0.57) A(0.71) B(0.86) O(1.0).
+   Аппроксимация по цветовой температуре чёрного тела. */
+const STAR_LABELS = ['M','K','G','F','A','B','O'];
+function starPhysics(t, lumT=0.52){
+  const T = 3000 * Math.pow(40000/3000, Math.max(0, Math.min(1, t)));
+  const L = 0.12 * Math.pow(24.0/0.12, Math.max(0, Math.min(1, lumT)));
+  /* Условная масса по главной последовательности и радиус из L=4πR²T⁴. */
+  const M = Math.pow(L, 1/3.8);
+  const R = Math.sqrt(L) * Math.pow(5772/T, 2);
+  const hz = Math.sqrt(L);
+  return {T,L,M,R,hz};
+}
+function starTempToColor(t){
+  const T = starPhysics(t).T;
+  let r,g,b;
+  if(T < 6600){
+    r=1.0; g=Math.max(0,Math.min(1,0.3912*Math.log(T/100)-0.6298));
+    b=T<=1900?0.0:Math.max(0,Math.min(1,0.5432*Math.log(T/100-10)-1.1418));
+  }else{
+    r=Math.max(0,Math.min(1,1.292*Math.pow(T/100-60,-0.1332)));
+    g=Math.max(0,Math.min(1,1.129*Math.pow(T/100-60,-0.0755)));
+    b=1.0;
+  }
+  const mx=Math.max(r,g,b)||1; return [r/mx,g/mx,b/mx];
+}
+function starLabel(t){
+  const idx = Math.min(6, Math.floor(t * 7));
+  return STAR_LABELS[idx];
+}
+
+function luminosityLabel(v){ const x=starPhysics(state?.star ?? 0.38,v); return x.L.toFixed(2)+'L · '+x.R.toFixed(2)+'R · '+x.M.toFixed(2)+'M'; }
+function distanceInfo(v){
+  const au = 0.22 * Math.pow(4.8/0.22, Math.max(0,Math.min(1,v)));
+  const hz = starPhysics(state?.star ?? 0.43, state?.luminosity ?? 0.52).hz;
+  const q = au/hz;
+  return {au, hz, q, label:au.toFixed(2)+' AU · '+(q<0.78?'холодная зона':q>1.45?'горячая зона':'зона Златовласки')};
+}
+function atmoLabel(t){
+  if(t < 0.12) return 'N₂/O₂';
+  if(t < 0.37) return 'CO₂';
+  if(t < 0.62) return 'CO₂+H₂SO₄';
+  if(t < 0.87) return 'N₂+CH₄';
+  return 'H₂/He';
+}
+
+function auroraKpLabel(v){ return 'Kp '+(Math.max(0,Math.min(1,v))*9).toFixed(1); }
+function auroraLatitudeRad(v=state.aurora){
+  const a=Math.max(0,Math.min(1,v));
+  return (75.0 - 15.5*a) * Math.PI/180;
+}
+
+let world = null;
+function deriveWorld(){
+  const r = mulberry32(Math.imul(state.seed ^ 0x9E3779B9, 0x85EBCA6B) >>> 0);
+  const rv = () => r()*2-1;
+  const tilt = (r()*0.5-0.25) + 0.18;                  // наклон оси ~ -4°…+25°
+  const axis = norm3([Math.sin(tilt), Math.cos(tilt), r()*0.12-0.06]);
+  /* Магнитная ось теперь управляется параметрами, а не случайным вектором.
+     magTilt: -40..+40° относительно оси вращения; magAzimuth: 0..360°. */
+  const magTilt = (state.magTilt - 0.5) * 1.3962634;
+  const magAzimuth = state.magAzimuth * 6.2831853;
+  const tMag = norm3(Math.abs(axis[1]) < 0.92 ? cross3(axis,[0,1,0]) : cross3(axis,[1,0,0]));
+  const bMag = cross3(axis, tMag);
+  const radialMag = norm3([tMag[0]*Math.cos(magAzimuth)+bMag[0]*Math.sin(magAzimuth),
+                            tMag[1]*Math.cos(magAzimuth)+bMag[1]*Math.sin(magAzimuth),
+                            tMag[2]*Math.cos(magAzimuth)+bMag[2]*Math.sin(magAzimuth)]);
+  const magAxis = norm3([axis[0]*Math.cos(magTilt)+radialMag[0]*Math.sin(magTilt),
+                         axis[1]*Math.cos(magTilt)+radialMag[1]*Math.sin(magTilt),
+                         axis[2]*Math.cos(magTilt)+radialMag[2]*Math.sin(magTilt)]);
+  /* Циклоны: тропические вихри со спиральными рукавами в низких широтах и
+     внетропические «запятые» в умеренных. Положение задаётся относительно
+     оси планеты, направление вращения — по полушарию. */
+  const tA = norm3(Math.abs(axis[1]) < 0.9 ? cross3(axis,[0,1,0]) : cross3(axis,[1,0,0]));
+  const tB = cross3(axis, tA);
+  const cycA = [], cycB = [];
+  for(let i=0;i<5;i++){
+    const tropical = r() < 0.35;
+    const hemi = r() < 0.5 ? 1 : -1;
+    const latM = tropical ? 0.10 + r()*0.24 : 0.44 + r()*0.36;
+    const lat = latM*hemi;
+    const az = r()*Math.PI*2;
+    const k = Math.sqrt(Math.max(0, 1 - lat*lat));
+    const ca = Math.cos(az), sa = Math.sin(az);
+    const p = norm3([
+      axis[0]*lat + (tA[0]*ca + tB[0]*sa)*k,
+      axis[1]*lat + (tA[1]*ca + tB[1]*sa)*k,
+      axis[2]*lat + (tA[2]*ca + tB[2]*sa)*k,
+    ]);
+    const strength = (i === 0) ? 0.75 + r()*0.25
+                              : (r() < 0.7 ? 0.40 + r()*0.50 : 0);
+    cycA.push(p[0], p[1], p[2], strength);
+    cycB.push(tropical ? 0.26 + r()*0.16 : 0.52 + r()*0.34,   // радиус
+              hemi,                                            // знак вращения
+              tropical ? 1.5 + r()*1.0 : 0.6 + r()*0.7,        // закрутка
+              r()*Math.PI*2 - Math.PI);                        // азимут фронта
+  }
+  /* кольца лежат в экваториальной плоскости (нормаль ~ ось планеты) */
+  const rn = norm3([axis[0]+rv()*0.10, axis[1], axis[2]+rv()*0.10]);
+  const rt = norm3(cross3(rn, [0,0,1]));
+  const rb = cross3(rn, rt);
+  world = {
+    seedS: [rv()*19, rv()*19, rv()*19],
+    seedC: [rv()*19, rv()*19, rv()*19],
+    axis,
+    magAxis,
+    cycA, cycB,
+    milky: norm3([rv(), rv(), rv()]),
+    ringMat: [rt[0],rt[1],rt[2], rn[0],rn[1],rn[2], rb[0],rb[1],rb[2]],
+    surfOff: r()*6.28,
+    cloudOff: r()*6.28,
+  };
+  document.getElementById('seedLabel').textContent = '№ ' + state.seed;
+  document.getElementById('seed').value = state.seed;
+}
+
+let magAxisCacheWorld=null, magAxisCacheTilt=NaN, magAxisCacheAz=NaN;
+let magAxisCacheValue=[0,1,0];
+function currentMagAxis(){
+  /* Ось меняется только при новом world или движении двух магнитных слайдеров;
+     не пересчитываем sin/cos/cross + пачку временных массивов 60 раз/с. */
+  if(magAxisCacheWorld===world && magAxisCacheTilt===state.magTilt && magAxisCacheAz===state.magAzimuth)
+    return magAxisCacheValue;
+  const a = world?.axis || [0,1,0];
+  const mt = (state.magTilt - 0.5) * 1.3962634;
+  const ma = state.magAzimuth * Math.PI * 2;
+  const tv = Math.abs(a[1]) < 0.92 ? cross3(a,[0,1,0]) : cross3(a,[1,0,0]);
+  const tmag = norm3(tv);
+  const bmag = cross3(a,tmag);
+  const radial = norm3([
+    tmag[0]*Math.cos(ma)+bmag[0]*Math.sin(ma),
+    tmag[1]*Math.cos(ma)+bmag[1]*Math.sin(ma),
+    tmag[2]*Math.cos(ma)+bmag[2]*Math.sin(ma)
+  ]);
+  magAxisCacheValue = norm3([
+    a[0]*Math.cos(mt)+radial[0]*Math.sin(mt),
+    a[1]*Math.cos(mt)+radial[1]*Math.sin(mt),
+    a[2]*Math.cos(mt)+radial[2]*Math.sin(mt)
+  ]);
+  magAxisCacheWorld=world;
+  magAxisCacheTilt=state.magTilt;
+  magAxisCacheAz=state.magAzimuth;
+  return magAxisCacheValue;
+}
+
+/* ============ камера и ввод ============ */
+const cam = {yaw: 0.55, pitch: 0.12, dist: 2.65, tDist: 2.65, vyaw: 0, vpitch: 0};
+let sunAz = 2.0, sunEl = 0.16;      /* ПКМ вращает солнце */
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SPIN = reduceMotion ? 0.004 : 0.02;             // рад/с вращения планеты
+
+const pointers = new Map();
+let pinchD = 0;
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY, sun: e.button === 2});
+  if(pointers.size === 2){
+    const [a,b] = [...pointers.values()];
+    pinchD = Math.hypot(a.x-b.x, a.y-b.y);
+  }
+  cam.vyaw = cam.vpitch = 0;
+  canvas.classList.add('grab');
+});
+canvas.addEventListener('pointermove', e => {
+  if(!pointers.has(e.pointerId)) return;
+  const p = pointers.get(e.pointerId);
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if(pointers.size === 1){
+    if(p.sun){
+      /* ПКМ: вращаем освещение */
+      sunAz -= dx*0.005;
+      sunEl = Math.max(-1.2, Math.min(1.2, sunEl + dy*0.005));
+      return;
+    }
+    const k = 1/Math.min(innerWidth, innerHeight) * 3.2 * Math.min(cam.dist-0.95, 1.4);
+    cam.yaw   -= dx*k;
+    cam.pitch += dy*k;
+    cam.pitch = Math.max(-1.35, Math.min(1.35, cam.pitch));
+    cam.vyaw = -dx*k*60; cam.vpitch = dy*k*60;
+  } else if(pointers.size === 2){
+    const [a,b] = [...pointers.values()];
+    const d = Math.hypot(a.x-b.x, a.y-b.y);
+    if(pinchD > 0) cam.tDist = clampDist(cam.tDist * pinchD/d);
+    pinchD = d;
+  }
+});
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if(pointers.size < 2) pinchD = 0;
+  if(pointers.size === 0) canvas.classList.remove('grab');
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  cam.tDist = clampDist(cam.tDist * Math.exp(e.deltaY*0.0011));
+}, {passive:false});
+function clampDist(d){ return Math.max(1.16, Math.min(6.4, d)); }
+
+/* ============ магнитосфера: силовые линии поверх WebGL ============ */
+const magCanvas = document.getElementById('magOverlay');
+const magCtx = magCanvas.getContext('2d', {alpha:true});
+let magDpr = 1;
+let magOverlayWasActive = false;
+
+function fitMagCanvas(){
+  const w = Math.max(1, Math.round(magCanvas.clientWidth  * Math.min(devicePixelRatio || 1, 2)));
+  const h = Math.max(1, Math.round(magCanvas.clientHeight * Math.min(devicePixelRatio || 1, 2)));
+  if(magCanvas.width !== w || magCanvas.height !== h){
+    magCanvas.width = w; magCanvas.height = h;
+  }
+  magDpr = magCanvas.width / Math.max(1, magCanvas.clientWidth);
+}
+
+function magBasis(axis){
+  const ref = Math.abs(axis[1]) < 0.92 ? [0,1,0] : [1,0,0];
+  const t = norm3(cross3(axis, ref));
+  return [t, cross3(axis,t)];
+}
+function dot3(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+function add3(a,b){ return [a[0]+b[0],a[1]+b[1],a[2]+b[2]]; }
+function mul3(a,k){ return [a[0]*k,a[1]*k,a[2]*k]; }
+
+/* r = L sin²(theta), theta относительно магнитной оси. */
+function dipolePoint(axis, t, b, L, phi, theta, radiusScale=1){
+  const st=Math.sin(theta), ct=Math.cos(theta);
+  const r=L*st*st*radiusScale;
+  const radial=[
+    t[0]*Math.cos(phi)+b[0]*Math.sin(phi),
+    t[1]*Math.cos(phi)+b[1]*Math.sin(phi),
+    t[2]*Math.cos(phi)+b[2]*Math.sin(phi)
+  ];
+  return [
+    r*(radial[0]*st + axis[0]*ct),
+    r*(radial[1]*st + axis[1]*ct),
+    r*(radial[2]*st + axis[2]*ct)
+  ];
+}
+
+function projectMagPoint(p, camPos, rgt, up, fwd, W, H){
+  const q=[p[0]-camPos[0],p[1]-camPos[1],p[2]-camPos[2]];
+  const z=dot3(q,fwd);
+  if(z <= 0.015) return null;
+  const x=dot3(q,rgt), y=dot3(q,up);
+  const sx=W*0.5 + FOCAL*(x/z)*H;
+  const sy=H*0.5 - FOCAL*(y/z)*H;
+  if(sx < -W*0.7 || sx > W*1.7 || sy < -H*0.7 || sy > H*1.7) return null;
+
+  /* Если луч от камеры к точке сначала пересекает планету, участок линии
+     находится за шаром и не должен просвечивать сквозь поверхность. */
+  const dist=Math.hypot(q[0],q[1],q[2]);
+  const d=[q[0]/dist,q[1]/dist,q[2]/dist];
+  const B=dot3(camPos,d), C=dot3(camPos,camPos)-1.003*1.003;
+  const disc=B*B-C;
+  if(disc > 0){
+    const hit=-B-Math.sqrt(disc);
+    if(hit > 0 && hit < dist-0.012) return null;
+  }
+  return [sx,sy,z];
+}
+
+function sunDirection(){
+  return norm3([Math.cos(sunEl)*Math.sin(sunAz), Math.sin(sunEl), Math.cos(sunEl)*Math.cos(sunAz)]);
+}
+
+function drawAuroraFootpoints(axis,t,b,camPos,rgt,up,fwd,W,H,sunDir){
+  if(!state.auroraFootpoints) return;
+  const lat=auroraLatitudeRad();
+  const colat=Math.PI*0.5-lat;
+  const r=1.026 + 0.015*state.atmo;
+  magCtx.save();
+  magCtx.shadowBlur=8; magCtx.shadowColor='rgba(90,255,155,.75)';
+  for(let hemi=-1; hemi<=1; hemi+=2){
+    const theta=hemi>0 ? colat : Math.PI-colat;
+    for(let i=0;i<18;i++){
+      const phi=(i/18)*Math.PI*2;
+      const st=Math.sin(theta), ct=Math.cos(theta);
+      const radial=[t[0]*Math.cos(phi)+b[0]*Math.sin(phi),t[1]*Math.cos(phi)+b[1]*Math.sin(phi),t[2]*Math.cos(phi)+b[2]*Math.sin(phi)];
+      const p=[r*(radial[0]*st+axis[0]*ct),r*(radial[1]*st+axis[1]*ct),r*(radial[2]*st+axis[2]*ct)];
+      const q=projectMagPoint(p,camPos,rgt,up,fwd,W,H); if(!q) continue;
+      const n=norm3(p); const night=1-Math.max(0,Math.min(1,(dot3(n,sunDir)+0.12)/0.65));
+      const a=0.12+0.62*night*state.aurora;
+      magCtx.fillStyle=`rgba(105,255,165,${a.toFixed(3)})`;
+      magCtx.beginPath(); magCtx.arc(q[0],q[1],1.4+1.2*state.aurora,0,Math.PI*2); magCtx.fill();
+    }
+  }
+  magCtx.restore();
+}
+
+function drawMagnetosphereOverlay(timeSec, camPos, rgt, up, fwd, axisOverride=null, sunDirOverride=null){
+  const active=(state.fieldLinesOn || state.auroraFootpoints) && state.magnet >= 0.01;
+  /* В обычном режиме overlay выключен. Раньше мы всё равно каждый кадр читали
+     его layout, выставляли transform и очищали прозрачный canvas. Теперь при
+     выключении не трогаем 2D-контекст вообще, кроме единственного clear после
+     перехода active -> off. */
+  if(!active){
+    if(magOverlayWasActive){
+      fitMagCanvas();
+      const W=magCanvas.clientWidth, H=magCanvas.clientHeight;
+      magCtx.setTransform(magDpr,0,0,magDpr,0,0);
+      magCtx.clearRect(0,0,W,H);
+      magOverlayWasActive=false;
+    }
+    return;
+  }
+  magOverlayWasActive=true;
+  fitMagCanvas();
+  const W=magCanvas.clientWidth, H=magCanvas.clientHeight;
+  magCtx.setTransform(magDpr,0,0,magDpr,0,0);
+  magCtx.clearRect(0,0,W,H);
+
+  const axis=axisOverride || currentMagAxis();
+  const [t,b]=magBasis(axis);
+  const sunDir=sunDirOverride || sunDirection();
+
+  drawAuroraFootpoints(axis,t,b,camPos,rgt,up,fwd,W,H,sunDir);
+  if(!state.fieldLinesOn) return;
+
+  const count=10;
+  const samples=86;
+  const activity=state.aurora;
+  magCtx.save();
+  magCtx.globalCompositeOperation='lighter';
+  magCtx.lineCap='round';
+  magCtx.shadowBlur=5;
+  magCtx.shadowColor='rgba(95,170,255,.38)';
+
+  for(let i=0;i<count;i++){
+    const u=i/(count-1);
+    /* Представительные L-оболочки. Дальние линии намеренно полупрозрачны:
+       при близкой камере они могут уходить за границы кадра, но геометрия
+       остаётся истинной дипольной, без искусственного радиального сжатия. */
+    const L=1.50 + Math.pow(u,1.55)*6.50;   // 1.50 .. 8.00 R
+    const phi=(i/count)*Math.PI*2 + (i%2)*0.23;
+    const theta0=Math.asin(Math.sqrt(1/L));
+    let prev=null, prevR=0;
+    /* Один stroke на дальнюю часть и один на приповерхностную вместо stroke
+       для каждого из ~85 сегментов. ShadowBlur особенно дорог при сотнях
+       отдельных Canvas2D-вызовов. */
+    const canBatch = (typeof Path2D !== 'undefined');
+    const farPath=canBatch?new Path2D():null, nearPath=canBatch?new Path2D():null;
+    let farSeg=0, nearSeg=0;
+    const farSegments=[], nearSegments=[];
+    for(let j=0;j<samples;j++){
+      const f=j/(samples-1);
+      const theta=theta0 + (Math.PI-2*theta0)*f;
+      const p=dipolePoint(axis,t,b,L,phi,theta,1);
+      const r=Math.hypot(p[0],p[1],p[2]);
+      const q=projectMagPoint(p,camPos,rgt,up,fwd,W,H);
+      if(q && prev){
+        const surface=Math.min(prevR,r) < 1.18;
+        if(canBatch){
+          const path=surface?nearPath:farPath;
+          path.moveTo(prev[0],prev[1]); path.lineTo(q[0],q[1]);
+        } else {
+          (surface?nearSegments:farSegments).push([prev,q]);
+        }
+        if(surface) nearSeg++; else farSeg++;
+      }
+      prev=q; prevR=r;
+    }
+    const fade=(1-u*0.42)*(0.36+0.64*state.magnet);
+    if(farSeg){
+      magCtx.lineWidth=1.05;
+      magCtx.strokeStyle=`rgba(155,207,255,${(0.18*fade).toFixed(3)})`;
+      if(canBatch) magCtx.stroke(farPath);
+      else for(const seg of farSegments){ magCtx.beginPath(); magCtx.moveTo(seg[0][0],seg[0][1]); magCtx.lineTo(seg[1][0],seg[1][1]); magCtx.stroke(); }
+    }
+    if(nearSeg){
+      magCtx.lineWidth=1.45;
+      magCtx.strokeStyle=`rgba(235,246,255,${(0.34*fade).toFixed(3)})`;
+      if(canBatch) magCtx.stroke(nearPath);
+      else for(const seg of nearSegments){ magCtx.beginPath(); magCtx.moveTo(seg[0][0],seg[0][1]); magCtx.lineTo(seg[1][0],seg[1][1]); magCtx.stroke(); }
+    }
+
+    /* Световые импульсы вдоль B-линий. При reduced-motion оставляем их
+       неподвижными, чтобы настройка ОС соблюдалась и здесь. */
+    for(let k=0;k<2;k++){
+      const phase=reduceMotion ? (0.26+0.43*k) : ((timeSec*(0.055+0.035*activity)+i*0.071+k*0.47)%1);
+      const theta=theta0 + (Math.PI-2*theta0)*phase;
+      const p=dipolePoint(axis,t,b,L,phi,theta,1);
+      const q=projectMagPoint(p,camPos,rgt,up,fwd,W,H); if(!q) continue;
+      const rr=Math.hypot(p[0],p[1],p[2]);
+      const a=(0.34+0.46*state.magnet)*(1-u*0.36);
+      magCtx.shadowBlur=10;
+      magCtx.shadowColor='rgba(175,225,255,.8)';
+      magCtx.fillStyle=`rgba(220,245,255,${a.toFixed(3)})`;
+      magCtx.beginPath(); magCtx.arc(q[0],q[1],rr<1.25?2.0:1.45,0,Math.PI*2); magCtx.fill();
+      magCtx.shadowBlur=5;
+    }
+  }
+  magCtx.restore();
+}
+
+/* ============ рубрикатор и панели ============ */
+const rubricEl = document.getElementById('rubric');
+const sliders = {};
+const panels = {};
+const groupOrder = [...new Set(PARAMS.map(p => p.group))];
+
+/* Иконки для каждой группы (SVG) */
+const GROUP_ICONS = {
+  'Планета':      '<svg viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.2"/><path d="M9 2.5a6.5 6.5 0 010 13" fill="currentColor" opacity=".15"/></svg>',
+  'Поверхность':  '<svg viewBox="0 0 18 18" fill="none"><path d="M2 12c2-3 4-1 6-4s3-4 8-5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M2 15h14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".4"/></svg>',
+  'Климат':       '<svg viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3 3-6 6-6s6 3 6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M5 11c1-2 2.5-1 4-3s2.5-2 5-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".6"/></svg>',
+  'Атмосфера':    '<svg viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="4" stroke="currentColor" stroke-width="1.2"/><circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1.2" opacity=".3"/></svg>',
+  'Магнитосфера': '<svg viewBox="0 0 18 18" fill="none"><path d="M9 2v14M5 5c2 2 2 6 0 8M13 5c-2 2-2 6 0 8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
+  'Звезда':       '<svg viewBox="0 0 18 18" fill="none"><path d="M9 2l1.5 4.5L15 8l-4.5 1.5L9 14l-1.5-4.5L3 8l4.5-1.5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>',
+};
+
+const GROUP_SHORT = {
+  'Планета':'ПЛ', 'Поверхность':'ПВ', 'Климат':'КЛ',
+  'Атмосфера':'АТ', 'Магнитосфера':'МГ', 'Звезда':'ЗВ'
+};
+
+const isMobile = () => matchMedia('(max-width:700px)').matches;
+
+/* ── Создание рубрикатора ── */
+groupOrder.forEach(g => {
+  const btn = document.createElement('button');
+  btn.className = 'rubric-btn';
+  btn.dataset.group = g;
+  btn.title = g;
+  btn.innerHTML = (GROUP_ICONS[g] || '') + '<span>' + (GROUP_SHORT[g] || g.substring(0,2)) + '</span>';
+  btn.addEventListener('click', () => togglePanel(g));
+  rubricEl.appendChild(btn);
+});
+
+/* ── Создание панели параметров ── */
+function createPanel(group){
+  const el = document.createElement('div');
+  el.className = 'param-panel';
+  el.dataset.group = group;
+
+  const head = document.createElement('div');
+  head.className = 'p-head';
+  const title = document.createElement('span');
+  title.textContent = group;
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'p-close';
+  closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); closePanel(group); });
+  head.append(title, closeBtn);
+
+  const body = document.createElement('div');
+  body.className = 'p-body';
+
+  el.append(head, body);
+  document.body.appendChild(el);
+
+  /* Создание слайдеров для этой группы */
+  const groupParams = PARAMS.filter(p => p.group === group);
+  groupParams.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const lab = document.createElement('label');
+    lab.textContent = p.label;
+    lab.htmlFor = 'sl_' + p.k;
+    const inp = document.createElement('input');
+    inp.type = 'range'; inp.min = 0; inp.max = 1; inp.step = 0.001;
+    inp.value = state[p.k]; inp.id = 'sl_' + p.k;
+    inp.style.setProperty('--fill', (state[p.k]*100)+'%');
+    const valSpan = document.createElement('span');
+    valSpan.className = 'slval';
+    const updateLabel = () => {
+      let text = (state[p.k]*100).toFixed(0)+'%';
+      if(p.k==='star') text = starLabel(state.star);
+      if(p.k==='magTilt') text = ((state.magTilt-0.5)*80).toFixed(0)+'°';
+      if(p.k==='magAzimuth') text = (state.magAzimuth*360).toFixed(0)+'°';
+      if(p.k==='aurora') text = auroraKpLabel(state.aurora);
+      if(p.k==='atmoComp') text = atmoLabel(state.atmoComp);
+      if(p.k==='luminosity') text = luminosityLabel(state.luminosity);
+      if(p.k==='distance'){ const q=distanceInfo(state.distance); text=q.label; }
+      valSpan.textContent = text;
+    };
+    updateLabel();
+    inp.addEventListener('input', () => {
+      state[p.k] = +inp.value;
+      markRenderUniformsDirty();
+      inp.style.setProperty('--fill', (state[p.k]*100)+'%');
+      syncDynamicLabels();
+      saveHash();
+    });
+    row.append(lab, inp, valSpan);
+    body.appendChild(row);
+    sliders[p.k] = inp;
+  });
+
+  /* Тоглы облаков в панели «Климат» */
+  if(group === 'Климат'){
+    const cloudToggles = [
+      {id:'lowOn',  label:'Низкие облака',  key:'lowOn',  title:'Кумулус / стратус'},
+      {id:'midOn',  label:'Средние облака',  key:'midOn',  title:'Альто-'},
+      {id:'highOn', label:'Высокие облака',  key:'highOn', title:'Цирусы'},
+      {id:'voidbg', label:'Чёрный фон',     key:'voidbg', title:'Космос чёрным для скриншотов'},
+    ];
+    cloudToggles.forEach(t => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:8px';
+      const lbl = document.createElement('span');
+      lbl.textContent = t.label;
+      lbl.title = t.title;
+      lbl.style.cssText = 'font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:var(--mut)';
+      const wrap = document.createElement('label');
+      wrap.className = 'tg';
+      const inp = document.createElement('input');
+      inp.type = 'checkbox';
+      inp.id = t.id;
+      inp.checked = !!state[t.key];
+      const slider = document.createElement('i');
+      wrap.append(inp, slider);
+      row.append(lbl, wrap);
+      body.appendChild(row);
+      inp.addEventListener('change', e => { state[t.key] = e.target.checked; markRenderUniformsDirty(); saveHash(); });
+    });
+  }
+
+  /* Управление визуализацией магнитосферы. Сияние и линии независимы. */
+  if(group === 'Магнитосфера'){
+    const magToggles = [
+      {id:'auroraOn', label:'Полярное сияние', key:'auroraOn', title:'Включить/выключить авроральные овалы'},
+      {id:'fieldLinesOn', label:'Силовые линии', key:'fieldLinesOn', title:'Показать дипольные L-оболочки'},
+      {id:'auroraFootpoints', label:'Точки входа', key:'auroraFootpoints', title:'Показать авроральные точки входа частиц в атмосферу'},
+    ];
+    magToggles.forEach(t => {
+      const row=document.createElement('div');
+      row.className='row';
+      row.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px';
+      const lbl=document.createElement('span');
+      lbl.textContent=t.label; lbl.title=t.title;
+      lbl.style.cssText='font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:var(--mut)';
+      const wrap=document.createElement('label'); wrap.className='tg';
+      const inp=document.createElement('input'); inp.type='checkbox'; inp.id=t.id; inp.checked=!!state[t.key];
+      const slider=document.createElement('i'); wrap.append(inp,slider); row.append(lbl,wrap); body.appendChild(row);
+      inp.addEventListener('change',e=>{ state[t.key]=e.target.checked; markRenderUniformsDirty(); saveHash(); });
+    });
+  }
+
+  /* Перетаскивание панели */
+  initDrag(el, head);
+
+  panels[group] = el;
+  return el;
+}
+
+/* ── Toggle панели ── */
+let openPanelGroup = null;
+function togglePanel(group){
+  if(openPanelGroup === group){
+    closePanel(group);
+  } else {
+    if(openPanelGroup) closePanel(openPanelGroup);
+    openPanel(group);
+  }
+}
+function openPanel(group){
+  const el = panels[group] || createPanel(group);
+  el.classList.add('open');
+  openPanelGroup = group;
+  /* Подсветка кнопки в рубрикаторе */
+  rubricEl.querySelectorAll('.rubric-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.group === group);
+  });
+  /* Позиционирование */
+  positionPanel(el);
+}
+function closePanel(group){
+  const el = panels[group];
+  if(el) el.classList.remove('open');
+  if(openPanelGroup === group) openPanelGroup = null;
+  rubricEl.querySelectorAll('.rubric-btn').forEach(b => b.classList.remove('active'));
+}
+
+/* ── Позиционирование панели ── */
+function positionPanel(el){
+  if(isMobile()){
+    /* На мобилке — по центру снизу */
+    el.style.left = '8px';
+    el.style.right = '8px';
+    el.style.top = '';
+    el.style.bottom = 'calc(56px + var(--safe-b))';
+    el.style.width = 'auto';
+  } else {
+    /* На десктопе — слева от рубрикатора */
+    const rubRect = rubricEl.getBoundingClientRect();
+    const pw = 272;
+    let left = rubRect.left - pw - 12;
+    if(left < 10) left = 10;
+    let top = Math.max(20, (window.innerHeight - 420) / 2);
+    el.style.left = left + 'px';
+    el.style.right = '';
+    el.style.top = top + 'px';
+    el.style.bottom = '';
+    el.style.width = pw + 'px';
+  }
+}
+
+/* ── Перетаскивание ── */
+function initDrag(el, handle){
+  let dragging = false, startX, startY, startLeft, startTop;
+  const onDown = (e) => {
+    if(isMobile()) return; /* На мобилке не перетаскиваем */
+    const touch = e.touches ? e.touches[0] : e;
+    dragging = true;
+    startX = touch.clientX;
+    startY = touch.clientY;
+    const rect = el.getBoundingClientRect();
+    startLeft = rect.left;
+    startTop = rect.top;
+    el.style.transition = 'none';
+    handle.style.cursor = 'grabbing';
+    e.preventDefault();
+  };
+  const onMove = (e) => {
+    if(!dragging) return;
+    const touch = e.touches ? e.touches[0] : e;
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    let newLeft = startLeft + dx;
+    let newTop = startTop + dy;
+    /* Ограничение viewport */
+    newLeft = Math.max(4, Math.min(window.innerWidth - el.offsetWidth - 4, newLeft));
+    newTop = Math.max(4, Math.min(window.innerHeight - el.offsetHeight - 4, newTop));
+    el.style.left = newLeft + 'px';
+    el.style.top = newTop + 'px';
+    el.style.right = '';
+    el.style.bottom = '';
+    el.style.width = el.offsetWidth + 'px';
+  };
+  const onUp = () => {
+    if(!dragging) return;
+    dragging = false;
+    handle.style.cursor = '';
+    el.style.transition = '';
+  };
+  handle.addEventListener('mousedown', onDown);
+  handle.addEventListener('touchstart', onDown, {passive: false});
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('touchmove', onMove, {passive: false});
+  document.addEventListener('mouseup', onUp);
+  document.addEventListener('touchend', onUp);
+}
+
+/* ── Toggle рубрикатора ── */
+let rubricVisible = true;
+document.getElementById('rubToggle').addEventListener('click', () => {
+  rubricVisible = !rubricVisible;
+  rubricEl.classList.toggle('hidden', !rubricVisible);
+  document.getElementById('utilBar').classList.toggle('hidden', !rubricVisible);
+});
+
+/* ── Синхронизация UI ── */
+function syncDynamicLabels(){
+  PARAMS.forEach(p => {
+    const el = sliders[p.k]?.parentElement?.querySelector('.slval');
+    if(!el) return;
+    if(p.k==='star') el.textContent = starLabel(state.star);
+    else if(p.k==='magTilt') el.textContent = ((state.magTilt-0.5)*80).toFixed(0)+'°';
+    else if(p.k==='magAzimuth') el.textContent = (state.magAzimuth*360).toFixed(0)+'°';
+    else if(p.k==='aurora') el.textContent = auroraKpLabel(state.aurora);
+    else if(p.k==='atmoComp') el.textContent = atmoLabel(state.atmoComp);
+    else if(p.k==='luminosity') el.textContent = luminosityLabel(state.luminosity);
+    else if(p.k==='distance') el.textContent = distanceInfo(state.distance).label;
+  });
+}
+function syncUI(){
+  PARAMS.forEach(p => {
+    if(!sliders[p.k]) return;
+    sliders[p.k].value = state[p.k];
+    sliders[p.k].style.setProperty('--fill', (state[p.k]*100)+'%');
+  });
+  syncDynamicLabels();
+  document.getElementById('rings').checked = state.rings;
+  document.getElementById('draft').checked = state.draft;
+  document.getElementById('texOn').checked = state.texShow;
+  /* Тоглы облаков — могут быть в панелях или ещё не созданы */
+  ['lowOn','midOn','highOn','voidbg'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.checked = !!state[id === 'voidbg' ? 'voidbg' : id];
+  });
+  ['auroraOn','fieldLinesOn','auroraFootpoints'].forEach(id => {
+    const el=document.getElementById(id); if(el) el.checked=!!state[id];
+  });
+  document.getElementById('seedLabel').textContent = '№ ' + state.seed;
+  document.getElementById('seed').value = state.seed;
+}
+
+/* ── Тоглы ── */
+document.getElementById('rings').addEventListener('change', e => { state.rings = e.target.checked; markRenderUniformsDirty(); saveHash(); });
+document.getElementById('draft').addEventListener('change', e => { state.draft = e.target.checked; markRenderUniformsDirty(); saveHash(); });
+document.getElementById('texOn').addEventListener('change', e => { state.texShow = e.target.checked; markRenderUniformsDirty(); saveHash(); });
+
+/* ── Сид ── */
+document.getElementById('seed').addEventListener('change', e => {
+  const v = parseInt(e.target.value, 10);
+  if(Number.isFinite(v)){ state.seed = Math.abs(v) % 100000000; deriveWorld(); markRenderUniformsDirty(); saveHash(); }
+});
+document.getElementById('reroll').addEventListener('click', () => {
+  state.seed = Math.floor(Math.random()*1e8); deriveWorld(); markRenderUniformsDirty(); saveHash();
+});
+
+/* ── Случайный мир ── */
+document.getElementById('rand').addEventListener('click', () => {
+  const r = mulberry32(Math.floor(Math.random()*2**31));
+  state.seed = Math.floor(r()*1e8);
+  state.temp  = r() < 0.15 ? (r()<0.5 ? r()*0.22 : 0.78+r()*0.22) : 0.3+r()*0.45;
+  state.cloudLow = 0.22 + r()*0.62;
+  state.cloudMid = 0.16 + r()*0.58;
+  state.cloudHigh = 0.08 + r()*0.46;
+  state.wind = 0.25 + r()*0.75;
+  state.convection = 0.25 + r()*0.75;
+  state.sea   = 0.35 + r()*0.5;
+  state.cont  = r();
+  state.mount = 0.25 + r()*0.7;
+  state.isle  = r();
+  state.lake  = r();
+  state.city  = r() < 0.2 ? r()*0.15 : 0.35+r()*0.6;
+  state.atmo  = 0.4 + r()*0.55;
+  state.star     = r() < 0.3 ? 0.43+r()*0.15 : r();
+  state.atmoComp = r() < 0.7 ? r()*0.15 : r();
+  state.magnet = 0.15 + r()*0.8;
+  state.aurora = 0.20 + r()*0.8;
+  state.luminosity = 0.25 + r()*0.65;
+  state.distance = 0.30 + r()*0.50;
+  state.rings = r() < 0.33;
+  deriveWorld(); markRenderUniformsDirty(); syncUI(); saveHash();
+});
+
+/* ── URL hash ── */
+let hashT = 0;
+function saveHash(){
+  clearTimeout(hashT);
+  hashT = setTimeout(() => {
+    const v = ['v2', state.seed, ...PARAMS.map(p => (+state[p.k]).toFixed(3)),
+               state.rings?1:0, state.draft?1:0, state.voidbg?1:0,
+               state.texShow?1:0, state.lowOn?1:0, state.midOn?1:0, state.highOn?1:0,
+               state.auroraOn?1:0, state.fieldLinesOn?1:0, state.auroraFootpoints?1:0].join(',');
+    try{ history.replaceState(null, '', '#'+v); }catch(e){}
+  }, 200);
+}
+function loadHash(){
+  const h = location.hash.slice(1);
+  if(!h) return;
+  const parts = h.split(',');
+
+  if(parts[0] === 'v2'){
+    if(parts.length < PARAMS.length + 3) return;
+    const seed = parseInt(parts[1],10);
+    if(Number.isFinite(seed)) state.seed = seed;
+    for(let i=0;i<PARAMS.length;i++){
+      const v=parseFloat(parts[i+2]);
+      if(Number.isFinite(v)) state[PARAMS[i].k]=Math.max(0,Math.min(1,v));
+    }
+    const off=1+PARAMS.length;
+    state.rings   = parts[off+1] === '1';
+    state.draft   = parts[off+2] === '1';
+    state.voidbg  = parts[off+3] === '1';
+    state.texShow = parts[off+4] === '1';
+    state.lowOn   = parts[off+5] !== '0';
+    state.midOn   = parts[off+6] !== '0';
+    state.highOn  = parts[off+7] !== '0';
+    if(parts.length > off+8) state.auroraOn = parts[off+8] !== '0';
+    if(parts.length > off+9) state.fieldLinesOn = parts[off+9] === '1';
+    if(parts.length > off+10) state.auroraFootpoints = parts[off+10] === '1';
+    return;
+  }
+
+  /* Legacy 0.5.6 and earlier hashes used one shared cloud amount. */
+  const legacyKeys=['temp','sea','cont','mount','isle','lake','city','cloud','wind','convection',
+                    'atmo','atmoComp','magnet','magTilt','magAzimuth','aurora','star','luminosity','distance'];
+  if(parts.length < legacyKeys.length+2) return;
+  const seed=parseInt(parts[0],10);
+  if(Number.isFinite(seed)) state.seed=seed;
+  let legacyCloud=0.5;
+  for(let i=0;i<legacyKeys.length;i++){
+    const v=parseFloat(parts[i+1]);
+    if(!Number.isFinite(v)) continue;
+    const x=Math.max(0,Math.min(1,v));
+    if(legacyKeys[i]==='cloud') legacyCloud=x; else state[legacyKeys[i]]=x;
+  }
+  state.cloudLow=legacyCloud;
+  state.cloudMid=legacyCloud;
+  state.cloudHigh=legacyCloud;
+  const off=legacyKeys.length;
+  state.rings   = parts[off+1] === '1';
+  state.draft   = parts[off+2] === '1';
+  state.voidbg  = parts[off+3] === '1';
+  state.texShow = parts[off+4] === '1';
+  state.lowOn   = parts[off+5] !== '0';
+  state.midOn   = parts[off+6] !== '0';
+  state.highOn  = parts[off+7] !== '0';
+  if(parts.length > off+8) state.auroraOn = parts[off+8] !== '0';
+  if(parts.length > off+9) state.fieldLinesOn = parts[off+9] === '1';
+  if(parts.length > off+10) state.auroraFootpoints = parts[off+10] === '1';
+}
+
+/* ============ скриншот ============ */
+const shotEl = document.getElementById('shot');
+let shotBlob = null;
+let dlCap = null;   /* capability `downloads` в песочнице артефакта */
+if(window.claude && window.claude.use){
+  window.claude.use('downloads').then(v => { dlCap = v; }).catch(() => {});
+}
+document.getElementById('shotBtn').addEventListener('click', takeShot);
+document.getElementById('shotSave').addEventListener('click', e => {
+  if(dlCap && shotBlob){
+    e.preventDefault();
+    dlCap.save({filename: 'planeta-'+state.seed+'.png', data: shotBlob}).catch(() => {});
+  }
+});
+document.getElementById('shotClose').addEventListener('click', () => {
+  shotEl.classList.remove('on');
+  const img = document.getElementById('shotImg');
+  if(img.src) URL.revokeObjectURL(img.src);
+});
+function takeShot(){
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  const mult = Math.min(2.5, 4096/Math.max(cw,ch));
+  const W = Math.round(cw*mult), H = Math.round(ch*mult);
+  const oldW = canvas.width, oldH = canvas.height;
+  canvas.width = W; canvas.height = H;
+  gl.viewport(0, 0, W, H);
+  drawFrame(lastNow);
+  const px = new Uint8Array(W*H*4);
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  canvas.width = oldW; canvas.height = oldH;
+  gl.viewport(0, 0, oldW, oldH);
+  const c2 = document.createElement('canvas'); c2.width = W; c2.height = H;
+  const ctx = c2.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  const rowB = W*4;
+  for(let y=0; y<H; y++)
+    img.data.set(px.subarray(y*rowB, y*rowB+rowB), (H-1-y)*rowB);
+  ctx.putImageData(img, 0, 0);
+  /* Силовые линии рисуются отдельным прозрачным canvas; включаем их и в PNG. */
+  if((state.fieldLinesOn || state.auroraFootpoints) && magCanvas.width > 0){
+    ctx.drawImage(magCanvas, 0, 0, W, H);
+  }
+  c2.toBlob(b => {
+    shotBlob = b;
+    const url = URL.createObjectURL(b);
+    const im = document.getElementById('shotImg');
+    im.src = url;
+    const a = document.getElementById('shotSave');
+    a.href = url; a.download = 'planeta-'+state.seed+'.png';
+    shotEl.classList.add('on');
+  }, 'image/png');
+}
+
+/* ============ размер и качество ============ */
+const rawDeviceScale = Math.max(1, Number(devicePixelRatio || 1));
+const mobileDevice = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '') ||
+  (matchMedia('(pointer: coarse)').matches && Math.min(innerWidth, innerHeight) < 900);
+const deviceMemory = Number(navigator.deviceMemory || 8);
+
+/* Mobile quality profile. Previous releases treated renderScale as if it were
+   a fraction of DPR and started Android at 0.55..0.72. In reality this value
+   is the number of framebuffer pixels per CSS pixel, so the browser was
+   enlarging an already sub-native image. Stars, terrain and cloud edges all
+   became visibly soft. Keep mobile near CSS-native resolution and spend the
+   saved budget by targeting ~30 fps instead of destroying spatial detail. */
+const SCALE_MAX = mobileDevice
+  ? Math.min(rawDeviceScale, deviceMemory <= 4 ? 1.15 : 1.50)
+  : Math.min(rawDeviceScale, 2.0);
+const SCALE_MIN = mobileDevice ? (deviceMemory <= 4 ? 0.78 : 0.88) : 0.55;
+let renderScale = mobileDevice
+  ? Math.min(SCALE_MAX, deviceMemory <= 4 ? 0.96 : 1.20)
+  : SCALE_MAX;
+console.log('[madPlanet] render profile', {
+  mobile: mobileDevice, deviceMemory, devicePixelRatio: rawDeviceScale,
+  initialScale: renderScale, minScale: SCALE_MIN, maxScale: SCALE_MAX
+});
+let frameCount = 0;
+let resizeDirty = true;
+let renderUniformRevision = 1;
+let appliedUniformRevision = -1;
+function markRenderUniformsDirty(){ renderUniformRevision++; }
+
+/* Не читаем clientWidth/clientHeight внутри drawFrame(): это заставляло браузер
+   проверять layout каждый кадр и, главное, ломало повышенное разрешение PNG-
+   скриншота. ResizeObserver помечает canvas грязным только при реальном resize. */
+function requestCanvasFit(){ resizeDirty = true; }
+function fitCanvas(force=false){
+  if(!resizeDirty && !force) return;
+  resizeDirty = false;
+  const w = Math.max(1, Math.round(canvas.clientWidth * renderScale));
+  const h = Math.max(1, Math.round(canvas.clientHeight * renderScale));
+  if(canvas.width !== w || canvas.height !== h){
+    canvas.width = w; canvas.height = h;
+    gl.viewport(0, 0, w, h);
+  }
+}
+addEventListener('resize', requestCanvasFit);
+if(typeof ResizeObserver !== 'undefined'){
+  new ResizeObserver(requestCanvasFit).observe(canvas);
+}
+
+/* Асинхронный GPU timer. В прежней версии gl.finish() раз в 50 кадров
+   специально останавливал весь GPU-конвейер ради замера времени. Timer query
+   даёт то же измерение через несколько кадров без синхронной пробки. */
+const gpuTimerExt = (webglVersion >= 2) ? gl.getExtension('EXT_disjoint_timer_query_webgl2') : null;
+let gpuTimerQuery = null;
+let gpuTimerPending = false;
+let qualityCooldown = 0;
+let frameMsEwma = 16.7;
+
+function setRenderScale(next){
+  next = Math.max(SCALE_MIN, Math.min(SCALE_MAX, next));
+  next = Math.round(next * 100) / 100;
+  if(Math.abs(next - renderScale) < 0.009) return;
+  renderScale = next;
+  requestCanvasFit();
+}
+function tuneRenderScale(ms){
+  if(!Number.isFinite(ms) || ms <= 0 || document.hidden) return;
+  if(qualityCooldown > 0) return;
+  const target = mobileDevice ? 31.0 : 16.5;
+  if(ms > target*1.16 && renderScale > SCALE_MIN){
+    /* Стоимость fragment shader приблизительно пропорциональна площади,
+       поэтому масштаб корректируем через sqrt(target/current), а не линейно. */
+    const k = Math.max(0.82, Math.min(0.96, Math.sqrt(target/ms)*0.96));
+    setRenderScale(renderScale*k);
+    qualityCooldown = 24;
+  } else if(ms < target*0.68 && renderScale < SCALE_MAX){
+    setRenderScale(renderScale*1.035);
+    qualityCooldown = 40;
+  }
+}
+function pollGpuTimer(){
+  if(!gpuTimerExt || !gpuTimerPending || !gpuTimerQuery) return false;
+  const available = gl.getQueryParameter(gpuTimerQuery, gl.QUERY_RESULT_AVAILABLE);
+  if(!available) return false;
+  const disjoint = gl.getParameter(gpuTimerExt.GPU_DISJOINT_EXT);
+  if(!disjoint){
+    const ns = gl.getQueryParameter(gpuTimerQuery, gl.QUERY_RESULT);
+    tuneRenderScale(ns / 1e6);
+  }
+  gl.deleteQuery(gpuTimerQuery);
+  gpuTimerQuery = null;
+  gpuTimerPending = false;
+  return true;
+}
+function beginGpuTimer(){
+  if(!gpuTimerExt || gpuTimerPending) return false;
+  const q = gl.createQuery();
+  if(!q) return false;
+  gpuTimerQuery = q;
+  gpuTimerPending = true;
+  gl.beginQuery(gpuTimerExt.TIME_ELAPSED_EXT, q);
+  return true;
+}
+function endGpuTimer(){
+  if(gpuTimerExt && gpuTimerPending) gl.endQuery(gpuTimerExt.TIME_ELAPSED_EXT);
+}
+
+/* ============ основной цикл ============ */
+const FOCAL = 0.5/Math.tan((52*Math.PI/180)/2);
+let lastNow = performance.now(), t0 = lastNow;
+
+
+function drawAuroraWebGL(t, pos, camMat, magAxis, sunDir){
+  if(!auroraProg || !state.auroraOn || state.aurora < 0.005 || state.magnet < 0.01 || state.atmo < 0.02) return;
+  const starPhys = starPhysics(state.star, state.luminosity);
+  const distInfo = distanceInfo(state.distance);
+  const starFlux = starPhys.L / Math.max(distInfo.au*distInfo.au, 0.02);
+  gl.useProgram(auroraProg);
+  gl.uniform2f(AU.uRes, canvas.width, canvas.height);
+  gl.uniform1f(AU.uTime, t);
+  gl.uniform3fv(AU.uCamPos, pos);
+  gl.uniformMatrix3fv(AU.uCamMat, false, camMat);
+  gl.uniform1f(AU.uFocal, FOCAL);
+  gl.uniform3fv(AU.uSunDir, sunDir);
+  gl.uniform3fv(AU.uMagAxis, magAxis);
+  gl.uniform1f(AU.uMagField, state.magnet);
+  gl.uniform1f(AU.uAurora, state.aurora);
+  gl.uniform1f(AU.uAtmo, state.atmo);
+  gl.uniform1f(AU.uStarFlux, starFlux);
+  gl.enable(gl.BLEND);
+  gl.blendEquation(gl.FUNC_ADD);
+  gl.blendFunc(gl.ONE, gl.ONE);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.disable(gl.BLEND);
+  gl.useProgram(prog);
+}
+
+function drawFrame(now){
+  if(!prog) return;
+  const t = (now - t0)/1000;
+
+  /* камера */
+  const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const pos = [cam.dist*cp*Math.sin(cam.yaw), cam.dist*sp, cam.dist*cp*Math.cos(cam.yaw)];
+  const fwd = norm3([-pos[0], -pos[1], -pos[2]]);
+  const rgt = norm3(cross3(fwd, [0,1,0]));
+  const up  = cross3(rgt, fwd);
+  const camMat = [rgt[0],rgt[1],rgt[2], up[0],up[1],up[2], fwd[0],fwd[1],fwd[2]];
+
+  const rotS = m3axis(world.axis, -(t*SPIN + world.surfOff));
+  const rotC = m3axis(world.axis, -(t*SPIN*1.35 + world.cloudOff));
+  /* Ярусы движутся с разной скоростью и в разные стороны: нижний обгоняет
+     поверхность, средний отстаёт (дрейф на запад), верхний уносит струйное
+     течение — это и даёт ощущение конвекции. */
+  const rotC2 = m3axis(world.axis, -(t*SPIN*0.72 + world.cloudOff*1.7));
+  const rotC3 = m3axis(world.axis, -(t*SPIN*2.60 + world.cloudOff*2.3));
+  const sunDir = norm3([Math.cos(sunEl)*Math.sin(sunAz), Math.sin(sunEl), Math.cos(sunEl)*Math.cos(sunAz)]);
+
+  gl.uniform2f(U.uRes, canvas.width, canvas.height);
+  gl.uniform1f(U.uTime, t);
+  gl.uniform3fv(U.uCamPos, pos);
+  gl.uniformMatrix3fv(U.uCamMat, false, camMat);
+  gl.uniform1f(U.uFocal, FOCAL);
+  gl.uniform1f(U.uCamDist, cam.dist);
+  gl.uniform1f(U.uPixA, (52*Math.PI/180)/canvas.height);
+  gl.uniformMatrix3fv(U.uRotS, false, rotS);
+  gl.uniformMatrix3fv(U.uRotC, false, rotC);
+  gl.uniformMatrix3fv(U.uRotCInv, false, m3t(rotC));
+  gl.uniformMatrix3fv(U.uRotC2, false, rotC2);
+  gl.uniformMatrix3fv(U.uRotC3, false, rotC3);
+  gl.uniform3fv(U.uSunDir, sunDir);
+
+  /* Большинство параметров неизменны между кадрами. Раньше ~25 uniform calls
+     уходили в драйвер 60 раз/с даже при совершенно неподвижных слайдерах. */
+  const magAxis = currentMagAxis();
+  if(appliedUniformRevision !== renderUniformRevision){
+    gl.uniform3fv(U.uAxis, world.axis);
+    gl.uniform3fv(U.uMilky, world.milky);
+    gl.uniform1f(U.uTemp, state.temp);
+    gl.uniform1f(U.uCloudLow, state.cloudLow);
+    gl.uniform1f(U.uCloudMid, state.cloudMid);
+    gl.uniform1f(U.uCloudHigh, state.cloudHigh);
+    gl.uniform1f(U.uSea, state.sea);
+    gl.uniform1f(U.uCont, state.cont);
+    gl.uniform1f(U.uMount, state.mount);
+    gl.uniform1f(U.uIsle, state.isle);
+    gl.uniform1f(U.uLake, state.lake);
+    gl.uniform1f(U.uCity, state.city);
+    gl.uniform1f(U.uAtmo, state.atmo);
+    const starCol = starTempToColor(state.star);
+    const starPhys = starPhysics(state.star, state.luminosity);
+    const distInfo = distanceInfo(state.distance);
+    gl.uniform3fv(U.uStarCol, starCol);
+    gl.uniform1f(U.uStarRadius, Math.min(2.8, Math.max(0.45, starPhys.R)));
+    gl.uniform1f(U.uStarFlux, starPhys.L / Math.max(distInfo.au*distInfo.au, 0.02));
+    gl.uniform1f(U.uStarDist, distInfo.au);
+    gl.uniform1f(U.uAtmoComp, state.atmoComp);
+    gl.uniform1f(U.uWind, state.wind);
+    gl.uniform1f(U.uConvection, state.convection);
+    gl.uniform1f(U.uMagField, state.magnet);
+    gl.uniform1f(U.uAurora, state.auroraOn ? state.aurora : 0);
+    gl.uniform3fv(U.uMagAxis, magAxis);
+    gl.uniform1f(U.uLowOn, state.lowOn ? 1 : 0);
+    gl.uniform1f(U.uMidOn, state.midOn ? 1 : 0);
+    gl.uniform1f(U.uHighOn, state.highOn ? 1 : 0);
+    gl.uniform1f(U.uRingsOn, state.rings ? 1 : 0);
+    gl.uniform1f(U.uDraft, state.draft ? 1 : 0);
+    gl.uniform1f(U.uVoid, state.voidbg ? 1 : 0);
+    gl.uniformMatrix3fv(U.uRingMat, false, world.ringMat);
+    gl.uniform3fv(U.uSeedS, world.seedS);
+    gl.uniform3fv(U.uSeedC, world.seedC);
+    gl.uniform4fv(U.uCycA, world.cycA);
+    gl.uniform4fv(U.uCycB, world.cycB);
+    appliedUniformRevision = renderUniformRevision;
+  }
+  texOn += (texReady - texOn) * 0.04;
+  const texBlend = state.texShow ? (texOn > 0.995 ? 1 : texOn) : 0;
+  gl.uniform1f(U.uTexOn, texBlend);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  drawAuroraWebGL(t, pos, camMat, magAxis, sunDir);
+  drawMagnetosphereOverlay(t, pos, rgt, up, fwd, magAxis, sunDir);
+}
+
+function loop(now){
+  const dt = Math.min(now - lastNow, 100);
+  lastNow = now;
+  frameMsEwma += (dt-frameMsEwma)*0.06;
+  if(qualityCooldown > 0) qualityCooldown--;
+
+  /* инерция */
+  if(pointers.size === 0){
+    cam.yaw   += cam.vyaw   * dt/1000;
+    cam.pitch += cam.vpitch * dt/1000;
+    cam.pitch = Math.max(-1.35, Math.min(1.35, cam.pitch));
+    const damp = Math.pow(0.0025, dt/1000);
+    cam.vyaw *= damp; cam.vpitch *= damp;
+  }
+  cam.dist += (cam.tDist - cam.dist) * (1 - Math.pow(0.0001, dt/1000));
+
+  fitCanvas();
+  frameCount++;
+  /* Полная программа линкуется в фоне; здесь только опрос готовности.
+     Первые кадры пропускаем: без KHR_parallel_shader_compile опрос сводится
+     к блокирующему getProgramParameter(), и он не должен случиться раньше,
+     чем упрощённый рендер успеет нарисовать и показать первый кадр. */
+  if(frameCount > 2) pollShaderCompile();
+  if(programSwapPending){
+    programSwapPending = false;
+    markRenderUniformsDirty();
+    applyTextureUniforms();
+    /* Замеры от упрощённого рендера не должны задирать масштаб под полный. */
+    frameMsEwma = 16.7;
+    qualityCooldown = 45;
+  }
+  pollGpuTimer();
+
+  /* Пока идёт фоновая линковка, кадры рисует упрощённая программа. Её
+     время не должно управлять renderScale основного шейдера. */
+  const measure = fullShaderDone && gpuTimerExt && !gpuTimerPending && frameCount > 12 && (frameCount % 45 === 17) && !document.hidden;
+  if(measure) beginGpuTimer();
+  drawFrame(now);
+  if(measure) endGpuTimer();
+
+  /* На браузерах без timer-query используем сглаженное фактическое время
+     кадра. Это менее точно из-за VSync, зато полностью без блокировок. */
+  if(fullShaderDone && !gpuTimerExt && frameCount > 40 && frameCount % 45 === 0){
+    tuneRenderScale(frameMsEwma);
+  }
+  requestAnimationFrame(loop);
+}
+
+/* ============ текстуры биомов ============ */
+/* Атлас 4x5 тайлов 512px, порядок слоёв:
+   0 boreal_forest 1 dry_steppe 2 eroded_badlands 3 glacier_ice 4 grassland
+   5 highland_rock 6 rocky_coast 7 rocky_desert 8 salt_flat 9 sandy_coast
+   10 sandy_desert 11 savanna 12 sea_ice 13 snow 14 temperate_forest
+   15 temperate_rock 16 tropical_forest 17 tundra 18 volcanic 19 wetland */
+let texReady = 0, texOn = 0;
+const TEX_N = 20, TEX_S = 512, TEX_COLS = 4;
+let TEX_URI = 'textures/biomes.webp';
+/* WebGL1 не поддерживает texStorage3D / sampler2DArray — текстуры отключены.
+   Проверка теперь только по возможностям контекста: программа может
+   смениться на ходу, когда в фоне долинкуется полный шейдер. */
+const hasTexArray = (webglVersion >= 2 && typeof gl.texStorage3D === 'function');
+let texMeans = null;
+/* Вызывается из adoptProgram(): у новой программы свои локации юниформ. */
+function applyTextureUniforms(){
+  if(!hasTexArray || !U.uTex) return;
+  gl.uniform1i(U.uTex, 0);
+  if(texMeans && U.uTexMean) gl.uniform3fv(U.uTexMean, texMeans);
+}
+if(hasTexArray){
+  const texObj = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, texObj);
+  gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 1, 1, TEX_N);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.uniform1i(U.uTex, 0);
+  function loadBiomeTex(){
+    if(!TEX_URI) return;
+    const img = new Image();
+    img.onload = () => {
+      gl.deleteTexture(texObj);
+      const t = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, t);
+      const levels = 1 + Math.log2(TEX_S);
+      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, levels, gl.RGBA8, TEX_S, TEX_S, TEX_N);
+      const cv = document.createElement('canvas');
+      cv.width = TEX_S; cv.height = TEX_S;
+      const cx = cv.getContext('2d', {willReadFrequently: true});
+      const m1 = document.createElement('canvas'); m1.width = m1.height = 1;
+      const mc = m1.getContext('2d', {willReadFrequently: true});
+      const means = new Float32Array(TEX_N*3);
+      for(let i = 0; i < TEX_N; i++){
+        cx.drawImage(img, (i%TEX_COLS)*TEX_S, ((i/TEX_COLS)|0)*TEX_S, TEX_S, TEX_S, 0, 0, TEX_S, TEX_S);
+        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, TEX_S, TEX_S, 1, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+        mc.clearRect(0, 0, 1, 1);
+        mc.drawImage(cv, 0, 0, TEX_S, TEX_S, 0, 0, 1, 1);
+        const d = mc.getImageData(0, 0, 1, 1).data;
+        means[i*3] = d[0]/255; means[i*3+1] = d[1]/255; means[i*3+2] = d[2]/255;
+      }
+      texMeans = means;
+      gl.uniform3fv(U.uTexMean, means);
+      gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      const aniso = gl.getExtension('EXT_texture_filter_anisotropic');
+      if(aniso) gl.texParameterf(gl.TEXTURE_2D_ARRAY, aniso.TEXTURE_MAX_ANISOTROPY_EXT,
+        Math.min(8, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+      texReady = 1;
+    };
+    img.src = TEX_URI;
+  }
+  loadBiomeTex();
+} else {
+  console.warn('[madPlanet] Текстуры биомов недоступны (WebGL1)');
+  gl.uniform1i(U.uTex, 0);
+}
+
+/* ============ старт ============ */
+loadHash();
+deriveWorld();
+syncUI();
+fitCanvas();
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>

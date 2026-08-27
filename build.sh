@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Build single index.html from modular source files.
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+OUT="${1:-$DIR/index.html}"
+VERSION="$(sed -nE 's/^VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+)[[:space:]]*$/\1/p' "$DIR/VERSION.txt" | head -1)"
+[ -n "$VERSION" ] || { echo 'VERSION.txt invalid' >&2; exit 1; }
+VERT='#version 300 es
+layout(location=0) in vec2 aPos;
+void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }'
+FRAG="#version 300 es
+$(cat "$DIR/shaders/header.glsl")
+$(cat "$DIR/shaders/noise.glsl")
+$(cat "$DIR/shaders/terrain.glsl")
+$(cat "$DIR/shaders/clouds.glsl")
+$(cat "$DIR/shaders/textures.glsl")
+$(cat "$DIR/shaders/atmosphere.glsl")
+$(cat "$DIR/shaders/rings.glsl")
+$(cat "$DIR/shaders/fog.glsl")
+$(cat "$DIR/shaders/lightning.glsl")
+$(cat "$DIR/shaders/surface.glsl")
+$(cat "$DIR/shaders/stars.glsl")
+$(cat "$DIR/shaders/sphere.glsl")
+$(cat "$DIR/shaders/main.glsl")"
+COMPAT_FRAG="#version 300 es
+$(cat "$DIR/shaders/compat.glsl")"
+AURORA_FRAG="#version 300 es
+$(cat "$DIR/shaders/aurora-pass.glsl")"
+{
+  cat "$DIR/index.src.html"
+  printf '\nconst APP_VERSION = %q;\n' "$VERSION" | sed "s/^const APP_VERSION = /const APP_VERSION = '/; s/;$/';/"
+  printf '\nconst VERT = `%s`;\n' "$VERT"
+  printf '\nconst FRAG = `%s`;\n' "$FRAG"
+  printf '\nconst COMPAT_FRAG = `%s`;\n' "$COMPAT_FRAG"
+  printf '\nconst AURORA_FRAG = `%s`;\n' "$AURORA_FRAG"
+  for f in js/gl-init.js js/math.js js/hydrology.js js/state.js js/camera.js js/magnetosphere.js js/ui.js js/screenshot.js js/render.js; do cat "$DIR/$f"; printf '\n'; done
+  printf '</script>\n</body>\n</html>\n'
+} > "$OUT"
+node -e "const fs=require('fs');const s=fs.readFileSync(process.argv[1],'utf8');if((s.match(/<script(?:\\s|>)/gi)||[]).length!==1||(s.match(/<\\/script>/gi)||[]).length!==1)process.exit(2);if(!s.includes(\"const APP_VERSION = '$VERSION'\"))process.exit(3);" "$OUT"
+echo "Built $OUT ($(wc -c < "$OUT") bytes), version $VERSION"

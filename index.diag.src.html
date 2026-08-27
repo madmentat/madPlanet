@@ -1,0 +1,230 @@
+<title>madPlanet</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;500&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --void:#05070c;
+    --glass:rgba(13,20,32,.58);
+    --line:rgba(159,194,255,.14);
+    --txt:#e8edf5;
+    --mut:#8b96a8;
+    --acc:#9fc2ff;
+    --warm:#e8a35c;
+    --sans:'IBM Plex Sans',system-ui,'Segoe UI',sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;
+    --disp:'Unbounded',var(--sans);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{background:var(--void);color:var(--txt);font-family:var(--sans);font-size:13px;
+       -webkit-user-select:none;user-select:none;touch-action:none}
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+  #gl.grab{cursor:grabbing}
+
+  /* ── вордмарка ─────────────────────────────── */
+  .mark{position:fixed;top:max(18px,env(safe-area-inset-top));left:22px;pointer-events:none;z-index:5}
+  .mark h1{font-family:var(--disp);font-weight:300;font-size:13px;letter-spacing:.42em;
+           color:rgba(232,237,245,.88);text-shadow:0 1px 12px rgba(0,0,0,.7)}
+  .mark .sub{margin-top:6px;font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--mut)}
+  .mark .sub b{color:var(--warm);font-weight:500}
+
+  /* ── панель ────────────────────────────────── */
+   .panel{position:fixed;z-index:6;right:16px;top:16px;bottom:16px;width:292px;max-height:calc(100vh - 32px);
+          background:var(--glass);border:1px solid var(--line);border-radius:14px;
+          backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+          padding:14px 16px 16px;box-shadow:0 8px 40px rgba(0,0,0,.45);
+          display:flex;flex-direction:column;overflow:hidden;
+          transition:transform .35s cubic-bezier(.4,0,.2,1),opacity .35s}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .panel-head span{font-size:10px;letter-spacing:.28em;color:var(--mut);text-transform:uppercase}
+  .fold{background:none;border:none;color:var(--mut);cursor:pointer;padding:4px;line-height:0;border-radius:6px}
+  .fold:hover{color:var(--txt)}
+  .fold svg{transition:transform .3s}
+   .rows{display:flex;flex-direction:column;gap:2px;transition:opacity .25s;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+  .paramgroup{border-top:1px solid rgba(159,194,255,.09);margin-top:6px;padding-top:5px}.paramgroup:first-child{border-top:0;margin-top:0}
+  .grouphead{width:100%;display:flex;justify-content:space-between;align-items:center;border:0;background:none;color:var(--mut);padding:7px 0 5px;font:500 9.5px var(--sans);letter-spacing:.18em;text-transform:uppercase;cursor:pointer}.grouphead b{font-size:12px;transition:transform .2s}.paramgroup.active .grouphead b{transform:rotate(180deg)}.paramgroup:not(.active) .groupbody{display:none}
+  .row label{display:block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);margin-bottom:1px}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;cursor:pointer;--fill:50%}
+  input[type=range]::-webkit-slider-runnable-track{height:2px;border-radius:1px;
+    background:linear-gradient(90deg,var(--acc) var(--fill),rgba(255,255,255,.13) var(--fill))}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;
+    background:#dce8ff;margin-top:-4.5px;box-shadow:0 0 8px rgba(159,194,255,.55)}
+  input[type=range]::-moz-range-track{height:2px;border-radius:1px;
+    background:linear-gradient(90deg,var(--acc) var(--fill),rgba(255,255,255,.13) var(--fill))}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border:none;border-radius:50%;
+    background:#dce8ff;box-shadow:0 0 8px rgba(159,194,255,.55)}
+  input[type=range]:focus-visible{outline:1px solid var(--acc);outline-offset:2px;border-radius:4px}
+
+  .seedrow{display:flex;gap:8px;align-items:center;margin-top:10px}
+  .seedrow label{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+  #seed{flex:1;min-width:0;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;
+        color:var(--txt);font-family:var(--mono);font-size:12px;padding:6px 9px;font-variant-numeric:tabular-nums}
+  #seed:focus-visible{outline:1px solid var(--acc)}
+  .icobtn{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;color:var(--acc);
+          width:30px;height:30px;cursor:pointer;line-height:0;flex:none;display:grid;place-items:center}
+  .icobtn:hover{background:rgba(159,194,255,.14)}
+  .icobtn:focus-visible{outline:1px solid var(--acc)}
+
+  .togglerow{display:flex;align-items:center;justify-content:space-between;margin-top:12px}
+  .togglerow span{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+  .tg{position:relative;width:34px;height:18px;flex:none;cursor:pointer}
+  .tg input{position:absolute;opacity:0;inset:0;cursor:pointer}
+  .tg i{position:absolute;inset:0;border-radius:9px;background:rgba(255,255,255,.12);transition:background .2s}
+  .tg i::after{content:'';position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;
+               background:#aab6c8;transition:transform .2s,background .2s}
+  .tg input:checked+i{background:rgba(159,194,255,.4)}
+  .tg input:checked+i::after{transform:translateX(16px);background:#dce8ff}
+  .tg input:focus-visible+i{outline:1px solid var(--acc);outline-offset:2px}
+
+  .btns{display:flex;gap:8px;margin-top:14px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;
+       background:rgba(159,194,255,.08);border:1px solid rgba(159,194,255,.3);border-radius:9px;
+       color:#cfe0ff;font-family:var(--sans);font-size:11.5px;letter-spacing:.05em;
+       padding:9px 4px;cursor:pointer;transition:background .15s}
+  .btn:hover{background:rgba(159,194,255,.18)}
+  .btn:focus-visible{outline:1px solid var(--acc)}
+  .btn svg{flex:none}
+
+  .panel.min .rows,.panel.min .seedrow,.panel.min .togglerow,.panel.min .btns{display:none}
+  .panel.min{width:auto;padding:10px 14px}
+  .panel.min .panel-head{margin:0;gap:14px}
+  .panel.min .fold svg{transform:rotate(180deg)}
+
+  /* ── подсказка ─────────────────────────────── */
+  .hint{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);
+        z-index:4;pointer-events:none;font-size:11px;letter-spacing:.12em;color:rgba(139,150,168,.9);
+        background:rgba(5,7,12,.35);padding:7px 16px;border-radius:20px;backdrop-filter:blur(6px);
+        animation:hintfade 1s ease 8s forwards;white-space:nowrap}
+  @keyframes hintfade{to{opacity:0}}
+
+  /* ── модал скриншота ───────────────────────── */
+  .shot{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
+        flex-direction:column;gap:16px;background:rgba(5,7,12,.88);backdrop-filter:blur(10px);padding:24px}
+  .shot.on{display:flex}
+  .shot img{max-width:min(92vw,1200px);max-height:70vh;border-radius:10px;border:1px solid var(--line);
+            box-shadow:0 20px 80px rgba(0,0,0,.6)}
+  .shot .srow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .shot a.btn{flex:none;text-decoration:none;padding:10px 22px}
+  .shot .note{font-size:11px;color:var(--mut);text-align:center;max-width:420px;line-height:1.5}
+
+  .err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:30;
+       background:var(--void);color:var(--mut);font-size:14px;text-align:center;padding:30px;line-height:1.6}
+
+  /* ── мобильный ─────────────────────────────── */
+  @media (max-width:700px){
+    .panel{right:10px;left:10px;top:auto;bottom:max(10px,env(safe-area-inset-bottom));
+           transform:none;width:auto;max-height:52vh;overflow-y:auto}
+    .rows{display:grid;grid-template-columns:1fr 1fr;column-gap:16px}
+    .hint{bottom:auto;top:max(18px,env(safe-area-inset-top));left:auto;right:14px;transform:none}
+    .mark{left:14px}
+    .panel.min{left:auto}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .panel,.fold svg{transition:none}
+  }
+</style>
+
+<canvas id="gl"></canvas>
+
+<div class="mark">
+  <h1>madPlanet</h1>
+  <div class="sub">МИР <b id="seedLabel">№ —</b></div>
+</div>
+
+<div class="panel" id="panel">
+  <div class="panel-head">
+    <span>Параметры мира</span>
+    <button class="fold" id="fold" aria-label="Свернуть панель">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+  <div class="rows" id="rows"></div>
+  <div class="seedrow">
+    <label for="seed">Сид</label>
+    <input id="seed" inputmode="numeric" autocomplete="off">
+    <button class="icobtn" id="reroll" aria-label="Новый сид" title="Новый сид">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11.5 7a4.5 4.5 0 1 1-1.3-3.2M11.5 1v3h-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+  <div class="togglerow">
+    <span>Кольца</span>
+    <label class="tg"><input type="checkbox" id="rings"><i></i></label>
+  </div>
+  <div class="togglerow">
+    <span title="Биомные текстуры поверхности (увеличивает загрузку ~1 МБ)">Текстуры</span>
+    <label class="tg"><input type="checkbox" id="texOn"><i></i></label>
+  </div>
+  <div class="togglerow">
+    <span title="Низкие облака (кумулус/стратус)">Низкие облака</span>
+    <label class="tg"><input type="checkbox" id="lowOn" checked><i></i></label>
+  </div>
+  <div class="togglerow">
+    <span title="Средние облака (альто-)">Средние облака</span>
+    <label class="tg"><input type="checkbox" id="midOn" checked><i></i></label>
+  </div>
+  <div class="togglerow">
+    <span title="Высокие облака (цирусы)">Высокие облака</span>
+    <label class="tg"><input type="checkbox" id="highOn" checked><i></i></label>
+  </div>
+  <div class="togglerow">
+    <span title="Гасит мелкий рельеф, текстуры, перистые облака и туманности">Черновик</span>
+    <label class="tg"><input type="checkbox" id="draft"><i></i></label>
+  </div>
+  <div class="togglerow">
+    <span title="Заливает космос чёрным: чище для скриншотов и монтажа">Чёрный фон</span>
+    <label class="tg"><input type="checkbox" id="voidbg"><i></i></label>
+  </div>
+  <div class="btns">
+    <button class="btn" id="rand">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="1.5" width="11" height="11" rx="2.5" stroke="currentColor" stroke-width="1.2"/><circle cx="5" cy="5" r="1" fill="currentColor"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="9" cy="5" r="1" fill="currentColor"/><circle cx="5" cy="9" r="1" fill="currentColor"/></svg>
+      Случайный мир
+    </button>
+    <button class="btn" id="shotBtn">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="3.5" width="11" height="8.5" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="7" cy="7.7" r="2.2" stroke="currentColor" stroke-width="1.2"/><path d="M5 3.5l1-1.8h2l1 1.8" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+      Скриншот
+    </button>
+  </div>
+</div>
+
+<div class="hint" id="hint">лкм — планета&ensp;·&ensp;пкм — солнце&ensp;·&ensp;колесо или щипок — зум</div>
+
+<div class="shot" id="shot">
+  <img id="shotImg" alt="Скриншот планеты">
+  <div class="srow">
+    <a class="btn" id="shotSave" download="planeta.png">Сохранить PNG</a>
+    <button class="btn" id="shotClose">Закрыть</button>
+  </div>
+  <div class="note">Если кнопка сохранения не сработала — нажмите на изображение правой кнопкой (или удерживайте на телефоне) и выберите «Сохранить изображение».</div>
+</div>
+
+<div class="err" id="err">Для рендеринга планеты нужен WebGL2.<br>Обновите браузер или включите аппаратное ускорение.</div>
+
+<script>
+
+'use strict';
+
+<script>
+'use strict';
+function _log(msg){ 
+  var d=document.getElementById('diag'); 
+  if(d) d.textContent += msg + '\n'; 
+  console.log('[DIAG] ' + msg);
+}
+function _err(msg){ 
+  var d=document.getElementById('diag'); 
+  if(d){ d.textContent += 'ERROR: ' + msg + '\n'; d.style.color='#f44'; }
+  console.error('[DIAG] ' + msg);
+}
+_log('diag script loaded');
+_log('devicePixelRatio=' + devicePixelRatio);
+_log('innerWidth=' + innerWidth + ' innerHeight=' + innerHeight);
+</script>
+
+_log('main script block reached');
+/* ============================================================
+   madPlanet — procedural planet generator
+   Полноэкранный рейтрейс сферы в фрагментном шейдере WebGL2.
+   ============================================================ */
+

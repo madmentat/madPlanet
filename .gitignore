@@ -1,0 +1,26 @@
+# Промежуточные файлы сборки и деплоя
+.built-script.js
+index.deploy-build.tmp.html
+*.tmp.html
+
+# Временные сборки для замеров и сравнений
+index.new.html
+index.old-clouds.html
+bench.html
+bench-old.html
+perf-probe.html
+gpucheck.html
+
+# Архивы релизов собираются, а не хранятся
+madPlanet-*.zip
+
+# Локальные настройки инструментов
+.claude/settings.local.json
+
+# ОС и редакторы
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.vscode/
+.idea/
