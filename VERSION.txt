@@ -1,4 +1,4 @@
-VERSION 0.5.35
-Base: 0.5.34
-Changes: planet physics scaffold v1 - base age, radius, interior type, rotation period and axial tilt; volcanism grouped with slow planet causes; first-order density/mass/gravity/escape diagnostics. Age/interior/rotation are not yet forced into volcanism, dynamo, seasons or weather until dedicated models are implemented.
+VERSION 0.5.36
+Base: 0.5.35
+Changes: atmosphere inventories v1 - gases are independent absolute column inventories; adding one gas no longer removes the others; surface pressure, composition, molecular weight, density and scale height are derived from inventories and gravity. Legacy atmo is now a hidden compatibility proxy and old links migrate into v5 inventory state.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
