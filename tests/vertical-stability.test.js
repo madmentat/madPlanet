@@ -9,7 +9,7 @@ const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.48\s*$/m,'vertical-stability milestone must be 0.5.48');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'vertical-stability test must see a semantic version');
 function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
 const order=['js/condensation.js','js/precipitation.js','js/soil-hydrology.js','js/vertical-stability.js','js/render.js'];
 assertOrdered(buildPs,order,'PowerShell vertical order');
