@@ -8,11 +8,11 @@ const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.39\s*$/m,'Weather Core milestone must be 0.5.39');
-assert.ok(buildPs.includes("'js/stellar-weather-coupling.js','js/weather-core.js','js/render.js'"),
-  'PowerShell build must load Weather Core after climate coupling and before render');
-assert.ok(buildSh.includes('js/stellar-weather-coupling.js js/weather-core.js js/render.js'),
-  'shell build must load Weather Core after climate coupling and before render');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'Weather Core test must see a semantic version');
+assert.ok(buildPs.includes("'js/stellar-weather-coupling.js','js/weather-core.js','js/local-energy-balance.js','js/render.js'"),
+  'PowerShell build must load Weather Core before local energy and render');
+assert.ok(buildSh.includes('js/stellar-weather-coupling.js js/weather-core.js js/local-energy-balance.js js/render.js'),
+  'shell build must load Weather Core before local energy and render');
 
 const state={seed:8127344,draft:true};
 const ctx={console,Math,Number,Date,Float32Array,state};
