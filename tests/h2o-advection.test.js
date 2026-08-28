@@ -12,11 +12,11 @@ const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.43\s*$/m,'H2O advection milestone must be 0.5.43');
-assert.ok(buildPs.includes("'js/baric-field.js','js/wind-dynamics.js','js/h2o-advection.js','js/render.js'"),
-  'PowerShell build must load H2O transport after wind and before render');
-assert.ok(buildSh.includes('js/baric-field.js js/wind-dynamics.js js/h2o-advection.js js/render.js'),
-  'shell build must load H2O transport after wind and before render');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'H2O advection test must see a semantic version');
+assert.ok(buildPs.includes("'js/baric-field.js','js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/render.js'"),
+  'PowerShell build must load H2O transport after wind and before condensation/render');
+assert.ok(buildSh.includes('js/baric-field.js js/wind-dynamics.js js/h2o-advection.js js/condensation.js js/render.js'),
+  'shell build must load H2O transport after wind and before condensation/render');
 
 const state={seed:123,draft:true,sea:0.58,cont:0.45,tect:0.65,star:0.43,luminosity:0.43};
 const world={
@@ -50,16 +50,13 @@ assert.ok(ctx.weatherCoreFinite(core),'H2O-extended Weather Core must contain no
 
 const target=climate.h2oBar*1e5/climate.gravityMS2;
 assert.ok(Math.abs(ctx.h2oAreaMean(core,core.vaporColumn)-target)<2e-4,
-  'initial local vapor must exactly match the global atmospheric H2O reservoir');
+  'standalone H2O layer must initialize to the global atmospheric reservoir');
 
-/* Same macro terrain, higher sea level: more cells must become water without
-   rebuilding an unrelated weather morphology. */
 state.sea=0.20;ctx.h2oRefreshSurfaceWater(core);const lowSea=ctx.h2oAreaMean(core,core.surfaceWaterFraction);
 state.sea=0.80;ctx.h2oRefreshSurfaceWater(core);const highSea=ctx.h2oAreaMean(core,core.surfaceWaterFraction);
 assert.ok(highSea>lowSea+0.10,'raising sea level must monotonically increase surface-water area');
 state.sea=0.58;ctx.h2oRefreshSurfaceWater(core);
 
-/* Pure advection conserves area-weighted vapor mass and moves it downwind. */
 core.vaporColumn.fill(0);core.windStateU.fill(0);core.windStateV.fill(0);core.windU.fill(0);core.windV.fill(0);
 const e=0,i=core.h2oEdgeI[e],j=core.h2oEdgeJ[e];
 core.vaporColumn[i]=100;
@@ -71,7 +68,6 @@ const mass1=ctx.h2oAreaMean(core,core.vaporColumn);
 assert.ok(moved>0&&core.vaporColumn[j]>0,'wind must carry vapor into a downwind neighbour');
 assert.ok(Math.abs(mass1-mass0)<2e-5,'finite-volume H2O advection must conserve area-weighted vapor mass');
 
-/* Warm liquid water evaporates; frozen water does not. */
 core.surfaceWaterFraction.fill(0);core.surfaceWaterFraction[i]=1;core.vaporColumn.fill(0);
 core.surfaceTemp.fill(300);core.airTemp.fill(295);core.windStateU.fill(8);core.windStateV.fill(0);
 ctx.h2oApplyEvaporation(core,300,climate);
@@ -79,24 +75,24 @@ assert.ok(core.evaporationRate[i]>0&&core.vaporColumn[i]>0,'warm liquid surface 
 core.vaporColumn.fill(0);core.surfaceTemp.fill(250);ctx.h2oApplyEvaporation(core,300,climate);
 assert.ok(core.evaporationRate[i]<1e-12,'frozen surface must suppress liquid-water evaporation');
 
-/* Relative humidity is derived from local vapor and local temperature. */
 core.vaporColumn.fill(20);core.airTemp.fill(300);core.airTemp[i]=270;core.airTemp[j]=310;
 ctx.h2oRefreshRelativeHumidity(core,climate);
 assert.ok(core.relativeHumidity[i]>core.relativeHumidity[j],
   'same vapor column must be relatively wetter in colder air');
 
-/* Arbitrary spatial redistribution is reconciled to the authoritative global
-   atmospheric reservoir until 0.5.44 introduces local condensation. */
+/* The standalone 0.5.43 transport module still exposes its vapor-only
+   normalizer. 0.5.44 overrides that hook in the assembled application to
+   preserve vapor+cloud together. */
 for(let n=0;n<core.count;n++) core.vaporColumn[n]=1+(n%17);
 ctx.h2oNormalizeGlobalVapor(core,climate);
 assert.ok(Math.abs(ctx.h2oAreaMean(core,core.vaporColumn)-target)<2e-4,
-  '0.5.43 must preserve the global H2O reservoir owned by the water budget');
+  'H2O transport must provide a deterministic global-reservoir normalization hook');
 
 const live=ctx.weatherCoreCreate(77,12,climate,axis);
 for(let n=0;n<8;n++) ctx.weatherCoreStep(live,300,climate,axis);
 assert.ok(ctx.weatherCoreFinite(live),'coupled energy/baric/wind/H2O ticks must remain finite');
 assert.ok(Math.abs(ctx.h2oAreaMean(live,live.vaporColumn)-target)<2e-4,
-  'coupled weather ticks must not drift global atmospheric H2O mass');
+  'standalone H2O transport ticks must not drift their atmospheric vapor target');
 assert.ok(live.relativeHumidity.some(v=>v>0),'physical relative humidity field must remain populated');
 assert.ok(live.evaporationRate.some(v=>v>0),'Earth-like warm water should create a non-zero evaporation source');
 
@@ -104,8 +100,8 @@ assert.ok(h2oSrc.includes('windStateU')&&h2oSrc.includes('h2oAdvectConservative'
   'H2O transport must consume the real 0.5.42 wind field');
 assert.ok(h2oSrc.includes('world.seedS')&&h2oSrc.includes('h2oMacroTerrainHeight'),
   'evaporation geography must derive from the terrain macro field, not random cloud noise');
-assert.ok(h2oSrc.includes('0.5.44 replaces that')&&h2oSrc.includes('h2oNormalizeGlobalVapor'),
-  'temporary global phase closure must be explicit until local condensation exists');
+assert.ok(h2oSrc.includes('h2oNormalizeGlobalVapor'),
+  'H2O transport must expose the normalization hook extended by condensation');
 assert.ok(!h2oSrc.includes('requestAnimationFrame'),'H2O physics must stay on the slow fixed Weather Core clock');
 
 console.log('h2o-advection.test.js: OK');
