@@ -31,6 +31,7 @@ node tests/h2o-advection.test.js
 node tests/condensation.test.js
 node tests/precipitation.test.js
 node tests/orographic-lift.test.js
+node tests/soil-hydrology.test.js
 node tests/touch-ux.test.js
 node tests/chromium-compat.test.js
 node tests/hydrology.test.js
