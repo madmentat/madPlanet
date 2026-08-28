@@ -9,10 +9,10 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'Weather Core test must see a semantic version');
-assert.ok(buildPs.includes("'js/stellar-weather-coupling.js','js/weather-core.js','js/local-energy-balance.js','js/baric-field.js','js/render.js'"),
-  'PowerShell build must load Weather Core before local energy, baric field and render');
-assert.ok(buildSh.includes('js/stellar-weather-coupling.js js/weather-core.js js/local-energy-balance.js js/baric-field.js js/render.js'),
-  'shell build must load Weather Core before local energy, baric field and render');
+function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
+const order=['js/stellar-weather-coupling.js','js/weather-core.js','js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/render.js'];
+assertOrdered(buildPs,order,'PowerShell Weather Core order');
+assertOrdered(buildSh,order,'shell Weather Core order');
 
 const state={seed:8127344,draft:true};
 const ctx={console,Math,Number,Date,Float32Array,state};
