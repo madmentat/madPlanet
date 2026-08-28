@@ -19,6 +19,7 @@ node tests/param-model.test.js
 node tests/star-orbit.test.js
 node tests/planet-physics.test.js
 node tests/atmosphere-inventory.test.js
+node tests/water-budget.test.js
 node tests/touch-ux.test.js
 node tests/chromium-compat.test.js
 node tests/hydrology.test.js
