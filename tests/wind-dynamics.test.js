@@ -12,10 +12,10 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'wind dynamics test must see a semantic version');
-assert.ok(buildPs.includes("'js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/h2o-advection.js','js/render.js'"),
-  'PowerShell build must load wind dynamics before H2O transport and render');
-assert.ok(buildSh.includes('js/local-energy-balance.js js/baric-field.js js/wind-dynamics.js js/h2o-advection.js js/render.js'),
-  'shell build must load wind dynamics before H2O transport and render');
+assert.ok(buildPs.includes("'js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/render.js'"),
+  'PowerShell build must load wind dynamics before H2O/condensation and render');
+assert.ok(buildSh.includes('js/local-energy-balance.js js/baric-field.js js/wind-dynamics.js js/h2o-advection.js js/condensation.js js/render.js'),
+  'shell build must load wind dynamics before H2O/condensation and render');
 
 const state={seed:123,draft:true,sea:0.58,star:0.43,luminosity:0.43,tect:0.80};
 const world={
