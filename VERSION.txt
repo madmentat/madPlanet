@@ -1,4 +1,4 @@
-VERSION 0.5.45
-Base: 0.5.44
-Changes: local Weather Core precipitation v1 - mature physical cloud condensate now autoconverts into real rain/snow rates, removes mass from cloudWaterState, and returns it to the surface. Land precipitation is retained as local liquid/snow water columns; rain over the macro-ocean returns directly to the bulk condensed reservoir. Retained land water occupies part of the mobile H2O closure so the next tick cannot recreate atmospheric water on top of precipitation. Landed liquid water can re-evaporate and warm snow can melt as minimal bridge processes; soil moisture/runoff remain 0.5.47 and detailed snow/ice physics remains 0.5.59.
+VERSION 0.5.46
+Base: 0.5.45
+Changes: local Weather Core orographic lift/rain-shadow v1 - the existing tectonic orographic resistance field is differentiated on the cubed-sphere neighbour stencil into a physical terrain-slope proxy and projected onto the resolved tangent wind to estimate upslope/down-slope vertical motion. Upslope flow applies bounded dry/moist adiabatic cooling before the existing saturation/condensation stage; descending flow warms the air and raises its saturation deficit, so windward cloud/precipitation and leeward rain shadow emerge through the already mass-conserving H2O phase chain rather than by deleting moisture. No new procedural weather morphology or terrain CPU rebuild is introduced.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
