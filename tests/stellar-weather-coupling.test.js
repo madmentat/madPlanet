@@ -9,11 +9,11 @@ const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
-assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m);
-assert.ok(buildPs.includes("'js/climate-regimes.js','js/stellar-weather-coupling.js','js/render.js'"),
-  'PowerShell build must apply stellar/weather bridge after climate and before render');
-assert.ok(buildSh.includes('js/climate-regimes.js js/stellar-weather-coupling.js js/render.js'),
-  'shell build must apply stellar/weather bridge after climate and before render');
+assert.match(version,/^VERSION\s+0\.5\.39\s*$/m);
+assert.ok(buildPs.includes("'js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/render.js'"),
+  'PowerShell build must apply stellar/weather bridge before Weather Core and render');
+assert.ok(buildSh.includes('js/climate-regimes.js js/stellar-weather-coupling.js js/weather-core.js js/render.js'),
+  'shell build must apply stellar/weather bridge before Weather Core and render');
 
 function clamp01(x){return Math.max(0,Math.min(1,Number(x)||0));}
 function pivotLogSlider(v,pivot,lo,hi){
@@ -23,9 +23,10 @@ function pivotLogSlider(v,pivot,lo,hi){
 }
 function habitableZoneForStar(T,L){return {conservativeInner:Math.sqrt(L/1.1),conservativeOuter:Math.sqrt(L/0.35),optimisticInner:Math.sqrt(L/1.7),optimisticOuter:Math.sqrt(L/0.32),approx:T>7200,flux:{}};}
 function hzStatus(au,hz){return {code:au<hz.conservativeInner?'hot':'conservative',label:au<hz.conservativeInner?'горячее HZ':'зона Златовласки'};}
-const state={star:0.38,luminosity:0.43,distance:0.51,temp:0.52,gasH2O:0.004};
+const state={star:0.38,luminosity:0.43,distance:0.51,temp:0.52,gasH2O:0.004,atmo:0.60};
 const PARAMS=[{k:'star',def:0.38}];
 let steamFraction=0.004;
+let atmosphereColumn=1.03;
 let climate={C:15,T:288.15,S:1,iceArea:0.02,waterAvail:1,moistIndex:0.02,partialPressures:{h2o:0.004}};
 const transientKeys=['snowAlt','cloudLow','cloudMid','cloudHigh','wind','convection','storm'];
 for(const k of transientKeys) state[k]=0.5;
@@ -36,6 +37,9 @@ const ctx={
   tempToSlider:C=>Math.max(0,Math.min(1,(C+78)/175)),
   climateModel:()=>climate,
   gasFractions:()=>({gasH2O:steamFraction}),
+  gasInventoryTotal:()=>atmosphereColumn,
+  atmosphereGravityEarth:()=>1,
+  updateLegacyAtmoProxy:()=>state.atmo,
   atmoCompFromGases:()=>0,
   TRANSIENT_DERIVED_KEYS:transientKeys,
   TRANSIENT_TAU:{snowAlt:14,cloudLow:8,cloudMid:9,cloudHigh:10,wind:6,convection:7,storm:8},
@@ -93,6 +97,10 @@ assert.ok(snowTargets.wind>0.4,'strong cold forcing still needs active global ci
 
 steamFraction=0.8;
 assert.ok(ctx.atmoCompFromGases()>0.4,'steam-dominated greenhouse must no longer remain Earth-blue in haze adapter');
+atmosphereColumn=20;
+ctx.updateLegacyAtmoProxy();
+assert.ok(state.atmo>1.5,'real multi-atmosphere inventory must remain visibly thicker than old renderer cap');
+assert.ok(state.atmo<=3,'visual atmosphere proxy must stay bounded for shader stability');
 assert.ok(src.includes('No stellar age is inferred here'),'module must explicitly avoid inventing a unique stellar age from class');
 
 console.log('stellar-weather-coupling.test.js: OK');
