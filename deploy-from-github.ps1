@@ -3,8 +3,12 @@
 # Windows PowerShell 5.1 compatible. ASCII-only source.
 #
 #   .\deploy-from-github.ps1                          -- develop to the server
+#   .\deploy-from-github.ps1 -List                    -- what branches exist up there
 #   .\deploy-from-github.ps1 -Branch snapshot/0.5.30  -- roll back to a snapshot
 #   .\deploy-from-github.ps1 -KeepClone               -- leave the clone to look at
+#
+# If .ps1 files will not start at all, use deploy-from-github.cmd instead: it
+# asks for an execution policy exemption for its own process only.
 #
 # The branch is cloned into a temporary directory and built there. The working
 # directory is neither read nor written, so a half-finished experiment lying on
@@ -16,7 +20,8 @@ param(
   [string]$Branch = 'develop',
   [string]$Remote = 'origin',
   [string]$SshHost = 'mimo-update',
-  [switch]$KeepClone
+  [switch]$KeepClone,
+  [switch]$List
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'madlib.ps1')
@@ -26,6 +31,23 @@ if([string]::IsNullOrWhiteSpace($Repo)) {
   try { $Repo = Invoke-Git @('-C', $PSScriptRoot, 'remote', 'get-url', $Remote) }
   catch { throw "cannot read remote '$Remote'; pass -Repo explicitly" }
   if([string]::IsNullOrWhiteSpace($Repo)) { throw "remote '$Remote' has no URL; pass -Repo explicitly" }
+}
+
+# Ask what is actually up there before cloning. Otherwise a branch name that
+# does not exist comes back as "git clone failed with exit code 128", which
+# says nothing about what you could have meant instead.
+$branches = @()
+foreach($line in ((Invoke-Git @('ls-remote', '--heads', $Repo)) -split "`n")) {
+  $m = [regex]::Match($line, 'refs/heads/(.+)$')
+  if($m.Success) { $branches += $m.Groups[1].Value.Trim() }
+}
+if($List) {
+  Write-Host "[madPlanet] branches on ${Repo}:"
+  foreach($b in ($branches | Sort-Object)) { Write-Host "  $b" }
+  return
+}
+if($branches.Count -gt 0 -and ($branches -notcontains $Branch)) {
+  throw ("branch '$Branch' does not exist on the remote. Available: " + (($branches | Sort-Object) -join ', '))
 }
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -39,8 +61,16 @@ try {
   $subject = Invoke-Git @('-C', $work, 'log', '-1', '--pretty=%s')
   Write-Host "[madPlanet] $Branch -> $head  $subject"
 
+  # The version comes from the branch, not from the desk. Worth saying out
+  # loud when the two differ: that is exactly the case where you would
+  # otherwise assume you had published what you were looking at.
   $version = Get-MadVersion $work
   Write-Host "[madPlanet] version $version"
+  $localVersion = $null
+  try { $localVersion = Get-MadVersion $PSScriptRoot } catch { }
+  if($localVersion -and $localVersion -ne $version) {
+    Write-Host "[madPlanet] note: working directory holds $localVersion, publishing $version from $Branch"
+  }
 
   $built = Join-Path $work 'index.deploy-build.tmp.html'
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $work 'build.ps1') -Out $built

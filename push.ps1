@@ -7,6 +7,9 @@
 #   .\push.ps1 -Branch snapshot/0.5.30  -- to another branch
 #   .\push.ps1 -NoBuild                 -- push without rebuilding index.html
 #
+# If .ps1 files will not start at all, use push.cmd instead: it asks for an
+# execution policy exemption for its own process only.
+#
 # index.html is rebuilt before committing. deploy-from-github.ps1 rebuilds
 # anyway, so the server does not depend on it, but a committed index.html that
 # disagrees with the sources lying next to it is a trap for whoever reads the
@@ -46,6 +49,15 @@ if($current -ne $Branch) {
   Write-Host "[madPlanet] switching from $current to $Branch..."
   try { [void](Invoke-Git @('-C', $root, 'checkout', $Branch)) }
   catch { throw "cannot switch to $Branch; commit or stash your changes first" }
+}
+
+# If the branch moved on GitHub while you were working, find that out here
+# and not from a rejected push. Nothing is merged automatically - which of two
+# histories is right is not a decision a script gets to make.
+[void](Invoke-Git @('-C', $root, 'fetch', $Remote, $Branch))
+$behind = Invoke-Git @('-C', $root, 'rev-list', '--count', "HEAD..$Remote/$Branch")
+if($behind -ne '0') {
+  throw "$Remote/$Branch is $behind commit(s) ahead of your HEAD; run: git pull --rebase $Remote $Branch"
 }
 
 [void](Invoke-Git @('-C', $root, 'add', '-A'))
