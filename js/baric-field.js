@@ -121,11 +121,15 @@ weatherCoreCreate=function(seed,N,climate,axis){
   const core=weatherCoreCreateBeforeBaric(seed,N,climate,axis);
   core.baricModel=BARIC_FIELD_MODEL;
   core.pressureTarget=new Float32Array(core.count);
+  core.pressureState=new Float32Array(core.count);
   core.pressureAnomaly=new Float32Array(core.count);
   core.airDensity=new Float32Array(core.count);
   core.scaleHeight=new Float32Array(core.count);
   baricComputeTargets(core,climate);
-  for(let i=0;i<core.count;i++) core.pressure[i]=core.pressureTarget[i];
+  for(let i=0;i<core.count;i++){
+    core.pressureState[i]=core.pressureTarget[i];
+    core.pressure[i]=core.pressureState[i];
+  }
   baricRefreshDerived(core,climate);
   return core;
 };
@@ -133,20 +137,26 @@ weatherCoreCreate=function(seed,N,climate,axis){
 const weatherCoreStepBeforeBaric=weatherCoreStep;
 weatherCoreStep=function(core,dtSec,climate,axis){
   if(!core||!core.count) return core;
+  /* 0.5.40 may still touch core.pressure as part of its compatibility
+     scaffold. Baric dynamics lives in pressureState, so that legacy write is
+     discarded below instead of competing with the new model. */
   weatherCoreStepBeforeBaric(core,dtSec,climate,axis);
   const dt=weatherClamp(dtSec,0,WEATHER_CORE_FIXED_DT_SEC);
   baricComputeTargets(core,climate);
   const a=1-Math.exp(-dt/BARIC_RELAX_TAU_SEC);
   for(let i=0;i<core.count;i++)
-    core.pressure[i]+=(core.pressureTarget[i]-core.pressure[i])*a;
+    core.pressureState[i]+=(core.pressureTarget[i]-core.pressureState[i])*a;
 
   /* Global inventory/pressure changes apply to the whole column immediately;
      only spatial anomalies have the multi-hour relaxation. Correcting the
      weighted mean here also prevents numerical pressure drift over long runs. */
   const meanP=baricGlobalPressurePa(climate);
-  const currentMean=baricAreaMean(core,core.pressure);
+  const currentMean=baricAreaMean(core,core.pressureState);
   const shift=meanP-currentMean;
-  for(let i=0;i<core.count;i++) core.pressure[i]=Math.max(0,core.pressure[i]+shift);
+  for(let i=0;i<core.count;i++){
+    core.pressureState[i]=Math.max(0,core.pressureState[i]+shift);
+    core.pressure[i]=core.pressureState[i];
+  }
   baricRefreshDerived(core,climate);
   return core;
 };
@@ -154,7 +164,7 @@ weatherCoreStep=function(core,dtSec,climate,axis){
 const weatherCoreFiniteBeforeBaric=weatherCoreFinite;
 weatherCoreFinite=function(core){
   if(!weatherCoreFiniteBeforeBaric(core)) return false;
-  for(const k of ['pressureTarget','pressureAnomaly','airDensity','scaleHeight']){
+  for(const k of ['pressureTarget','pressureState','pressureAnomaly','airDensity','scaleHeight']){
     const a=core?.[k]; if(!a||a.length!==core.count) return false;
     for(let i=0;i<a.length;i++) if(!Number.isFinite(a[i])) return false;
   }
