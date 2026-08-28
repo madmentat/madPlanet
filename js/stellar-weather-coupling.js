@@ -21,6 +21,10 @@
 const STELLAR_WEATHER_COUPLING_MODEL = 1;
 const STELLAR_LUM_MULT_PIVOT = 0.43;
 const STELLAR_DISTANCE_PIVOT = 0.51;
+const stellarAbsoluteLuminosityBeforeCoupling=(typeof stellarLuminosityFromSlider==='function')
+  ? stellarLuminosityFromSlider : v=>pivotLogSlider(v,0.43,0.003,50.0);
+const orbitDistanceBeforeCoupling=(typeof orbitDistanceAU==='function')
+  ? orbitDistanceAU : v=>pivotLogSlider(v,0.51,0.03,10.0);
 
 const STELLAR_MAIN_SEQUENCE_ANCHORS = Object.freeze([
   Object.freeze({x:0.00, cls:'M', T:3000,  M:0.20, L:0.006}),
@@ -35,6 +39,15 @@ const STELLAR_MAIN_SEQUENCE_ANCHORS = Object.freeze([
 function stellarCouplingClamp01(x){ return Math.max(0,Math.min(1,Number(x)||0)); }
 function stellarLogLerp(a,b,u){
   return Math.exp(Math.log(Math.max(1e-12,a))*(1-u)+Math.log(Math.max(1e-12,b))*u);
+}
+function stellarPivotLogInverse(x,pivot,lo,hi){
+  x=Math.max(lo,Math.min(hi,Number(x)||lo));
+  if(x<=1){
+    const u=(Math.log10(x)-Math.log10(lo))/(0-Math.log10(lo));
+    return stellarCouplingClamp01(u*pivot);
+  }
+  const u=Math.log10(x)/Math.log10(hi);
+  return stellarCouplingClamp01(pivot+u*(1-pivot));
 }
 function stellarMainSequenceBaseline(x){
   x=stellarCouplingClamp01(x);
@@ -58,6 +71,12 @@ function stellarLuminosityMultiplier(v){
      subgiant/overluminous and underluminous experiments while class still
      determines the order of magnitude. */
   return pivotLogSlider(v,STELLAR_LUM_MULT_PIVOT,0.03,30.0);
+}
+function stellarLuminositySliderFromMultiplier(x){
+  return stellarPivotLogInverse(x,STELLAR_LUM_MULT_PIVOT,0.03,30.0);
+}
+function stellarDistanceSliderFromAU(au){
+  return stellarPivotLogInverse(au,STELLAR_DISTANCE_PIVOT,0.01,1000.0);
 }
 
 starPhysics=function(t,lumT=STELLAR_LUM_MULT_PIVOT){
@@ -107,11 +126,74 @@ distanceInfo=function(v){
 };
 
 /* New blank worlds should start on the actual solar anchor. Old named hashes
-   carry their explicit star value and remain untouched. */
+   carry their explicit star value and are migrated below. */
 const stellarParam=PARAMS.find(p=>p.k==='star');
 if(stellarParam) stellarParam.def=0.43;
 if(typeof location!=='undefined' && !location.hash && Math.abs(Number(state.star)-0.38)<1e-9)
   state.star=0.43;
+
+function migrateLegacyStellarControls(){
+  const oldL=Math.max(1e-12,stellarAbsoluteLuminosityBeforeCoupling(state.luminosity));
+  const oldAU=Math.max(1e-9,orbitDistanceBeforeCoupling(state.distance));
+  const base=stellarMainSequenceBaseline(state.star);
+  state.luminosity=stellarLuminositySliderFromMultiplier(oldL/Math.max(1e-12,base.L));
+  state.distance=stellarDistanceSliderFromAU(oldAU);
+}
+
+/* v6 used the same named keys but luminosity meant absolute L and distance
+   used a 0.03..10 AU range. Reusing the marker would silently reinterpret old
+   shared worlds. v7 stores the new class-relative luminosity multiplier and
+   0.01..1000 AU distance mapping; older hashes are migrated by preserving the
+   actual old L and AU, not their raw slider coordinates. */
+if(typeof loadHash==='function'){
+  const loadHashBeforeStellarCoupling=loadHash;
+  loadHash=function(){
+    const h=location.hash.slice(1);
+    const parts=h?h.split(','):[];
+    if(parts[0]==='v7'){
+      const map=(typeof parseWaterNamedHash==='function') ? parseWaterNamedHash(parts) : {};
+      PARAMS.forEach(p=>{
+        if(p.k==='atmo'||p.k==='sea'||p.k==='gasH2O') return;
+        const v=parseFloat(map[p.k]); if(!Number.isFinite(v)) return;
+        state[p.k]=p.gas
+          ? Math.max(0,Math.min((typeof GAS_INV_MAX!=='undefined'?GAS_INV_MAX:100),v))
+          : Math.max(0,Math.min(1,v));
+      });
+      if(typeof FLAG_KEYS!=='undefined') FLAG_KEYS.forEach(k=>{
+        if(/^pin(?:Temp|H2O|CO2|SO2)$/.test(k)) return;
+        if(k in map) state[k]=map[k]==='1';
+      });
+      if(typeof sanitizeGasInventories==='function') sanitizeGasInventories();
+      if(typeof releaseLegacyPins==='function') releaseLegacyPins();
+      if(typeof settleWaterEquilibriumImmediate==='function') settleWaterEquilibriumImmediate(5);
+      if(typeof captureTransientEquilibrium==='function') captureTransientEquilibrium();
+      return;
+    }
+    loadHashBeforeStellarCoupling();
+    if(h) migrateLegacyStellarControls();
+    if(typeof settleWaterEquilibriumImmediate==='function') settleWaterEquilibriumImmediate(5);
+    if(typeof captureTransientEquilibrium==='function') captureTransientEquilibrium();
+  };
+}
+if(typeof saveHash==='function'){
+  saveHash=function(){
+    clearTimeout(hashT);
+    hashT=setTimeout(()=>{
+      const out=['v7','s'+state.seed];
+      PARAMS.forEach(p=>{
+        if(p.k==='atmo'||p.k==='sea'||p.k==='gasH2O'||p.transient) return;
+        const v=Number(state[p.k]); if(!Number.isFinite(v)) return;
+        const digits=p.gas?8:(p.k==='waterTotal'?6:3);
+        out.push(p.k+'='+v.toFixed(digits));
+      });
+      FLAG_KEYS.forEach(k=>{
+        if(/^pin(?:Temp|H2O|CO2|SO2)$/.test(k)) return;
+        out.push(k+'='+(state[k]?1:0));
+      });
+      try{history.replaceState(null,'','#'+out.join(','));}catch(e){}
+    },200);
+  };
+}
 
 /* Do NOT clamp calculated temperature to the old slider's +97 C ceiling.
    HTML range controls still display at their nearest edge, but state.temp is
