@@ -247,6 +247,8 @@ function drawFrame(now){
     gl.uniform1f(U.uVolcano, state.volcano);
     gl.uniform1f(U.uLava, state.lava);
     gl.uniform1f(U.uStorm, state.storm);
+    gl.uniform1f(U.uStormRate, state.stormRate);
+    gl.uniform1f(U.uStormGlow, state.stormGlow);
     gl.uniform1f(U.uRingGrain, state.ringGrain);
     gl.uniformMatrix3fv(U.uRingMat, false, world.ringMat);
     gl.uniform3fv(U.uSeedS, world.seedS);

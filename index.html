@@ -306,6 +306,8 @@ uniform float uPlatesOn;   /* схема литосферных плит */
 uniform float uVolcano;    /* активность вулканизма */
 uniform float uLava;       /* раскалённость лавы */
 uniform float uStorm;      /* грозовая активность */
+uniform float uStormRate;  /* частота вспышек */
+uniform float uStormGlow;  /* яркость вспышек */
 uniform float uRingGrain;  /* размер частиц колец */
 uniform vec3  uStarCol;     /* спектральный цвет */
 uniform float uStarRadius;  /* относительный видимый диск */
@@ -816,7 +818,13 @@ float cumulusRegion(vec3 p,float climate){
   float clim=clamp(cl0+jit*0.30*(4.0*cl0*(1.0-cl0)),0.0,1.0);
   float amount=clamp(uCloudLow*clim,0.0,1.0);
   float a=amount*amount*(3.0-2.0*amount);
-  float threshold=mix(0.76,0.45,a);
+  /* Порог должен проходить весь размах поля. broad лежит в 0.308..0.694, и
+     прежний нижний край 0.45 давал на максимуме ползунка едва треть покрытия,
+     причём пятнами размером с континент: половина планеты оставалась вовсе
+     без нижнего яруса. Теперь максимум уводит порог ниже минимума поля, то
+     есть ползунок действительно проходит путь от ясного неба до сплошной
+     облачности. */
+  float threshold=mix(0.72,0.26,a);
   float region=ss(threshold,threshold+0.105,broad);
   /* Пустыня разрежает облачность плавно и с остатком: даже при максимальном
      ползунке она не превращается в сплошное покрывало, но и не выстригается
@@ -1237,7 +1245,7 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
   float lt = mod(uTime, 900.0);
   for(int i=0;i<6;i++){
     float fi = float(i);
-    float per = 0.55 + fi*0.28;
+    float per = mix(1.15, 0.32, uStormRate) + fi*0.28;
     float ph = lt/per + fi*7.77;
     float cyc = floor(ph);
     float fr = fract(ph);
@@ -1258,7 +1266,11 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
     vec3 hh = hash33(vec3(cyc*13.1+fi*71.7, cyc*7.7+3.3, fi*29.3) + uSeedC);
     vec3 fpC = normalize(hh*2.0-1.0);
     vec3 fp = uRotCInv * fpC;
-    if(dot(fp, uSunDir) > -0.1) continue;      /* только ночная сторона */
+    /* Гроза идёт и днём — просто вспышку забивает освещённая облачная масса.
+       Раньше дневная сторона была запрещена наглухо, и разряды показывались
+       только ночью. Теперь они лишь приглушаются. */
+    float night = ss(0.20, -0.25, dot(fp, uSunDir));
+    float vis = mix(0.28, 1.0, night);
     float ang = distance(dirW, fp);
     /* Трёхкомпонентное свечение: ядро + ветви + диффузия */
     /* Радиусы расширены: прежнее ядро в 0.04 рад давало точку в десяток
@@ -1269,7 +1281,7 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
     float branch = exp(-ang*ang*160.0) * (1.0 + 0.3*sin(angAtan*7.0));
     float diffuse = exp(-ang*ang*24.0) * 0.22;
     float g = core + branch * 0.6 + diffuse;
-    acc += vec3(0.72,0.80,1.0) * g * win * 6.5;
+    acc += vec3(0.72,0.80,1.0) * g * win * vis * mix(2.5, 13.0, uStormGlow);
   }
   return acc*gate;
 }
@@ -2342,7 +2354,7 @@ let usedVariant = 'none';
 const shaderFailureLog = [];
 
 const UNIFORM_NAMES = ['uRes','uTime','uCamPos','uCamMat','uFocal','uCamDist','uPixA','uRotS','uRotC','uRotCInv',
- 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle','uRingInner','uRingWidth','uRingDens','uRingCount','uRingMaterial','uPlatesOn','uVolcano','uLava','uStorm','uRingGrain',
+ 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle','uRingInner','uRingWidth','uRingDens','uRingCount','uRingMaterial','uPlatesOn','uVolcano','uLava','uStorm','uStormRate','uStormGlow','uRingGrain',
  'uLake','uCity','uAtmo','uRingsOn','uRingMat','uSeedS','uSeedC','uDraft','uVoid',
  'uStarCol','uMagAxis','uAtmoComp','uLowOn','uMidOn','uHighOn','uWind','uConvection','uMagField','uAurora',
  'uStarRadius','uStarFlux','uStarDist','uPlateN'];
@@ -3332,6 +3344,8 @@ const PARAMS = [
   {k:'wind',       label:'Ветры',                  def:0.55, group:'Погода'},
   {k:'convection', label:'Конвекция',              def:0.55, group:'Погода'},
   {k:'storm',      label:'Грозовая активность',    def:0.55, group:'Погода'},
+  {k:'stormRate',  label:'Частота вспышек',        def:0.60, group:'Погода'},
+  {k:'stormGlow',  label:'Яркость вспышек',        def:0.55, group:'Погода'},
   {k:'atmo',       label:'Плотность атмосферы',    def:0.60, group:'Атмосфера'},
   {k:'atmoComp',   label:'Состав атмосферы',       def:0.00, group:'Атмосфера'},
   {k:'magnet',     label:'Мощность магнитного поля', def:0.52, group:'Магнитосфера'},
@@ -4211,6 +4225,8 @@ document.getElementById('rand').addEventListener('click', () => {
   state.ringMat = r();
   state.ringGrain = r();
   state.storm = 0.25 + r()*0.7;
+  state.stormRate = 0.3 + r()*0.7;
+  state.stormGlow = 0.3 + r()*0.7;
   state.volcano = r()*0.8;
   state.lava = 0.3 + r()*0.7;
   deriveWorld(); markRenderUniformsDirty(); syncUI(); saveHash();
@@ -4651,6 +4667,8 @@ function drawFrame(now){
     gl.uniform1f(U.uVolcano, state.volcano);
     gl.uniform1f(U.uLava, state.lava);
     gl.uniform1f(U.uStorm, state.storm);
+    gl.uniform1f(U.uStormRate, state.stormRate);
+    gl.uniform1f(U.uStormGlow, state.stormGlow);
     gl.uniform1f(U.uRingGrain, state.ringGrain);
     gl.uniformMatrix3fv(U.uRingMat, false, world.ringMat);
     gl.uniform3fv(U.uSeedS, world.seedS);

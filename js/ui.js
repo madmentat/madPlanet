@@ -394,6 +394,8 @@ document.getElementById('rand').addEventListener('click', () => {
   state.ringMat = r();
   state.ringGrain = r();
   state.storm = 0.25 + r()*0.7;
+  state.stormRate = 0.3 + r()*0.7;
+  state.stormGlow = 0.3 + r()*0.7;
   state.volcano = r()*0.8;
   state.lava = 0.3 + r()*0.7;
   deriveWorld(); markRenderUniformsDirty(); syncUI(); saveHash();

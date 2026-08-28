@@ -21,6 +21,8 @@ const PARAMS = [
   {k:'wind',       label:'Ветры',                  def:0.55, group:'Погода'},
   {k:'convection', label:'Конвекция',              def:0.55, group:'Погода'},
   {k:'storm',      label:'Грозовая активность',    def:0.55, group:'Погода'},
+  {k:'stormRate',  label:'Частота вспышек',        def:0.60, group:'Погода'},
+  {k:'stormGlow',  label:'Яркость вспышек',        def:0.55, group:'Погода'},
   {k:'atmo',       label:'Плотность атмосферы',    def:0.60, group:'Атмосфера'},
   {k:'atmoComp',   label:'Состав атмосферы',       def:0.00, group:'Атмосфера'},
   {k:'magnet',     label:'Мощность магнитного поля', def:0.52, group:'Магнитосфера'},

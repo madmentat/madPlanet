@@ -28,7 +28,7 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
   float lt = mod(uTime, 900.0);
   for(int i=0;i<6;i++){
     float fi = float(i);
-    float per = 0.55 + fi*0.28;
+    float per = mix(1.15, 0.32, uStormRate) + fi*0.28;
     float ph = lt/per + fi*7.77;
     float cyc = floor(ph);
     float fr = fract(ph);
@@ -49,7 +49,11 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
     vec3 hh = hash33(vec3(cyc*13.1+fi*71.7, cyc*7.7+3.3, fi*29.3) + uSeedC);
     vec3 fpC = normalize(hh*2.0-1.0);
     vec3 fp = uRotCInv * fpC;
-    if(dot(fp, uSunDir) > -0.1) continue;      /* только ночная сторона */
+    /* Гроза идёт и днём — просто вспышку забивает освещённая облачная масса.
+       Раньше дневная сторона была запрещена наглухо, и разряды показывались
+       только ночью. Теперь они лишь приглушаются. */
+    float night = ss(0.20, -0.25, dot(fp, uSunDir));
+    float vis = mix(0.28, 1.0, night);
     float ang = distance(dirW, fp);
     /* Трёхкомпонентное свечение: ядро + ветви + диффузия */
     /* Радиусы расширены: прежнее ядро в 0.04 рад давало точку в десяток
@@ -60,7 +64,7 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
     float branch = exp(-ang*ang*160.0) * (1.0 + 0.3*sin(angAtan*7.0));
     float diffuse = exp(-ang*ang*24.0) * 0.22;
     float g = core + branch * 0.6 + diffuse;
-    acc += vec3(0.72,0.80,1.0) * g * win * 6.5;
+    acc += vec3(0.72,0.80,1.0) * g * win * vis * mix(2.5, 13.0, uStormGlow);
   }
   return acc*gate;
 }
