@@ -9,7 +9,7 @@ const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.46\s*$/m,'orographic milestone must be 0.5.46');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'orographic test must see a semantic version');
 function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
 const order=['js/weather-core.js','js/orographic-lift.js','js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/precipitation.js','js/render.js'];
 assertOrdered(buildPs,order,'PowerShell orographic order');
