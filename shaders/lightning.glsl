@@ -10,12 +10,16 @@
 vec3 lightningGlow(vec3 dirW, float cloudA){
   vec3 acc = vec3(0.0);
   if(uLowOn < 0.5 || uCloudLow < 0.05) return acc;
+  /* Пороги были подобраны так, что разряд разрешался редко: гроза должна
+     была быть сильной и облако плотным одновременно. Смягчено — вспышки
+     всё ещё только на ночной стороне и только под облаком, но встречаются
+     заметно чаще. */
   float storm = gWx.w;
-  if(storm < 0.16) return acc;
-  if(cloudA < mix(0.10, 0.38, storm)) return acc;
+  if(storm < 0.09) return acc;
+  if(cloudA < mix(0.05, 0.20, storm)) return acc;
   for(int i=0;i<6;i++){
     float fi = float(i);
-    float per = 1.1 + fi*0.53;
+    float per = 0.72 + fi*0.41;
     float ph = uTime/per + fi*7.77;
     float cyc = floor(ph);
     float fr = fract(ph);
@@ -44,7 +48,7 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
     float branch = exp(-ang*ang*400.0) * (1.0 + 0.3*sin(angAtan*7.0));
     float diffuse = exp(-ang*ang*60.0) * 0.15;
     float g = core + branch * 0.6 + diffuse;
-    acc += vec3(0.72,0.80,1.0) * g * win * 3.2;
+    acc += vec3(0.72,0.80,1.0) * g * win * 4.6;
   }
   return acc;
 }

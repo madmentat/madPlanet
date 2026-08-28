@@ -210,6 +210,9 @@ function drawFrame(now){
     gl.uniform1f(U.uRingMaterial, state.ringMat);
     gl.uniform1f(U.uDraft, state.draft ? 1 : 0);
     gl.uniform1f(U.uVoid, state.voidbg ? 1 : 0);
+    gl.uniform1f(U.uPlatesOn, state.platesOn ? 1 : 0);
+    gl.uniform1f(U.uVolcano, state.volcano);
+    gl.uniform1f(U.uLava, state.lava);
     gl.uniformMatrix3fv(U.uRingMat, false, world.ringMat);
     gl.uniform3fv(U.uSeedS, world.seedS);
     gl.uniform3fv(U.uSeedC, world.seedC);

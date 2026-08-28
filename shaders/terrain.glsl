@@ -29,6 +29,11 @@ float continentH(vec3 dir){
    Возвращает: x — знаковая сила пояса (>0 сжатие, <0 растяжение),
                y — расстояние до шва,
                z — дождевая тень: хребет с наветренной стороны. */
+/* Данные для схемы плит: расстояние до ближайшего шва, знак движения на нём
+   и цвет ячейки. Пишутся попутно, отдельного прохода не требуют. */
+float gSeamNear, gSeamConv;
+vec3  gPlateTint;
+
 vec3 tectonicBelt(vec3 sN){
   /* Мозаика Вороного сама по себе даёт границы-дуги — ровные и оттого
      мёртвые. У настоящих плит швы ломаные, со сдвигами по трансформным
@@ -65,11 +70,20 @@ vec3 tectonicBelt(vec3 sN){
      стыков пояса просто складываются — что и физично.
      Веса нормируются, поэтому общий множитель от dmin сокращается вместе
      со своим изломом. */
+  /* uPlateP[i].w — «вес» плиты. С ним мозаика превращается из обычной
+     Вороного в степенную: ячейки получаются очень разного размера, как
+     Тихоокеанская против плиты Хуан-де-Фука. Без веса все ячейки выходили
+     сопоставимыми, стыки сходились по три под ровные 120°, и хребты
+     складывались в правильные звёзды и треугольники. */
   float dmin = 1e9;
+  vec3 nearSite = uPlateP[0].xyz;
   for(int i=0;i<12;i++){
     if(i >= uPlateN) break;
-    dmin = min(dmin, -dot(sN, uPlateP[i].xyz));
+    float d = -dot(sN, uPlateP[i].xyz) - uPlateP[i].w;
+    if(d < dmin){ dmin = d; nearSite = uPlateP[i].xyz; }
   }
+  gPlateTint = fract(nearSite*vec3(13.71, 7.39, 21.17) + 0.5);
+  gSeamNear = 1e9; gSeamConv = 0.0;
   /* Пар всего 66, но осмысленны лишь несколько ближайших: вес остальных
      исчезающе мал. Он гасится до нуля плавно на пороге REACH, поэтому
      пропуск дальних пар точен и поле остаётся непрерывным — а работы на
@@ -79,13 +93,13 @@ vec3 tectonicBelt(vec3 sN){
   for(int i=0;i<12;i++){
     if(i >= uPlateN) break;
     vec3 pi = uPlateP[i].xyz;
-    float di = -dot(sN, pi) - dmin;
+    float di = -dot(sN, pi) - uPlateP[i].w - dmin;
     if(di > REACH) continue;
     for(int j=0;j<12;j++){
       if(j >= uPlateN) break;
       if(j <= i) continue;
       vec3 pj = uPlateP[j].xyz;
-      float dj = -dot(sN, pj) - dmin;
+      float dj = -dot(sN, pj) - uPlateP[j].w - dmin;
       float sum2 = di + dj;
       if(sum2 > REACH) continue;
       float wgt = exp(-sum2*9.0) * ss(REACH, REACH*0.7, sum2);
@@ -115,6 +129,11 @@ vec3 tectonicBelt(vec3 sN){
       float lee = max(conv, 0.0) * ss(0.10, 0.70, dot(bdir*side, -windS))
                 * exp(-seam/0.085);
 
+      /* На схему идёт только настоящая граница. Биссектриса есть у любой пары
+         плит, но у несоседних она проходит сквозь чужую ячейку: в рельефе её
+         давит вес (вклад падает раз в пятнадцать), а схема рисовала бы её
+         наравне с настоящими — отсюда и мнимые «звёзды» из пяти лучей. */
+      if(wgt > 0.30 && seam < gSeamNear){ gSeamNear = seam; gSeamConv = convC; }
       num    += wgt*band*convC;
       leeNum += wgt*lee;
       seamNum+= wgt*seam;

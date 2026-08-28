@@ -12,8 +12,8 @@ const state = read('js/state.js');
 const versionText = read('VERSION.txt');
 const version = (versionText.match(/^VERSION\s+(\d+\.\d+\.\d+)\s*$/m) || [])[1];
 
-assert.equal(version, '0.5.23', 'visual regression test belongs to release 0.5.23');
-assert.match(shell, /<div class="ver">v0\.5\.23<\/div>/, 'visible app version must match');
+assert.equal(version, '0.5.24', 'visual regression test belongs to release 0.5.24');
+assert.match(shell, /<div class="ver">v0\.5\.24<\/div>/, 'visible app version must match');
 assert.match(shell, /\.mark h1\{[^}]*font-size:19px/s, 'desktop wordmark should remain larger');
 assert.match(shell, /\.mark h1\{font-size:16px/s, 'mobile wordmark should remain compact');
 
@@ -113,5 +113,16 @@ assert.match(state, /function ringMatLabel/, 'ring material label missing');
 /* Шапка не круглая, снег на хребтах не сплошной. */
 assert.match(surface, /float capEdge = /, 'polar cap edge must be perturbed at continental scale');
 assert.match(surface, /float steepBare = /, 'ridges must lose snow on steep faces');
+
+/* 0.5.24: схема плит, разноразмерные плиты, вулканизм, чаще молнии. */
+assert.match(terrainSrc, /uPlateP\[i\]\.w/, 'plates need a size weight: equal cells meet at regular 120 degree stars');
+assert.match(terrainSrc, /wgt > 0\.30 && seam < gSeamNear/, 'the schematic must show real neighbours only, not every bisector');
+assert.match(surface, /if\(uPlatesOn > 0\.5\)/, 'plate schematic overlay missing');
+assert.match(surface, /float volc = /, 'volcanism missing');
+assert.match(surface, /uLava > 0\.01/, 'lava glow missing');
+assert.match(state, /k:'volcano'/, 'volcanism slider missing');
+assert.match(state, /k:'lava'/, 'lava glow slider missing');
+assert.match(shell, /id="platesOn"/, 'plate schematic toggle missing');
+assert.ok(!/if\(storm < 0\.16\)/.test(lightning), 'the old strict lightning threshold must not return');
 
 console.log('visual-regressions.test.js: OK');

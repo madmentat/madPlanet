@@ -296,6 +296,7 @@ function syncUI(){
   syncDynamicLabels();
   document.getElementById('rings').checked = state.rings;
   document.getElementById('draft').checked = state.draft;
+  document.getElementById('platesOn').checked = state.platesOn;
   document.getElementById('texOn').checked = state.texShow;
   /* Тоглы облаков — могут быть в панелях или ещё не созданы */
   ['lowOn','midOn','highOn','voidbg'].forEach(id => {
@@ -312,6 +313,7 @@ function syncUI(){
 /* ── Тоглы ── */
 document.getElementById('rings').addEventListener('change', e => { state.rings = e.target.checked; markRenderUniformsDirty(); saveHash(); });
 document.getElementById('draft').addEventListener('change', e => { state.draft = e.target.checked; markRenderUniformsDirty(); saveHash(); });
+document.getElementById('platesOn').addEventListener('change', e => { state.platesOn = e.target.checked; markRenderUniformsDirty(); saveHash(); });
 document.getElementById('texOn').addEventListener('change', e => { state.texShow = e.target.checked; markRenderUniformsDirty(); saveHash(); });
 
 /* ── Сид ── */
@@ -352,6 +354,8 @@ document.getElementById('rand').addEventListener('click', () => {
   state.ringDens = 0.3 + r()*0.65;
   state.ringCount = r();
   state.ringMat = r();
+  state.volcano = r()*0.8;
+  state.lava = 0.3 + r()*0.7;
   deriveWorld(); markRenderUniformsDirty(); syncUI(); saveHash();
 });
 
@@ -368,7 +372,8 @@ function saveHash(){
     const v = ['v3', PARAMS.length, state.seed, ...PARAMS.map(p => (+state[p.k]).toFixed(3)),
                state.rings?1:0, state.draft?1:0, state.voidbg?1:0,
                state.texShow?1:0, state.lowOn?1:0, state.midOn?1:0, state.highOn?1:0,
-               state.auroraOn?1:0, state.fieldLinesOn?1:0, state.auroraFootpoints?1:0].join(',');
+               state.auroraOn?1:0, state.fieldLinesOn?1:0, state.auroraFootpoints?1:0,
+               state.platesOn?1:0].join(',');
     try{ history.replaceState(null, '', '#'+v); }catch(e){}
   }, 200);
 }
@@ -396,6 +401,7 @@ function loadHash(){
     if(parts.length > off+8) state.auroraOn = parts[off+8] !== '0';
     if(parts.length > off+9) state.fieldLinesOn = parts[off+9] === '1';
     if(parts.length > off+10) state.auroraFootpoints = parts[off+10] === '1';
+    if(parts.length > off+11) state.platesOn = parts[off+11] === '1';
   }
 
   if(parts[0] === 'v3'){

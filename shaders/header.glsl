@@ -22,6 +22,9 @@ uniform float uRingWidth;  /* ширина системы */
 uniform float uRingDens;   /* плотность вещества */
 uniform float uRingCount;  /* дробность на отдельные кольца */
 uniform float uRingMaterial; /* материал: лёд - камень - пыль */
+uniform float uPlatesOn;   /* схема литосферных плит */
+uniform float uVolcano;    /* активность вулканизма */
+uniform float uLava;       /* раскалённость лавы */
 uniform vec3  uStarCol;     /* спектральный цвет */
 uniform float uStarRadius;  /* относительный видимый диск */
 uniform float uStarFlux;    /* поток излучения */

@@ -1,4 +1,4 @@
-VERSION 0.5.23
-Base: 0.5.22
-Changes: fixed URL hash losing stars/sun after new sliders were added; larger panel close target plus Esc and click-outside; ring count and material; irregular polar cap outline; broken snow cover on ridges.
+VERSION 0.5.24
+Base: 0.5.23
+Changes: lithosphere plate schematic overlay; plates of varying size so junctions stop forming regular stars; volcanism and lava glow sliders; lightning made noticeably more frequent.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

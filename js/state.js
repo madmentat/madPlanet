@@ -7,6 +7,8 @@ const PARAMS = [
   {k:'isle',       label:'Острова',                def:0.45, group:'Планета'},
   {k:'lake',       label:'Озёра',                 def:0.45, group:'Планета'},
   {k:'city',       label:'Огни городов',           def:0.55, group:'Поверхность'},
+  {k:'volcano',    label:'Вулканизм',              def:0.35, group:'Поверхность'},
+  {k:'lava',       label:'Свечение лавы',          def:0.55, group:'Поверхность'},
   {k:'ringInner',  label:'Радиус колец',           def:0.40, group:'Кольца'},
   {k:'ringWidth',  label:'Ширина колец',           def:0.62, group:'Кольца'},
   {k:'ringDens',   label:'Плотность колец',        def:0.60, group:'Кольца'},
@@ -27,7 +29,7 @@ const PARAMS = [
   {k:'luminosity', label:'Светимость',              def:0.43, group:'Звезда'},
   {k:'distance',   label:'Расстояние',              def:0.51, group:'Звезда'},
 ];
-const state = {seed: 8127344, rings: false, draft: false, voidbg: false,
+const state = {seed: 8127344, rings: false, draft: false, voidbg: false, platesOn: false,
                texShow: false, lowOn: true, midOn: false, highOn: false,
                auroraOn: true, fieldLinesOn: false, auroraFootpoints: false};
 PARAMS.forEach(p => state[p.k] = p.def);
@@ -155,7 +157,12 @@ function deriveWorld(){
                    y             + rv()*0.30,
                    Math.sin(th)*ring + rv()*0.30]);
     p = m3v(plateRot, p);
-    plateP.push(p[0], p[1], p[2], 0);
+    /* Вес плиты: с ним мозаика становится степенной, и ячейки выходят очень
+       разного размера — от океанической громады до осколка между хребтами.
+       При равных весах стыки сходились по три под ровные 120°, и хребты
+       складывались в правильные звёзды и треугольники. */
+    const bias = (Math.pow(r(), 1.7) - 0.32) * 0.28;
+    plateP.push(p[0], p[1], p[2], bias);
     const w = norm3([rv(), rv(), rv()]);
     const rate = 0.30 + r()*0.95;
     plateW.push(w[0]*rate, w[1]*rate, w[2]*rate, 0);
