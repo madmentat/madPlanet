@@ -9,10 +9,10 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'climate test must see a semantic version');
-assert.ok(buildPs.includes("'js/atmosphere-inventory.js','js/water-budget.js','js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/render.js'"),
-  'PowerShell build must load climate after atmosphere+water and before stellar/weather/render bridge');
-assert.ok(buildSh.includes('js/atmosphere-inventory.js js/water-budget.js js/climate-regimes.js js/stellar-weather-coupling.js js/weather-core.js js/render.js'),
-  'shell build must load climate after atmosphere+water and before stellar/weather/render bridge');
+assert.ok(buildPs.includes("'js/atmosphere-inventory.js','js/volcanic-atmosphere-coupling.js','js/water-budget.js','js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/render.js'"),
+  'PowerShell build must load volcanic+water climate causes before stellar/weather/render bridge');
+assert.ok(buildSh.includes('js/atmosphere-inventory.js js/volcanic-atmosphere-coupling.js js/water-budget.js js/climate-regimes.js js/stellar-weather-coupling.js js/weather-core.js js/render.js'),
+  'shell build must load volcanic+water climate causes before stellar/weather/render bridge');
 
 const state={
   star:0.38,luminosity:0.43,distance:0.51,atmo:0.60,temp:0.52,sea:0.58,waterTotal:0.50,
