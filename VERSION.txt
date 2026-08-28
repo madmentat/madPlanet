@@ -1,4 +1,4 @@
-VERSION 0.5.31
-Base: 0.5.29
-Changes: sky moved into its own cheap pass with presets and sliders; planet now composites over it with premultiplied alpha; stars.glsl left the monolithic program.
+VERSION 0.5.32
+Base: 0.5.31
+Changes: climate belts v2.1 - stronger ITCZ/subtropical contrast, wind modulates circulation strength and mid-latitude fronts, longer wind-dependent moisture advection trail for low clouds.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
