@@ -1,4 +1,4 @@
-VERSION 0.5.44
-Base: 0.5.43
-Changes: local Weather Core condensation v1 - supersaturated vapor now condenses into a persistent physical cloud-water column in kg/m2, undersaturated air can re-evaporate existing condensate, and both phase changes conserve local H2O while applying bounded latent heating/cooling to the air column. Cloud condensate is advected conservatively by the same tangent wind field and cross-face edge graph as vapor. The global atmospheric H2O closure now preserves vapor plus cloud water together against the conserved 0.5.37 reservoir, preventing the old vapor-only normalization from creating water on top of condensate. Precipitation remains zero until 0.5.45.
+VERSION 0.5.45
+Base: 0.5.44
+Changes: local Weather Core precipitation v1 - mature physical cloud condensate now autoconverts into real rain/snow rates, removes mass from cloudWaterState, and returns it to the surface. Land precipitation is retained as local liquid/snow water columns; rain over the macro-ocean returns directly to the bulk condensed reservoir. Retained land water occupies part of the mobile H2O closure so the next tick cannot recreate atmospheric water on top of precipitation. Landed liquid water can re-evaporate and warm snow can melt as minimal bridge processes; soil moisture/runoff remain 0.5.47 and detailed snow/ice physics remains 0.5.59.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
