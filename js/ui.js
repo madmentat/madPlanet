@@ -297,7 +297,7 @@ function syncUI(){
   document.getElementById('rings').checked = state.rings;
   document.getElementById('draft').checked = state.draft;
   document.getElementById('platesOn').checked = state.platesOn;
-  document.getElementById('texOn').checked = state.texShow;
+  document.getElementById('starsOn').checked = !state.voidbg;
   /* Тоглы облаков — могут быть в панелях или ещё не созданы */
   ['lowOn','midOn','highOn','voidbg'].forEach(id => {
     const el = document.getElementById(id);
@@ -314,7 +314,10 @@ function syncUI(){
 document.getElementById('rings').addEventListener('change', e => { state.rings = e.target.checked; markRenderUniformsDirty(); saveHash(); });
 document.getElementById('draft').addEventListener('change', e => { state.draft = e.target.checked; markRenderUniformsDirty(); saveHash(); });
 document.getElementById('platesOn').addEventListener('change', e => { state.platesOn = e.target.checked; markRenderUniformsDirty(); saveHash(); });
-document.getElementById('texOn').addEventListener('change', e => { state.texShow = e.target.checked; markRenderUniformsDirty(); saveHash(); });
+/* Галка отвечает за видимое: звёзды есть. Внутри это отрицание «пустого
+   космоса», у которого раньше не было ни одного элемента управления — если
+   флаг где-то выставлялся, вернуть небо было нечем. */
+document.getElementById('starsOn').addEventListener('change', e => { state.voidbg = !e.target.checked; markRenderUniformsDirty(); saveHash(); });
 
 /* ── Сид ── */
 document.getElementById('seed').addEventListener('change', e => {
@@ -361,26 +364,50 @@ document.getElementById('rand').addEventListener('click', () => {
 
 /* ── URL hash ── */
 let hashT = 0;
+const FLAG_KEYS = ['rings','draft','voidbg','lowOn','midOn','highOn',
+                   'auroraOn','fieldLinesOn','auroraFootpoints','platesOn'];
+
+/* Формат v4 — по именам. Позиционный ломался дважды: стоило добавить ползунок
+   или убрать флаг, как всё съезжало, и у старой ссылки молча пропадали
+   звёзды. Имена от этого защищены полностью: незнакомый ключ просто
+   игнорируется, отсутствующий остаётся по умолчанию. */
 function saveHash(){
   clearTimeout(hashT);
   hashT = setTimeout(() => {
-    /* В хэш пишется число параметров. Формат позиционный, и без счётчика
-       добавление любого ползунка сдвигало все флаги: старая ссылка читалась
-       как новая, «средний ярус» попадал на место «пустого космоса», и у мира
-       молча пропадали звёзды. Со счётчиком читатель знает, где кончаются
-       параметры, и старые ссылки продолжают работать. */
-    const v = ['v3', PARAMS.length, state.seed, ...PARAMS.map(p => (+state[p.k]).toFixed(3)),
-               state.rings?1:0, state.draft?1:0, state.voidbg?1:0,
-               state.texShow?1:0, state.lowOn?1:0, state.midOn?1:0, state.highOn?1:0,
-               state.auroraOn?1:0, state.fieldLinesOn?1:0, state.auroraFootpoints?1:0,
-               state.platesOn?1:0].join(',');
-    try{ history.replaceState(null, '', '#'+v); }catch(e){}
+    const out = ['v4', 's' + state.seed];
+    PARAMS.forEach(p => out.push(p.k + '=' + (+state[p.k]).toFixed(3)));
+    FLAG_KEYS.forEach(k => out.push(k + '=' + (state[k] ? 1 : 0)));
+    try{ history.replaceState(null, '', '#' + out.join(',')); }catch(e){}
   }, 200);
 }
+
 function loadHash(){
   const h = location.hash.slice(1);
   if(!h) return;
   const parts = h.split(',');
+
+  if(parts[0] === 'v4'){
+    const map = {};
+    let seedSet = false;
+    for(let i=1;i<parts.length;i++){
+      const kv = parts[i];
+      const eq = kv.indexOf('=');
+      if(eq < 0){
+        if(!seedSet && kv[0] === 's'){
+          const sd = parseInt(kv.slice(1),10);
+          if(Number.isFinite(sd)){ state.seed = sd; seedSet = true; }
+        }
+        continue;
+      }
+      map[kv.slice(0,eq)] = kv.slice(eq+1);
+    }
+    PARAMS.forEach(p => {
+      const v = parseFloat(map[p.k]);
+      if(Number.isFinite(v)) state[p.k] = Math.max(0, Math.min(1, v));
+    });
+    FLAG_KEYS.forEach(k => { if(k in map) state[k] = map[k] === '1'; });
+    return;
+  }
 
   /* Порядок ползунков в v2. Нужен, чтобы старые ссылки читались по именам,
      а не по позициям: с тех пор список пополнился кольцами, а «Горы» стали
@@ -394,7 +421,6 @@ function loadHash(){
     state.rings   = parts[off+1] === '1';
     state.draft   = parts[off+2] === '1';
     state.voidbg  = parts[off+3] === '1';
-    state.texShow = parts[off+4] === '1';
     state.lowOn   = parts[off+5] !== '0';
     state.midOn   = parts[off+6] !== '0';
     state.highOn  = parts[off+7] !== '0';
@@ -432,7 +458,6 @@ function loadHash(){
     state.rings   = parts[off+1] === '1';
     state.draft   = parts[off+2] === '1';
     state.voidbg  = parts[off+3] === '1';
-    state.texShow = parts[off+4] === '1';
     state.lowOn   = parts[off+5] !== '0';
     state.midOn   = parts[off+6] !== '0';
     state.highOn  = parts[off+7] !== '0';
@@ -462,7 +487,6 @@ function loadHash(){
   state.rings   = parts[off+1] === '1';
   state.draft   = parts[off+2] === '1';
   state.voidbg  = parts[off+3] === '1';
-  state.texShow = parts[off+4] === '1';
   state.lowOn   = parts[off+5] !== '0';
   state.midOn   = parts[off+6] !== '0';
   state.highOn  = parts[off+7] !== '0';

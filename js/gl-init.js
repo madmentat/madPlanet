@@ -101,13 +101,11 @@ function compile(type, src){
    хотя бы один кадр и показана надпись о компиляции. */
 const parallelExt = gl.getExtension('KHR_parallel_shader_compile');
 
+/* Варианты highp_tex и no_tex существовали только ради sampler2DArray биомов.
+   Текстуры убраны в 0.5.26, вместе с ними ушла и причина этих обходных путей;
+   при отказе полного шейдера остаётся совместимый рендер. */
 const shaderVariants = [
   {name: 'original', fragMod: null},
-  {name: 'highp_tex', fragMod: s => s.replace(/mediump sampler2DArray/g, 'highp sampler2DArray')},
-  {name: 'no_tex', fragMod: s => s.replace(/uniform mediump sampler2DArray uTex;/g, '// sampler2DArray removed')
-    .replace(/textureLod\s*\([^)]+\)/g, 'vec4(0.5)')
-    .replace(/uTexOn/g, '0.0')
-    .replace(/uTexMean\[\d+\]/g, 'vec3(0.5)')},
 ];
 
 let prog = null;
@@ -116,7 +114,7 @@ const shaderFailureLog = [];
 
 const UNIFORM_NAMES = ['uRes','uTime','uCamPos','uCamMat','uFocal','uCamDist','uPixA','uRotS','uRotC','uRotCInv',
  'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle','uRingInner','uRingWidth','uRingDens','uRingCount','uRingMaterial','uPlatesOn','uVolcano','uLava',
- 'uLake','uCity','uAtmo','uRingsOn','uRingMat','uSeedS','uSeedC','uTex','uTexOn','uDraft','uVoid',
+ 'uLake','uCity','uAtmo','uRingsOn','uRingMat','uSeedS','uSeedC','uDraft','uVoid',
  'uStarCol','uMagAxis','uAtmoComp','uLowOn','uMidOn','uHighOn','uWind','uConvection','uMagField','uAurora',
  'uStarRadius','uStarFlux','uStarDist','uPlateN'];
 
@@ -126,7 +124,6 @@ const U = {};
 function bindUniforms(p){
   for(const k in U) delete U[k];
   UNIFORM_NAMES.forEach(n => U[n] = gl.getUniformLocation(p, n));
-  U.uTexMean = gl.getUniformLocation(p, 'uTexMean[0]');
   U.uCycA = gl.getUniformLocation(p, 'uCycA[0]');
   U.uCycB = gl.getUniformLocation(p, 'uCycB[0]');
   U.uPlateP = gl.getUniformLocation(p, 'uPlateP[0]');

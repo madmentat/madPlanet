@@ -18,7 +18,7 @@ $VERT = @'
 layout(location=0) in vec2 aPos;
 void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }
 '@
-$fragFiles = @('shaders/header.glsl','shaders/noise.glsl','shaders/terrain.glsl','shaders/clouds.glsl','shaders/textures.glsl','shaders/atmosphere.glsl','shaders/rings.glsl','shaders/fog.glsl','shaders/lightning.glsl','shaders/surface.glsl','shaders/stars.glsl','shaders/sphere.glsl','shaders/main.glsl')
+$fragFiles = @('shaders/header.glsl','shaders/noise.glsl','shaders/terrain.glsl','shaders/clouds.glsl','shaders/atmosphere.glsl','shaders/rings.glsl','shaders/fog.glsl','shaders/lightning.glsl','shaders/surface.glsl','shaders/stars.glsl','shaders/sphere.glsl','shaders/main.glsl')
 $parts = New-Object System.Collections.Generic.List[string]
 $parts.Add('#version 300 es')
 foreach($rel in $fragFiles){ $parts.Add((Read-Utf8Strict (Join-Path $DIR $rel))) }

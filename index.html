@@ -205,7 +205,7 @@
 
 <div class="mark">
   <h1>madPlanet</h1>
-  <div class="ver">v0.5.25</div>
+  <div class="ver">v0.5.26</div>
   <div class="sub">МИР <b id="seedLabel">№ —</b></div>
 </div>
 
@@ -226,7 +226,7 @@
   </button>
   <div class="util-sep"></div>
   <label class="tg"><input type="checkbox" id="rings"><i></i></label><span class="tg-lbl">Кольца</span>
-  <label class="tg"><input type="checkbox" id="texOn"><i></i></label><span class="tg-lbl">Текстуры</span>
+  <label class="tg"><input type="checkbox" id="starsOn"><i></i></label><span class="tg-lbl">Звёзды</span>
   <label class="tg"><input type="checkbox" id="draft"><i></i></label><span class="tg-lbl">Черновик</span>
   <label class="tg"><input type="checkbox" id="platesOn"><i></i></label><span class="tg-lbl">Плиты</span>
   <div class="util-sep"></div>
@@ -250,7 +250,7 @@
 <script>
 'use strict';
 
-const APP_VERSION = '0.5.25';
+const APP_VERSION = '0.5.26';
 const VERT = `#version 300 es
 layout(location=0) in vec2 aPos;
 void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
@@ -292,11 +292,8 @@ uniform float uConvection;
 uniform float uLowOn, uMidOn, uHighOn;  /* включение/выключение ярусов облаков */
 uniform mat3  uRotC2;     /* средний ярус облаков */
 uniform mat3  uRotC3;     /* верхний ярус облаков */
-uniform mediump sampler2DArray uTex;
-uniform float uTexOn;
 uniform float uDraft;     /* 1 — черновик: дорогие слои выключены */
 uniform float uVoid;      /* 1 — космос заливается чёрным */
-uniform vec3  uTexMean[20];   /* средний цвет каждого тайла */
 uniform mat3  uRingMat;
 uniform vec3  uSeedS, uSeedC;
 uniform vec4  uCycA[5];   /* xyz — центр циклона, w — сила */
@@ -1020,26 +1017,6 @@ vec4 volumeLow(vec3 ro,vec3 rd,float t0,float span,float boost,float climate){
   return acc;
 }
 
-/* ---------- текстуры биомов (атлас-массив) ---------- */
-/* LOD считаем сами: в рейтрейсере производные UV на силуэте мусорные */
-vec3 triTex(float layer, vec3 p, vec3 nrm, float sc, float foot){
-  float lod = max(0.0, log2(max(foot*sc*512.0, 1e-6)));
-  vec3 an = abs(nrm); an /= (an.x+an.y+an.z);
-  return textureLod(uTex, vec3(p.yz*sc, layer), lod).rgb*an.x
-       + textureLod(uTex, vec3(p.xz*sc, layer), lod).rgb*an.y
-       + textureLod(uTex, vec3(p.xy*sc, layer), lod).rgb*an.z;
-}
-/* foot — размер пикселя на поверхности в долях радиуса */
-vec3 biomeTex(float layer, vec3 p, vec3 nrm, float foot){
-  if(uDraft > 0.5) return triTex(layer, p, nrm, 60.0, foot)*1.06;
-  vec3 c = mix(triTex(layer, p, nrm, 60.0, foot),
-               triTex(layer, p + vec3(17.31), nrm, 230.0, foot), 0.5);
-  float fine = 1.0-ss(1.35, 2.6, uCamDist);
-  if(fine > 0.02)
-    c = mix(c, triTex(layer, p + vec3(5.7), nrm, 1000.0, foot), fine*0.5);
-  return c*1.06;
-}
-
 /* ---------- атмосфера ---------- */
 /* Состав атмосферы (uAtmoComp):
    0.0 — N2/O2 (Земля): синее Рэлеевское рассеяние
@@ -1382,51 +1359,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   alb = mix(alb, denseC, ss(0.45,0.62,mo2)*0.70*ss(0.34,0.55,moist));
   alb *= 0.80 + 0.42*mo3;
 
-  /* фототекстуры биомов: базовый слой по климату + накладки */
-  if(uTexOn > 0.01 && land > 0.001){
-    float hotW = ss(0.55,0.95,temp);
-    float coldW = 1.0-ss(0.02,0.3,temp);
-    float layer;
-    if(hotW > 0.5){
-      layer = (moist>0.62) ? 16.0 : (moist>0.38) ? 11.0 :
-              ((rocky>0.62) ? ((moist<0.25)?2.0:7.0) : 10.0);
-      if(h < 0.05 && moist < 0.2) layer = 8.0;               /* солончак */
-    } else if(coldW > 0.5){
-      layer = (moist>0.5) ? 0.0 : 17.0;                      /* тайга / тундра */
-    } else {
-      layer = (moist<0.28) ? 1.0 : ((moist<0.48) ? 4.0 : 14.0);
-      if(rocky>0.72) layer = 15.0;
-      if(moist>0.78 && h<0.06) layer = 19.0;                 /* болота */
-    }
-    float foot = tHit*uPixA;
-    vec3 texC  = biomeTex(layer, sN, n0, foot);
-    vec3 meanC = uTexMean[int(layer)];
-    float wRock = ss(0.45,0.8,ridge)*(1.0-snowM);
-    if(wRock>0.01){
-      texC = mix(texC, biomeTex(5.0, sN, n0, foot), wRock);
-      meanC = mix(meanC, uTexMean[5], wRock);
-    }
-    if(hotW>0.5 && ridge>0.55){
-      float wv = ss(0.55,0.85,ridge)*0.8;
-      texC = mix(texC, biomeTex(18.0, sN, n0, foot), wv);
-      meanC = mix(meanC, uTexMean[18], wv);
-    }
-    if(snowM>0.01){
-      int s = (ridge>0.5) ? 3 : 13;
-      texC = mix(texC, biomeTex(float(s), sN, n0, foot), snowM);
-      meanC = mix(meanC, uTexMean[s], snowM);
-    }
-    if(beach>0.01){
-      int s = (rocky>0.6) ? 6 : 9;
-      float wv = beach*0.8;
-      texC = mix(texC, biomeTex(float(s), sN, n0, foot), wv);
-      meanC = mix(meanC, uTexMean[s], wv);
-    }
-    /* Берём из фотографии структуру, а не цвет: на дальнем плане тайл
-       замыливается до своего среднего, и абсолютный цвет выцвел бы. */
-    vec3 detail = clamp(texC / max(meanC, vec3(0.05)), vec3(0.30), vec3(1.85));
-    alb *= mix(vec3(1.0), detail, 0.85*uTexOn);
-  }
+  /* Фототекстуры биомов удалены в 0.5.26: атлас на 1.1 МБ грузился при каждом
+     запуске ради выключенной по умолчанию опции, а biomeTex() инлайнился в
+     программу восемь раз по три триплана в каждом. Цвет поверхности полностью
+     процедурный. */
 
   /* ---- вулканизм ----
      Очаги садятся туда, где им и положено: вдоль швов плит — дуги над зонами
@@ -1490,10 +1426,6 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float ice = 1.0 - ss(-climAA, climAA, iceN);
   if(ice > 0.01){
     vec3 iceCol = vec3(0.80,0.86,0.92)*(0.86+0.24*(0.5+0.5*fbm(sN*30.0+uSeedS,2)));
-    if(uTexOn > 0.01){
-      vec3 t12 = biomeTex(12.0, sN, n0, tHit*uPixA);
-      iceCol *= mix(vec3(1.0), clamp(t12/max(uTexMean[12], vec3(0.05)), vec3(0.45), vec3(1.8)), 0.8*uTexOn);
-    }
     oc = mix(oc, iceCol, ice*0.95);
   }
   vec3 albF = mix(oc, alb, land);
@@ -2211,13 +2143,11 @@ function compile(type, src){
    хотя бы один кадр и показана надпись о компиляции. */
 const parallelExt = gl.getExtension('KHR_parallel_shader_compile');
 
+/* Варианты highp_tex и no_tex существовали только ради sampler2DArray биомов.
+   Текстуры убраны в 0.5.26, вместе с ними ушла и причина этих обходных путей;
+   при отказе полного шейдера остаётся совместимый рендер. */
 const shaderVariants = [
   {name: 'original', fragMod: null},
-  {name: 'highp_tex', fragMod: s => s.replace(/mediump sampler2DArray/g, 'highp sampler2DArray')},
-  {name: 'no_tex', fragMod: s => s.replace(/uniform mediump sampler2DArray uTex;/g, '// sampler2DArray removed')
-    .replace(/textureLod\s*\([^)]+\)/g, 'vec4(0.5)')
-    .replace(/uTexOn/g, '0.0')
-    .replace(/uTexMean\[\d+\]/g, 'vec3(0.5)')},
 ];
 
 let prog = null;
@@ -2226,7 +2156,7 @@ const shaderFailureLog = [];
 
 const UNIFORM_NAMES = ['uRes','uTime','uCamPos','uCamMat','uFocal','uCamDist','uPixA','uRotS','uRotC','uRotCInv',
  'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle','uRingInner','uRingWidth','uRingDens','uRingCount','uRingMaterial','uPlatesOn','uVolcano','uLava',
- 'uLake','uCity','uAtmo','uRingsOn','uRingMat','uSeedS','uSeedC','uTex','uTexOn','uDraft','uVoid',
+ 'uLake','uCity','uAtmo','uRingsOn','uRingMat','uSeedS','uSeedC','uDraft','uVoid',
  'uStarCol','uMagAxis','uAtmoComp','uLowOn','uMidOn','uHighOn','uWind','uConvection','uMagField','uAurora',
  'uStarRadius','uStarFlux','uStarDist','uPlateN'];
 
@@ -2236,7 +2166,6 @@ const U = {};
 function bindUniforms(p){
   for(const k in U) delete U[k];
   UNIFORM_NAMES.forEach(n => U[n] = gl.getUniformLocation(p, n));
-  U.uTexMean = gl.getUniformLocation(p, 'uTexMean[0]');
   U.uCycA = gl.getUniformLocation(p, 'uCycA[0]');
   U.uCycB = gl.getUniformLocation(p, 'uCycB[0]');
   U.uPlateP = gl.getUniformLocation(p, 'uPlateP[0]');
@@ -3146,7 +3075,7 @@ const PARAMS = [
   {k:'distance',   label:'Расстояние',              def:0.51, group:'Звезда'},
 ];
 const state = {seed: 8127344, rings: false, draft: false, voidbg: false, platesOn: false,
-               texShow: false, lowOn: true, midOn: false, highOn: false,
+               lowOn: true, midOn: false, highOn: false,
                auroraOn: true, fieldLinesOn: false, auroraFootpoints: false};
 PARAMS.forEach(p => state[p.k] = p.def);
 
@@ -3887,7 +3816,7 @@ function syncUI(){
   document.getElementById('rings').checked = state.rings;
   document.getElementById('draft').checked = state.draft;
   document.getElementById('platesOn').checked = state.platesOn;
-  document.getElementById('texOn').checked = state.texShow;
+  document.getElementById('starsOn').checked = !state.voidbg;
   /* Тоглы облаков — могут быть в панелях или ещё не созданы */
   ['lowOn','midOn','highOn','voidbg'].forEach(id => {
     const el = document.getElementById(id);
@@ -3904,7 +3833,10 @@ function syncUI(){
 document.getElementById('rings').addEventListener('change', e => { state.rings = e.target.checked; markRenderUniformsDirty(); saveHash(); });
 document.getElementById('draft').addEventListener('change', e => { state.draft = e.target.checked; markRenderUniformsDirty(); saveHash(); });
 document.getElementById('platesOn').addEventListener('change', e => { state.platesOn = e.target.checked; markRenderUniformsDirty(); saveHash(); });
-document.getElementById('texOn').addEventListener('change', e => { state.texShow = e.target.checked; markRenderUniformsDirty(); saveHash(); });
+/* Галка отвечает за видимое: звёзды есть. Внутри это отрицание «пустого
+   космоса», у которого раньше не было ни одного элемента управления — если
+   флаг где-то выставлялся, вернуть небо было нечем. */
+document.getElementById('starsOn').addEventListener('change', e => { state.voidbg = !e.target.checked; markRenderUniformsDirty(); saveHash(); });
 
 /* ── Сид ── */
 document.getElementById('seed').addEventListener('change', e => {
@@ -3951,26 +3883,50 @@ document.getElementById('rand').addEventListener('click', () => {
 
 /* ── URL hash ── */
 let hashT = 0;
+const FLAG_KEYS = ['rings','draft','voidbg','lowOn','midOn','highOn',
+                   'auroraOn','fieldLinesOn','auroraFootpoints','platesOn'];
+
+/* Формат v4 — по именам. Позиционный ломался дважды: стоило добавить ползунок
+   или убрать флаг, как всё съезжало, и у старой ссылки молча пропадали
+   звёзды. Имена от этого защищены полностью: незнакомый ключ просто
+   игнорируется, отсутствующий остаётся по умолчанию. */
 function saveHash(){
   clearTimeout(hashT);
   hashT = setTimeout(() => {
-    /* В хэш пишется число параметров. Формат позиционный, и без счётчика
-       добавление любого ползунка сдвигало все флаги: старая ссылка читалась
-       как новая, «средний ярус» попадал на место «пустого космоса», и у мира
-       молча пропадали звёзды. Со счётчиком читатель знает, где кончаются
-       параметры, и старые ссылки продолжают работать. */
-    const v = ['v3', PARAMS.length, state.seed, ...PARAMS.map(p => (+state[p.k]).toFixed(3)),
-               state.rings?1:0, state.draft?1:0, state.voidbg?1:0,
-               state.texShow?1:0, state.lowOn?1:0, state.midOn?1:0, state.highOn?1:0,
-               state.auroraOn?1:0, state.fieldLinesOn?1:0, state.auroraFootpoints?1:0,
-               state.platesOn?1:0].join(',');
-    try{ history.replaceState(null, '', '#'+v); }catch(e){}
+    const out = ['v4', 's' + state.seed];
+    PARAMS.forEach(p => out.push(p.k + '=' + (+state[p.k]).toFixed(3)));
+    FLAG_KEYS.forEach(k => out.push(k + '=' + (state[k] ? 1 : 0)));
+    try{ history.replaceState(null, '', '#' + out.join(',')); }catch(e){}
   }, 200);
 }
+
 function loadHash(){
   const h = location.hash.slice(1);
   if(!h) return;
   const parts = h.split(',');
+
+  if(parts[0] === 'v4'){
+    const map = {};
+    let seedSet = false;
+    for(let i=1;i<parts.length;i++){
+      const kv = parts[i];
+      const eq = kv.indexOf('=');
+      if(eq < 0){
+        if(!seedSet && kv[0] === 's'){
+          const sd = parseInt(kv.slice(1),10);
+          if(Number.isFinite(sd)){ state.seed = sd; seedSet = true; }
+        }
+        continue;
+      }
+      map[kv.slice(0,eq)] = kv.slice(eq+1);
+    }
+    PARAMS.forEach(p => {
+      const v = parseFloat(map[p.k]);
+      if(Number.isFinite(v)) state[p.k] = Math.max(0, Math.min(1, v));
+    });
+    FLAG_KEYS.forEach(k => { if(k in map) state[k] = map[k] === '1'; });
+    return;
+  }
 
   /* Порядок ползунков в v2. Нужен, чтобы старые ссылки читались по именам,
      а не по позициям: с тех пор список пополнился кольцами, а «Горы» стали
@@ -3984,7 +3940,6 @@ function loadHash(){
     state.rings   = parts[off+1] === '1';
     state.draft   = parts[off+2] === '1';
     state.voidbg  = parts[off+3] === '1';
-    state.texShow = parts[off+4] === '1';
     state.lowOn   = parts[off+5] !== '0';
     state.midOn   = parts[off+6] !== '0';
     state.highOn  = parts[off+7] !== '0';
@@ -4022,7 +3977,6 @@ function loadHash(){
     state.rings   = parts[off+1] === '1';
     state.draft   = parts[off+2] === '1';
     state.voidbg  = parts[off+3] === '1';
-    state.texShow = parts[off+4] === '1';
     state.lowOn   = parts[off+5] !== '0';
     state.midOn   = parts[off+6] !== '0';
     state.highOn  = parts[off+7] !== '0';
@@ -4052,7 +4006,6 @@ function loadHash(){
   state.rings   = parts[off+1] === '1';
   state.draft   = parts[off+2] === '1';
   state.voidbg  = parts[off+3] === '1';
-  state.texShow = parts[off+4] === '1';
   state.lowOn   = parts[off+5] !== '0';
   state.midOn   = parts[off+6] !== '0';
   state.highOn  = parts[off+7] !== '0';
@@ -4339,9 +4292,6 @@ function drawFrame(now){
     gl.uniform4fv(U.uPlateW, world.plateW);
     appliedUniformRevision = renderUniformRevision;
   }
-  texOn += (texReady - texOn) * 0.04;
-  const texBlend = state.texShow ? (texOn > 0.995 ? 1 : texOn) : 0;
-  gl.uniform1f(U.uTexOn, texBlend);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   drawAuroraWebGL(t, pos, camMat, magAxis, sunDir);
   drawMagnetosphereOverlay(t, pos, rgt, up, fwd, magAxis, sunDir);
@@ -4373,7 +4323,6 @@ function loop(now){
   if(programSwapPending){
     programSwapPending = false;
     markRenderUniformsDirty();
-    applyTextureUniforms();
     /* Замеры от упрощённого рендера не должны задирать масштаб под полный. */
     frameMsEwma = 16.7;
     qualityCooldown = 45;
@@ -4393,78 +4342,6 @@ function loop(now){
     tuneRenderScale(frameMsEwma);
   }
   requestAnimationFrame(loop);
-}
-
-/* ============ текстуры биомов ============ */
-/* Атлас 4x5 тайлов 512px, порядок слоёв:
-   0 boreal_forest 1 dry_steppe 2 eroded_badlands 3 glacier_ice 4 grassland
-   5 highland_rock 6 rocky_coast 7 rocky_desert 8 salt_flat 9 sandy_coast
-   10 sandy_desert 11 savanna 12 sea_ice 13 snow 14 temperate_forest
-   15 temperate_rock 16 tropical_forest 17 tundra 18 volcanic 19 wetland */
-let texReady = 0, texOn = 0;
-const TEX_N = 20, TEX_S = 512, TEX_COLS = 4;
-let TEX_URI = 'textures/biomes.webp';
-/* WebGL1 не поддерживает texStorage3D / sampler2DArray — текстуры отключены.
-   Проверка теперь только по возможностям контекста: программа может
-   смениться на ходу, когда в фоне долинкуется полный шейдер. */
-const hasTexArray = (webglVersion >= 2 && typeof gl.texStorage3D === 'function');
-let texMeans = null;
-/* Вызывается из adoptProgram(): у новой программы свои локации юниформ. */
-function applyTextureUniforms(){
-  if(!hasTexArray || !U.uTex) return;
-  gl.uniform1i(U.uTex, 0);
-  if(texMeans && U.uTexMean) gl.uniform3fv(U.uTexMean, texMeans);
-}
-if(hasTexArray){
-  const texObj = gl.createTexture();
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D_ARRAY, texObj);
-  gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 1, 1, TEX_N);
-  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.uniform1i(U.uTex, 0);
-  function loadBiomeTex(){
-    if(!TEX_URI) return;
-    const img = new Image();
-    img.onload = () => {
-      gl.deleteTexture(texObj);
-      const t = gl.createTexture();
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D_ARRAY, t);
-      const levels = 1 + Math.log2(TEX_S);
-      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, levels, gl.RGBA8, TEX_S, TEX_S, TEX_N);
-      const cv = document.createElement('canvas');
-      cv.width = TEX_S; cv.height = TEX_S;
-      const cx = cv.getContext('2d', {willReadFrequently: true});
-      const m1 = document.createElement('canvas'); m1.width = m1.height = 1;
-      const mc = m1.getContext('2d', {willReadFrequently: true});
-      const means = new Float32Array(TEX_N*3);
-      for(let i = 0; i < TEX_N; i++){
-        cx.drawImage(img, (i%TEX_COLS)*TEX_S, ((i/TEX_COLS)|0)*TEX_S, TEX_S, TEX_S, 0, 0, TEX_S, TEX_S);
-        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, TEX_S, TEX_S, 1, gl.RGBA, gl.UNSIGNED_BYTE, cv);
-        mc.clearRect(0, 0, 1, 1);
-        mc.drawImage(cv, 0, 0, TEX_S, TEX_S, 0, 0, 1, 1);
-        const d = mc.getImageData(0, 0, 1, 1).data;
-        means[i*3] = d[0]/255; means[i*3+1] = d[1]/255; means[i*3+2] = d[2]/255;
-      }
-      texMeans = means;
-      gl.uniform3fv(U.uTexMean, means);
-      gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT);
-      const aniso = gl.getExtension('EXT_texture_filter_anisotropic');
-      if(aniso) gl.texParameterf(gl.TEXTURE_2D_ARRAY, aniso.TEXTURE_MAX_ANISOTROPY_EXT,
-        Math.min(8, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
-      texReady = 1;
-    };
-    img.src = TEX_URI;
-  }
-  loadBiomeTex();
-} else {
-  console.warn('[madPlanet] Текстуры биомов недоступны (WebGL1)');
-  gl.uniform1i(U.uTex, 0);
 }
 
 /* ============ старт ============ */

@@ -12,8 +12,8 @@ const state = read('js/state.js');
 const versionText = read('VERSION.txt');
 const version = (versionText.match(/^VERSION\s+(\d+\.\d+\.\d+)\s*$/m) || [])[1];
 
-assert.equal(version, '0.5.25', 'visual regression test belongs to release 0.5.25');
-assert.match(shell, /<div class="ver">v0\.5\.25<\/div>/, 'visible app version must match');
+assert.equal(version, '0.5.26', 'visual regression test belongs to release 0.5.26');
+assert.match(shell, /<div class="ver">v0\.5\.26<\/div>/, 'visible app version must match');
 assert.match(shell, /\.mark h1\{[^}]*font-size:19px/s, 'desktop wordmark should remain larger');
 assert.match(shell, /\.mark h1\{font-size:16px/s, 'mobile wordmark should remain compact');
 
@@ -101,7 +101,7 @@ assert.match(state, /k:'ringDens'/, 'ring density control missing');
    и без счётчика добавление ползунка сдвигало флаги — у старой ссылки молча
    пропадали звёзды, потому что «средний ярус» читался как «пустой космос». */
 const ui = read('js/ui.js');
-assert.match(ui, /'v3', PARAMS\.length, state\.seed/, 'hash must carry a version and the parameter count');
+assert.match(ui, /parts\[0\] === 'v3'/, 'v3 links must still be readable');
 assert.match(ui, /const V2_KEYS = /, 'old v2 links must be migrated by name, not by position');
 /* Закрыть панель должно быть чем угодно, а не только крестиком 18x18. */
 assert.match(shell, /\.param-panel \.p-close\{[^}]*width:36px;height:36px/s, 'close button needs a finger-sized target');
@@ -130,5 +130,19 @@ assert.match(state, /const bigPlates = /, 'plate size hierarchy missing: equal c
 assert.match(terrainSrc, /float over = \(uPlateP\[i\]\.w >= uPlateP\[j\]\.w\)/, 'subduction polarity must come from plate weight');
 assert.match(terrainSrc, /float trench = /, 'convergent margin needs a trench on the subducting side');
 assert.ok(!/for\(int i=0;i<12;i\+\+\)/.test(terrainSrc), 'plate loops must be bounded by the uniform, not by the array size');
+
+/* 0.5.26: текстуры биомов удалены — атлас грузился всегда ради выключенной
+   по умолчанию опции, а biomeTex() инлайнился восемь раз. */
+const stripComments = t => t.replace(/\/\*[\s\S]*?\*\//g, '');
+assert.ok(!/biomeTex|triTex|uTexMean|sampler2DArray/.test(stripComments(surface + terrainSrc)),
+  'biome texture sampling must be gone');
+assert.ok(!/uTexOn|uTexMean/.test(shell), 'texture uniforms must not remain in the build shell');
+assert.ok(!fs.existsSync(path.join(root, 'shaders/textures.glsl')), 'textures.glsl must be removed');
+assert.ok(!fs.existsSync(path.join(root, 'textures')), 'the biome atlas must be removed');
+/* Хэш по именам: позиционный ломался дважды. */
+assert.match(ui, /const out = \['v4', 's' \+ state\.seed\]/, 'hash must be written by names');
+assert.match(ui, /const FLAG_KEYS = /, 'flags must be named, not positional');
+/* У «пустого космоса» должен быть видимый выключатель. */
+assert.match(shell, /id="starsOn"/, 'starfield toggle missing: a blanked sky had no way back');
 
 console.log('visual-regressions.test.js: OK');

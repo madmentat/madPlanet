@@ -157,51 +157,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   alb = mix(alb, denseC, ss(0.45,0.62,mo2)*0.70*ss(0.34,0.55,moist));
   alb *= 0.80 + 0.42*mo3;
 
-  /* фототекстуры биомов: базовый слой по климату + накладки */
-  if(uTexOn > 0.01 && land > 0.001){
-    float hotW = ss(0.55,0.95,temp);
-    float coldW = 1.0-ss(0.02,0.3,temp);
-    float layer;
-    if(hotW > 0.5){
-      layer = (moist>0.62) ? 16.0 : (moist>0.38) ? 11.0 :
-              ((rocky>0.62) ? ((moist<0.25)?2.0:7.0) : 10.0);
-      if(h < 0.05 && moist < 0.2) layer = 8.0;               /* солончак */
-    } else if(coldW > 0.5){
-      layer = (moist>0.5) ? 0.0 : 17.0;                      /* тайга / тундра */
-    } else {
-      layer = (moist<0.28) ? 1.0 : ((moist<0.48) ? 4.0 : 14.0);
-      if(rocky>0.72) layer = 15.0;
-      if(moist>0.78 && h<0.06) layer = 19.0;                 /* болота */
-    }
-    float foot = tHit*uPixA;
-    vec3 texC  = biomeTex(layer, sN, n0, foot);
-    vec3 meanC = uTexMean[int(layer)];
-    float wRock = ss(0.45,0.8,ridge)*(1.0-snowM);
-    if(wRock>0.01){
-      texC = mix(texC, biomeTex(5.0, sN, n0, foot), wRock);
-      meanC = mix(meanC, uTexMean[5], wRock);
-    }
-    if(hotW>0.5 && ridge>0.55){
-      float wv = ss(0.55,0.85,ridge)*0.8;
-      texC = mix(texC, biomeTex(18.0, sN, n0, foot), wv);
-      meanC = mix(meanC, uTexMean[18], wv);
-    }
-    if(snowM>0.01){
-      int s = (ridge>0.5) ? 3 : 13;
-      texC = mix(texC, biomeTex(float(s), sN, n0, foot), snowM);
-      meanC = mix(meanC, uTexMean[s], snowM);
-    }
-    if(beach>0.01){
-      int s = (rocky>0.6) ? 6 : 9;
-      float wv = beach*0.8;
-      texC = mix(texC, biomeTex(float(s), sN, n0, foot), wv);
-      meanC = mix(meanC, uTexMean[s], wv);
-    }
-    /* Берём из фотографии структуру, а не цвет: на дальнем плане тайл
-       замыливается до своего среднего, и абсолютный цвет выцвел бы. */
-    vec3 detail = clamp(texC / max(meanC, vec3(0.05)), vec3(0.30), vec3(1.85));
-    alb *= mix(vec3(1.0), detail, 0.85*uTexOn);
-  }
+  /* Фототекстуры биомов удалены в 0.5.26: атлас на 1.1 МБ грузился при каждом
+     запуске ради выключенной по умолчанию опции, а biomeTex() инлайнился в
+     программу восемь раз по три триплана в каждом. Цвет поверхности полностью
+     процедурный. */
 
   /* ---- вулканизм ----
      Очаги садятся туда, где им и положено: вдоль швов плит — дуги над зонами
@@ -265,10 +224,6 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float ice = 1.0 - ss(-climAA, climAA, iceN);
   if(ice > 0.01){
     vec3 iceCol = vec3(0.80,0.86,0.92)*(0.86+0.24*(0.5+0.5*fbm(sN*30.0+uSeedS,2)));
-    if(uTexOn > 0.01){
-      vec3 t12 = biomeTex(12.0, sN, n0, tHit*uPixA);
-      iceCol *= mix(vec3(1.0), clamp(t12/max(uTexMean[12], vec3(0.05)), vec3(0.45), vec3(1.8)), 0.8*uTexOn);
-    }
     oc = mix(oc, iceCol, ice*0.95);
   }
   vec3 albF = mix(oc, alb, land);

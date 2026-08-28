@@ -30,7 +30,7 @@ const PARAMS = [
   {k:'distance',   label:'Расстояние',              def:0.51, group:'Звезда'},
 ];
 const state = {seed: 8127344, rings: false, draft: false, voidbg: false, platesOn: false,
-               texShow: false, lowOn: true, midOn: false, highOn: false,
+               lowOn: true, midOn: false, highOn: false,
                auroraOn: true, fieldLinesOn: false, auroraFootpoints: false};
 PARAMS.forEach(p => state[p.k] = p.def);
 

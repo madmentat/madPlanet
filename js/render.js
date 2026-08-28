@@ -223,9 +223,6 @@ function drawFrame(now){
     gl.uniform4fv(U.uPlateW, world.plateW);
     appliedUniformRevision = renderUniformRevision;
   }
-  texOn += (texReady - texOn) * 0.04;
-  const texBlend = state.texShow ? (texOn > 0.995 ? 1 : texOn) : 0;
-  gl.uniform1f(U.uTexOn, texBlend);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   drawAuroraWebGL(t, pos, camMat, magAxis, sunDir);
   drawMagnetosphereOverlay(t, pos, rgt, up, fwd, magAxis, sunDir);
@@ -257,7 +254,6 @@ function loop(now){
   if(programSwapPending){
     programSwapPending = false;
     markRenderUniformsDirty();
-    applyTextureUniforms();
     /* Замеры от упрощённого рендера не должны задирать масштаб под полный. */
     frameMsEwma = 16.7;
     qualityCooldown = 45;
@@ -277,78 +273,6 @@ function loop(now){
     tuneRenderScale(frameMsEwma);
   }
   requestAnimationFrame(loop);
-}
-
-/* ============ текстуры биомов ============ */
-/* Атлас 4x5 тайлов 512px, порядок слоёв:
-   0 boreal_forest 1 dry_steppe 2 eroded_badlands 3 glacier_ice 4 grassland
-   5 highland_rock 6 rocky_coast 7 rocky_desert 8 salt_flat 9 sandy_coast
-   10 sandy_desert 11 savanna 12 sea_ice 13 snow 14 temperate_forest
-   15 temperate_rock 16 tropical_forest 17 tundra 18 volcanic 19 wetland */
-let texReady = 0, texOn = 0;
-const TEX_N = 20, TEX_S = 512, TEX_COLS = 4;
-let TEX_URI = 'textures/biomes.webp';
-/* WebGL1 не поддерживает texStorage3D / sampler2DArray — текстуры отключены.
-   Проверка теперь только по возможностям контекста: программа может
-   смениться на ходу, когда в фоне долинкуется полный шейдер. */
-const hasTexArray = (webglVersion >= 2 && typeof gl.texStorage3D === 'function');
-let texMeans = null;
-/* Вызывается из adoptProgram(): у новой программы свои локации юниформ. */
-function applyTextureUniforms(){
-  if(!hasTexArray || !U.uTex) return;
-  gl.uniform1i(U.uTex, 0);
-  if(texMeans && U.uTexMean) gl.uniform3fv(U.uTexMean, texMeans);
-}
-if(hasTexArray){
-  const texObj = gl.createTexture();
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D_ARRAY, texObj);
-  gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 1, 1, TEX_N);
-  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.uniform1i(U.uTex, 0);
-  function loadBiomeTex(){
-    if(!TEX_URI) return;
-    const img = new Image();
-    img.onload = () => {
-      gl.deleteTexture(texObj);
-      const t = gl.createTexture();
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D_ARRAY, t);
-      const levels = 1 + Math.log2(TEX_S);
-      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, levels, gl.RGBA8, TEX_S, TEX_S, TEX_N);
-      const cv = document.createElement('canvas');
-      cv.width = TEX_S; cv.height = TEX_S;
-      const cx = cv.getContext('2d', {willReadFrequently: true});
-      const m1 = document.createElement('canvas'); m1.width = m1.height = 1;
-      const mc = m1.getContext('2d', {willReadFrequently: true});
-      const means = new Float32Array(TEX_N*3);
-      for(let i = 0; i < TEX_N; i++){
-        cx.drawImage(img, (i%TEX_COLS)*TEX_S, ((i/TEX_COLS)|0)*TEX_S, TEX_S, TEX_S, 0, 0, TEX_S, TEX_S);
-        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, TEX_S, TEX_S, 1, gl.RGBA, gl.UNSIGNED_BYTE, cv);
-        mc.clearRect(0, 0, 1, 1);
-        mc.drawImage(cv, 0, 0, TEX_S, TEX_S, 0, 0, 1, 1);
-        const d = mc.getImageData(0, 0, 1, 1).data;
-        means[i*3] = d[0]/255; means[i*3+1] = d[1]/255; means[i*3+2] = d[2]/255;
-      }
-      texMeans = means;
-      gl.uniform3fv(U.uTexMean, means);
-      gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT);
-      const aniso = gl.getExtension('EXT_texture_filter_anisotropic');
-      if(aniso) gl.texParameterf(gl.TEXTURE_2D_ARRAY, aniso.TEXTURE_MAX_ANISOTROPY_EXT,
-        Math.min(8, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
-      texReady = 1;
-    };
-    img.src = TEX_URI;
-  }
-  loadBiomeTex();
-} else {
-  console.warn('[madPlanet] Текстуры биомов недоступны (WebGL1)');
-  gl.uniform1i(U.uTex, 0);
 }
 
 /* ============ старт ============ */

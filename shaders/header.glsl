@@ -35,11 +35,8 @@ uniform float uConvection;
 uniform float uLowOn, uMidOn, uHighOn;  /* включение/выключение ярусов облаков */
 uniform mat3  uRotC2;     /* средний ярус облаков */
 uniform mat3  uRotC3;     /* верхний ярус облаков */
-uniform mediump sampler2DArray uTex;
-uniform float uTexOn;
 uniform float uDraft;     /* 1 — черновик: дорогие слои выключены */
 uniform float uVoid;      /* 1 — космос заливается чёрным */
-uniform vec3  uTexMean[20];   /* средний цвет каждого тайла */
 uniform mat3  uRingMat;
 uniform vec3  uSeedS, uSeedC;
 uniform vec4  uCycA[5];   /* xyz — центр циклона, w — сила */

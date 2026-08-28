@@ -21,7 +21,6 @@ madPlanet/
 │   ├── noise.glsl          # hash33, noise3, fbm, ridged, ss (49 lines)
 │   ├── terrain.glsl        # contFreq, seaLvl, terrain (40 lines)
 │   ├── clouds.glsl         # vortexWarp, synoptic, weather, low/mid/highDeck, shadeDeck (521 lines)
-│   ├── textures.glsl       # triTex, biomeTex — atlas sampling (19 lines)
 │   ├── atmosphere.glsl     # atmoColor — Rayleigh/scattering by composition (33 lines)
 │   ├── rings.glsl          # ringPattern, ringShadow, ringColor (49 lines)
 │   ├── fog.glsl            # fogLayer — inversion belt, coastal, terminator (22 lines)
@@ -38,8 +37,6 @@ madPlanet/
 │   ├── ui.js               # syncUI, slider creation, toggle handlers (123 lines)
 │   ├── screenshot.js       # takeShot, PNG export (48 lines)
 │   └── render.js           # fitCanvas, drawFrame, loop, texture loader (177 lines)
-├── textures/
-│   └── biomes.webp         # Biome atlas (1.1MB)
 ├── deploy.ps1              # SCP -> Proxmox container serving the site
 ├── build.sh                # Linux: concatenate → index.html
 ├── build.ps1               # Windows: concatenate → index.html
