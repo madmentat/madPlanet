@@ -75,12 +75,25 @@ function soilRefreshCapacity(core){
   const sig=soilSignature(core);
   if(core.soilHydrologySignature===sig) return core;
   const sea=(typeof h2oSeaLevelProxy==='function')?h2oSeaLevelProxy():0;
+  core.soilCapacityOceanReturnMass=0;
   for(let i=0;i<core.count;i++){
-    const land=1-soilClamp(core.surfaceWaterFraction[i],0,1);
+    const water=soilClamp(core.surfaceWaterFraction[i],0,1);
+    const land=1-water;
     const rough=soilClamp(core.orographicRoughness?.[i]||0,0,1);
     const high=soilSmooth(0.08,0.48,Math.max(0,core.macroTerrain[i]-sea));
     const rugged=soilClamp(0.72*rough+0.28*high,0,1);
-    core.soilCapacity[i]=land*soilMix(SOIL_CAPACITY_FLAT_KG_M2,SOIL_CAPACITY_RUGGED_KG_M2,rugged);
+    const cap=land*soilMix(SOIL_CAPACITY_FLAT_KG_M2,SOIL_CAPACITY_RUGGED_KG_M2,rugged);
+    const oldSoil=Math.max(0,core.soilMoisture[i]);
+    core.soilCapacity[i]=cap;
+    if(oldSoil>cap){
+      const spill=oldSoil-cap;
+      core.soilMoisture[i]=cap;
+      if(water>0.5){
+        core.soilCapacityOceanReturnMass+=spill*Math.max(1e-12,core.areaWeight?.[i]||1);
+      }else{
+        core.runoffWater[i]+=spill;
+      }
+    }
   }
   core.soilHydrologySignature=sig;
   return core;
