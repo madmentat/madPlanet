@@ -10,10 +10,10 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'local energy test must see a semantic version');
-assert.ok(buildPs.includes("'js/weather-core.js','js/local-energy-balance.js','js/baric-field.js','js/render.js'"),
-  'PowerShell build must load local energy before baric field and render');
-assert.ok(buildSh.includes('js/weather-core.js js/local-energy-balance.js js/baric-field.js js/render.js'),
-  'shell build must load local energy before baric field and render');
+function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
+const order=['js/weather-core.js','js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/render.js'];
+assertOrdered(buildPs,order,'PowerShell energy/baric/wind order');
+assertOrdered(buildSh,order,'shell energy/baric/wind order');
 
 const state={seed:8127344,draft:true,sea:0.58,star:0.43,luminosity:0.43};
 const ctx={console,Math,Number,Date,Float32Array,state};
