@@ -228,7 +228,7 @@
 
 <div class="mark">
   <h1>madPlanet</h1>
-  <div class="ver">v0.5.28</div>
+  <div class="ver">v0.5.29</div>
   <div class="sub">МИР <b id="seedLabel">№ —</b></div>
 </div>
 
@@ -273,7 +273,7 @@
 <script>
 'use strict';
 
-const APP_VERSION = '0.5.28';
+const APP_VERSION = '0.5.29';
 const VERT = `#version 300 es
 layout(location=0) in vec2 aPos;
 void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
@@ -305,6 +305,8 @@ uniform float uRingMaterial; /* материал: лёд - камень - пыл
 uniform float uPlatesOn;   /* схема литосферных плит */
 uniform float uVolcano;    /* активность вулканизма */
 uniform float uLava;       /* раскалённость лавы */
+uniform float uStorm;      /* грозовая активность */
+uniform float uRingGrain;  /* размер частиц колец */
 uniform vec3  uStarCol;     /* спектральный цвет */
 uniform float uStarRadius;  /* относительный видимый диск */
 uniform float uStarFlux;    /* поток излучения */
@@ -1132,17 +1134,51 @@ vec4 ringColor(vec3 ro, vec3 rd, float tMax, out float tR){
   float sh = (alongSun < 0.0) ? mix(0.10, 1.0, ss(0.97, 1.06, distAx)) : 1.0;
   float dl = clamp(abs(dot(rn, uSunDir)), 0.0, 1.0)*0.75 + 0.25;
   float starLift = clamp(0.68 + 0.34*log(1.0 + uStarFlux), 0.55, 1.60);
-  float back = pow(max(dot(rd, uSunDir), 0.0), 3.0)*mix(0.62, 0.20, ss(0.0,1.0,uRingMaterial));
+  /* Мелкая пыль сильнее светится на просвет — как земное сумеречное гало. */
+  float back = pow(max(dot(rd, uSunDir), 0.0), 3.0)*mix(0.80, 0.18, uRingGrain);
   float hueV = 0.5+0.5*noise3(vec3(r*7.0, uSeedS.y*0.7, 11.0));
-  /* Материал: лёд - камень - пыль. Лёд яркий и голубоватый, камень серо-бурый,
-     пыль тёплая и тусклая. Заодно меняется, насколько сильно кольцо светится
-     на просвет: ледяные частицы рассеивают вперёд заметно охотнее. */
-  vec3 ICE  = mix(vec3(0.74,0.80,0.88), vec3(0.86,0.91,0.97), hueV);
-  vec3 ROCKY= mix(vec3(0.42,0.38,0.33), vec3(0.52,0.47,0.42), hueV);
-  vec3 DUST = mix(vec3(0.55,0.44,0.31), vec3(0.64,0.54,0.42), hueV);
-  vec3 base = (uRingMaterial < 0.5)
-            ? mix(ICE, ROCKY, ss(0.0,0.5,uRingMaterial))
-            : mix(ROCKY, DUST, ss(0.5,1.0,uRingMaterial));
+
+  /* ---------- цвет кольца ----------
+     Кольцо ничего не излучает: мы видим отражённый свет звезды. Поэтому цвет
+     складывается из трёх вещей — спектрального отклика вещества, спектра
+     осветителя и размера частиц.
+
+     Вещество (ползунок «Состав»): водяной лёд — силикаты — органика (толины)
+     — метановые и аммиачные льды. Лёд яркий и чуть голубоватый, силикаты
+     серо-красные, толины тёмно-бурые и очень тёмные, метановые льды синеватые.
+
+     Размер (ползунок «Частицы»): мелкая пыль масштаба микрона рассеивает по
+     Рэлею и уводит цвет в синеву, крупные глыбы отражают почти нейтрально.
+
+     Тепловой режим: вблизи горячей звезды лёд сублимирует, и от состава
+     остаются одни силикаты — сколько ползунок ни двигай. */
+  vec3 refl;
+  vec3 ICE   = vec3(0.90,0.93,0.98);   /* водяной лёд */
+  vec3 SIL   = vec3(0.40,0.32,0.26);   /* силикаты */
+  vec3 THOLIN= vec3(0.27,0.12,0.07);   /* органика */
+  vec3 CH4   = vec3(0.72,0.83,1.00);   /* метан/аммиак */
+  float m = uRingMaterial*3.0;
+  if(m < 1.0)      refl = mix(ICE, SIL, m);
+  else if(m < 2.0) refl = mix(SIL, THOLIN, m-1.0);
+  else             refl = mix(THOLIN, CH4, m-2.0);
+  refl *= 0.86 + 0.28*hueV;
+
+  /* Лёд не переживает близкой горячей звезды. */
+  float iceSafe = 1.0 - ss(1.8, 5.0, uStarFlux);
+  float icy = max(1.0-ss(0.0,0.33,uRingMaterial), ss(0.66,1.0,uRingMaterial));
+  refl = mix(refl, SIL*(0.9+0.3*hueV), icy*(1.0-iceSafe));
+
+  /* Рэлеевское рассеяние на мелкой пыли: короткие волны уходят в сторону
+     наблюдателя охотнее. Крупные частицы, наоборот, обесцвечивают отклик. */
+  float fine = 1.0 - uRingGrain;
+  refl *= mix(vec3(1.0), vec3(0.62,0.86,1.35), fine*0.75);
+  float grey = dot(refl, vec3(0.299,0.587,0.114));
+  refl = mix(refl, vec3(grey), uRingGrain*0.55);
+
+  /* Осветитель. Спектр звезды множится на отклик: у красного карлика ледяное
+     кольцо желтеет, у горячей голубой — синеет, а органика уходит почти в
+     чёрное, потому что отражать ей в синей части нечем. */
+  vec3 base = refl * mix(vec3(1.0), uStarCol, 0.85);
   vec3 c = (base*dl + uStarCol*vec3(0.82,0.74,0.62)*back)*sh*1.5*starLift;
   return vec4(c, a);
 }
@@ -1187,22 +1223,31 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
      была быть сильной и облако плотным одновременно. Смягчено — вспышки
      всё ещё только на ночной стороне и только под облаком, но встречаются
      заметно чаще. */
-  float storm = gWx.w;
-  if(storm < 0.09) return acc;
-  if(cloudA < mix(0.05, 0.20, storm)) return acc;
+  /* Ворота плавные, а не ступенькой. Раньше это были ранние выходы: стоило
+     грозовому полю или облачной массе чуть просесть, как разряды пропадали
+     разом по всему кадру — отсюда «фигачили, и вдруг перестали». Теперь
+     свечение гаснет постепенно. */
+  float storm = gWx.w * mix(0.45, 1.55, uStorm);
+  float gate = ss(0.03, 0.18, storm) * ss(0.02, 0.16, cloudA);
+  if(gate < 0.002) return acc;
+  /* Время для грозовой модели заворачивается. hash33 нормирует аргумент
+     через fract(p*0.1031), и когда номер цикла дорастает до сотен тысяч, на
+     этом шаге остаётся пара сотен различимых значений — очаги вырождаются.
+     Пятнадцатиминутный оборот держит аргумент в разумных пределах. */
+  float lt = mod(uTime, 900.0);
   for(int i=0;i<6;i++){
     float fi = float(i);
     float per = 0.55 + fi*0.28;
-    float ph = uTime/per + fi*7.77;
+    float ph = lt/per + fi*7.77;
     float cyc = floor(ph);
     float fr = fract(ph);
     /* Модель конденсатора: быстрый разряд → медленная перезарядка.
        Первый удар — яркий, второй — 70% интенсивности. */
-    float capPhase = fract(uTime*per*0.7 + fi*3.14);
+    float capPhase = fract(lt*per*0.7 + fi*3.14);
     float discharge = exp(-capPhase * 8.0);
     float recharge = 1.0 - exp(-capPhase * 2.0);
     float capFlick = discharge * recharge;
-    float capPhase2 = fract(uTime*per*0.73 + fi*3.14 + 0.4);
+    float capPhase2 = fract(lt*per*0.73 + fi*3.14 + 0.4);
     float capFlick2 = exp(-capPhase2 * 12.0) * (1.0 - exp(-capPhase2 * 3.0));
     float win = max(capFlick, capFlick2 * 0.7);
     /* Старая модель для обратной совместимости — микс с новой */
@@ -1226,7 +1271,7 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
     float g = core + branch * 0.6 + diffuse;
     acc += vec3(0.72,0.80,1.0) * g * win * 6.5;
   }
-  return acc;
+  return acc*gate;
 }
 
 
@@ -2189,7 +2234,7 @@ let usedVariant = 'none';
 const shaderFailureLog = [];
 
 const UNIFORM_NAMES = ['uRes','uTime','uCamPos','uCamMat','uFocal','uCamDist','uPixA','uRotS','uRotC','uRotCInv',
- 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle','uRingInner','uRingWidth','uRingDens','uRingCount','uRingMaterial','uPlatesOn','uVolcano','uLava',
+ 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle','uRingInner','uRingWidth','uRingDens','uRingCount','uRingMaterial','uPlatesOn','uVolcano','uLava','uStorm','uRingGrain',
  'uLake','uCity','uAtmo','uRingsOn','uRingMat','uSeedS','uSeedC','uDraft','uVoid',
  'uStarCol','uMagAxis','uAtmoComp','uLowOn','uMidOn','uHighOn','uWind','uConvection','uMagField','uAurora',
  'uStarRadius','uStarFlux','uStarDist','uPlateN'];
@@ -3149,12 +3194,14 @@ const PARAMS = [
   {k:'ringWidth',  label:'Ширина колец',           def:0.62, group:'Кольца'},
   {k:'ringDens',   label:'Плотность колец',        def:0.60, group:'Кольца'},
   {k:'ringCount',  label:'Число колец',            def:0.45, group:'Кольца'},
-  {k:'ringMat',    label:'Материал колец',         def:0.35, group:'Кольца'},
-  {k:'cloudLow',   label:'Нижний слой',            def:0.48, group:'Климат'},
-  {k:'cloudMid',   label:'Средний слой',            def:0.44, group:'Климат'},
-  {k:'cloudHigh',  label:'Верхний слой',             def:0.30, group:'Климат'},
-  {k:'wind',       label:'Ветры',                  def:0.55, group:'Климат'},
-  {k:'convection', label:'Конвекция',              def:0.55, group:'Климат'},
+  {k:'ringMat',    label:'Состав колец',           def:0.20, group:'Кольца'},
+  {k:'ringGrain',  label:'Размер частиц',          def:0.45, group:'Кольца'},
+  {k:'cloudLow',   label:'Нижний слой',            def:0.48, group:'Погода'},
+  {k:'cloudMid',   label:'Средний слой',            def:0.44, group:'Погода'},
+  {k:'cloudHigh',  label:'Верхний слой',             def:0.30, group:'Погода'},
+  {k:'wind',       label:'Ветры',                  def:0.55, group:'Погода'},
+  {k:'convection', label:'Конвекция',              def:0.55, group:'Погода'},
+  {k:'storm',      label:'Грозовая активность',    def:0.55, group:'Погода'},
   {k:'atmo',       label:'Плотность атмосферы',    def:0.60, group:'Атмосфера'},
   {k:'atmoComp',   label:'Состав атмосферы',       def:0.00, group:'Атмосфера'},
   {k:'magnet',     label:'Мощность магнитного поля', def:0.52, group:'Магнитосфера'},
@@ -3213,11 +3260,18 @@ function distanceInfo(v){
 }
 /* Подпись материала колец: лёд - камень - пыль. */
 function ringMatLabel(t){
-  if(t < 0.28) return 'лёд';
-  if(t < 0.45) return 'лёд/камень';
-  if(t < 0.62) return 'камень';
-  if(t < 0.80) return 'камень/пыль';
-  return 'пыль';
+  if(t < 0.17) return 'водяной лёд';
+  if(t < 0.33) return 'лёд + силикаты';
+  if(t < 0.50) return 'силикаты';
+  if(t < 0.66) return 'силикаты + толины';
+  if(t < 0.83) return 'органика (толины)';
+  return 'метановый лёд';
+}
+function ringGrainLabel(t){
+  if(t < 0.22) return 'пыль ~1 мкм';
+  if(t < 0.45) return 'мелкий песок';
+  if(t < 0.70) return 'гравий';
+  return 'глыбы';
 }
 function atmoLabel(t){
   if(t < 0.12) return 'N₂/O₂';
@@ -3621,7 +3675,7 @@ const groupOrder = [...new Set(PARAMS.map(p => p.group))];
 const GROUP_ICONS = {
   'Планета':      '<svg viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.2"/><path d="M9 2.5a6.5 6.5 0 010 13" fill="currentColor" opacity=".15"/></svg>',
   'Поверхность':  '<svg viewBox="0 0 18 18" fill="none"><path d="M2 12c2-3 4-1 6-4s3-4 8-5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M2 15h14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".4"/></svg>',
-  'Климат':       '<svg viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3 3-6 6-6s6 3 6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M5 11c1-2 2.5-1 4-3s2.5-2 5-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".6"/></svg>',
+  'Погода':       '<svg viewBox="0 0 18 18" fill="none"><path d="M3 9c0-3 3-6 6-6s6 3 6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M5 11c1-2 2.5-1 4-3s2.5-2 5-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".6"/></svg>',
   'Атмосфера':    '<svg viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="4" stroke="currentColor" stroke-width="1.2"/><circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1.2" opacity=".3"/></svg>',
   'Магнитосфера': '<svg viewBox="0 0 18 18" fill="none"><path d="M9 2v14M5 5c2 2 2 6 0 8M13 5c-2 2-2 6 0 8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
   'Кольца':       '<svg viewBox="0 0 18 18" fill="none"><ellipse cx="9" cy="9" rx="7.5" ry="2.6" stroke="currentColor" stroke-width="1.2"/><ellipse cx="9" cy="9" rx="4.6" ry="1.5" stroke="currentColor" stroke-width="1" opacity=".55"/></svg>',
@@ -3629,7 +3683,7 @@ const GROUP_ICONS = {
 };
 
 const GROUP_SHORT = {
-  'Планета':'ПЛ', 'Поверхность':'ПВ', 'Климат':'КЛ',
+  'Планета':'ПЛ', 'Поверхность':'ПВ', 'Погода':'ПГ',
   'Атмосфера':'АТ', 'Магнитосфера':'МГ', 'Звезда':'ЗВ', 'Кольца':'КЦ'
 };
 
@@ -3690,6 +3744,7 @@ function createPanel(group){
       if(p.k==='aurora') text = auroraKpLabel(state.aurora);
       if(p.k==='atmoComp') text = atmoLabel(state.atmoComp);
       if(p.k==='ringMat') text = ringMatLabel(state.ringMat);
+      if(p.k==='ringGrain') text = ringGrainLabel(state.ringGrain);
       if(p.k==='luminosity') text = luminosityLabel(state.luminosity);
       if(p.k==='distance'){ const q=distanceInfo(state.distance); text=q.label; }
       valSpan.textContent = text;
@@ -3707,8 +3762,8 @@ function createPanel(group){
     sliders[p.k] = inp;
   });
 
-  /* Тоглы облаков в панели «Климат» */
-  if(group === 'Климат'){
+  /* Тоглы облаков в панели «Погода» */
+  if(group === 'Погода'){
     const cloudToggles = [
       {id:'lowOn',  label:'Низкие облака',  key:'lowOn',  title:'Кумулус / стратус'},
       {id:'midOn',  label:'Средние облака',  key:'midOn',  title:'Альто-'},
@@ -3896,6 +3951,7 @@ function syncDynamicLabels(){
     else if(p.k==='aurora') el.textContent = auroraKpLabel(state.aurora);
     else if(p.k==='atmoComp') el.textContent = atmoLabel(state.atmoComp);
     else if(p.k==='ringMat') el.textContent = ringMatLabel(state.ringMat);
+    else if(p.k==='ringGrain') el.textContent = ringGrainLabel(state.ringGrain);
     else if(p.k==='luminosity') el.textContent = luminosityLabel(state.luminosity);
     else if(p.k==='distance') el.textContent = distanceInfo(state.distance).label;
   });
@@ -3972,6 +4028,8 @@ document.getElementById('rand').addEventListener('click', () => {
   state.ringDens = 0.3 + r()*0.65;
   state.ringCount = r();
   state.ringMat = r();
+  state.ringGrain = r();
+  state.storm = 0.25 + r()*0.7;
   state.volcano = r()*0.8;
   state.lava = 0.3 + r()*0.7;
   deriveWorld(); markRenderUniformsDirty(); syncUI(); saveHash();
@@ -4378,6 +4436,8 @@ function drawFrame(now){
     gl.uniform1f(U.uPlatesOn, state.platesOn ? 1 : 0);
     gl.uniform1f(U.uVolcano, state.volcano);
     gl.uniform1f(U.uLava, state.lava);
+    gl.uniform1f(U.uStorm, state.storm);
+    gl.uniform1f(U.uRingGrain, state.ringGrain);
     gl.uniformMatrix3fv(U.uRingMat, false, world.ringMat);
     gl.uniform3fv(U.uSeedS, world.seedS);
     gl.uniform3fv(U.uSeedC, world.seedC);

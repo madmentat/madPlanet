@@ -13,12 +13,14 @@ const PARAMS = [
   {k:'ringWidth',  label:'Ширина колец',           def:0.62, group:'Кольца'},
   {k:'ringDens',   label:'Плотность колец',        def:0.60, group:'Кольца'},
   {k:'ringCount',  label:'Число колец',            def:0.45, group:'Кольца'},
-  {k:'ringMat',    label:'Материал колец',         def:0.35, group:'Кольца'},
-  {k:'cloudLow',   label:'Нижний слой',            def:0.48, group:'Климат'},
-  {k:'cloudMid',   label:'Средний слой',            def:0.44, group:'Климат'},
-  {k:'cloudHigh',  label:'Верхний слой',             def:0.30, group:'Климат'},
-  {k:'wind',       label:'Ветры',                  def:0.55, group:'Климат'},
-  {k:'convection', label:'Конвекция',              def:0.55, group:'Климат'},
+  {k:'ringMat',    label:'Состав колец',           def:0.20, group:'Кольца'},
+  {k:'ringGrain',  label:'Размер частиц',          def:0.45, group:'Кольца'},
+  {k:'cloudLow',   label:'Нижний слой',            def:0.48, group:'Погода'},
+  {k:'cloudMid',   label:'Средний слой',            def:0.44, group:'Погода'},
+  {k:'cloudHigh',  label:'Верхний слой',             def:0.30, group:'Погода'},
+  {k:'wind',       label:'Ветры',                  def:0.55, group:'Погода'},
+  {k:'convection', label:'Конвекция',              def:0.55, group:'Погода'},
+  {k:'storm',      label:'Грозовая активность',    def:0.55, group:'Погода'},
   {k:'atmo',       label:'Плотность атмосферы',    def:0.60, group:'Атмосфера'},
   {k:'atmoComp',   label:'Состав атмосферы',       def:0.00, group:'Атмосфера'},
   {k:'magnet',     label:'Мощность магнитного поля', def:0.52, group:'Магнитосфера'},
@@ -77,11 +79,18 @@ function distanceInfo(v){
 }
 /* Подпись материала колец: лёд - камень - пыль. */
 function ringMatLabel(t){
-  if(t < 0.28) return 'лёд';
-  if(t < 0.45) return 'лёд/камень';
-  if(t < 0.62) return 'камень';
-  if(t < 0.80) return 'камень/пыль';
-  return 'пыль';
+  if(t < 0.17) return 'водяной лёд';
+  if(t < 0.33) return 'лёд + силикаты';
+  if(t < 0.50) return 'силикаты';
+  if(t < 0.66) return 'силикаты + толины';
+  if(t < 0.83) return 'органика (толины)';
+  return 'метановый лёд';
+}
+function ringGrainLabel(t){
+  if(t < 0.22) return 'пыль ~1 мкм';
+  if(t < 0.45) return 'мелкий песок';
+  if(t < 0.70) return 'гравий';
+  return 'глыбы';
 }
 function atmoLabel(t){
   if(t < 0.12) return 'N₂/O₂';

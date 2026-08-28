@@ -1,4 +1,4 @@
-VERSION 0.5.28
-Base: 0.5.27
-Changes: sliders grabbable on touch again; volcano and storm thresholds moved inside the actual noise range - they were beyond its maximum and could never fire; lightning widened, brightened and sped up.
+VERSION 0.5.29
+Base: 0.5.28
+Changes: lightning gates made smooth and its clock wrapped, plus a storm slider; ring colour rebuilt from composition, particle size and the star as illuminant; the Climate rubric became Weather.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

@@ -12,8 +12,8 @@ const state = read('js/state.js');
 const versionText = read('VERSION.txt');
 const version = (versionText.match(/^VERSION\s+(\d+\.\d+\.\d+)\s*$/m) || [])[1];
 
-assert.equal(version, '0.5.28', 'visual regression test belongs to release 0.5.28');
-assert.match(shell, /<div class="ver">v0\.5\.28<\/div>/, 'visible app version must match');
+assert.equal(version, '0.5.29', 'visual regression test belongs to release 0.5.29');
+assert.match(shell, /<div class="ver">v0\.5\.29<\/div>/, 'visible app version must match');
 assert.match(shell, /\.mark h1\{[^}]*font-size:19px/s, 'desktop wordmark should remain larger');
 assert.match(shell, /\.mark h1\{font-size:16px/s, 'mobile wordmark should remain compact');
 
@@ -165,5 +165,18 @@ assert.match(clouds, /float stormy=mix\(0\.55,1\.45,uAtmo\)/, 'storms must scale
 /* Ползунки должны браться пальцем. */
 assert.ok(!/user-select:none;touch-action:none\}/.test(shell), 'touch-action:none on body blocks native slider dragging');
 assert.match(shell, /input\[type=range\]\{[^}]*height:34px/s, 'slider hit area must be finger sized');
+
+/* 0.5.29: ворота молний плавные, часы завёрнуты, у гроз есть ползунок. */
+assert.ok(!/if\(storm < 0\.09\) return acc;/.test(lightning), 'hard lightning cut-offs must not return');
+assert.match(lightning, /float gate = ss\(/, 'lightning gates must fade, not snap');
+assert.match(lightning, /float lt = mod\(uTime, 900\.0\)/, 'lightning clock must wrap to keep hash precision');
+assert.match(state, /k:'storm'/, 'storm activity slider missing');
+/* Кольца: цвет из состава, размера частиц и спектра звезды. */
+const rings = read('shaders/rings.glsl');
+assert.match(rings, /vec3 THOLIN=/, 'ring composition must include organics');
+assert.match(rings, /float iceSafe = /, 'ice must sublimate near a hot star');
+assert.match(rings, /refl \* mix\(vec3\(1\.0\), uStarCol/, 'ring colour must be lit by the star spectrum');
+assert.match(state, /k:'ringGrain'/, 'particle size slider missing');
+assert.match(state, /group:'Погода'/, 'the Climate rubric should read as Weather');
 
 console.log('visual-regressions.test.js: OK');

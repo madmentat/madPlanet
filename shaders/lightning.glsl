@@ -14,22 +14,31 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
      была быть сильной и облако плотным одновременно. Смягчено — вспышки
      всё ещё только на ночной стороне и только под облаком, но встречаются
      заметно чаще. */
-  float storm = gWx.w;
-  if(storm < 0.09) return acc;
-  if(cloudA < mix(0.05, 0.20, storm)) return acc;
+  /* Ворота плавные, а не ступенькой. Раньше это были ранние выходы: стоило
+     грозовому полю или облачной массе чуть просесть, как разряды пропадали
+     разом по всему кадру — отсюда «фигачили, и вдруг перестали». Теперь
+     свечение гаснет постепенно. */
+  float storm = gWx.w * mix(0.45, 1.55, uStorm);
+  float gate = ss(0.03, 0.18, storm) * ss(0.02, 0.16, cloudA);
+  if(gate < 0.002) return acc;
+  /* Время для грозовой модели заворачивается. hash33 нормирует аргумент
+     через fract(p*0.1031), и когда номер цикла дорастает до сотен тысяч, на
+     этом шаге остаётся пара сотен различимых значений — очаги вырождаются.
+     Пятнадцатиминутный оборот держит аргумент в разумных пределах. */
+  float lt = mod(uTime, 900.0);
   for(int i=0;i<6;i++){
     float fi = float(i);
     float per = 0.55 + fi*0.28;
-    float ph = uTime/per + fi*7.77;
+    float ph = lt/per + fi*7.77;
     float cyc = floor(ph);
     float fr = fract(ph);
     /* Модель конденсатора: быстрый разряд → медленная перезарядка.
        Первый удар — яркий, второй — 70% интенсивности. */
-    float capPhase = fract(uTime*per*0.7 + fi*3.14);
+    float capPhase = fract(lt*per*0.7 + fi*3.14);
     float discharge = exp(-capPhase * 8.0);
     float recharge = 1.0 - exp(-capPhase * 2.0);
     float capFlick = discharge * recharge;
-    float capPhase2 = fract(uTime*per*0.73 + fi*3.14 + 0.4);
+    float capPhase2 = fract(lt*per*0.73 + fi*3.14 + 0.4);
     float capFlick2 = exp(-capPhase2 * 12.0) * (1.0 - exp(-capPhase2 * 3.0));
     float win = max(capFlick, capFlick2 * 0.7);
     /* Старая модель для обратной совместимости — микс с новой */
@@ -53,6 +62,6 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
     float g = core + branch * 0.6 + diffuse;
     acc += vec3(0.72,0.80,1.0) * g * win * 6.5;
   }
-  return acc;
+  return acc*gate;
 }
 

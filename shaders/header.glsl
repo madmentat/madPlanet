@@ -25,6 +25,8 @@ uniform float uRingMaterial; /* материал: лёд - камень - пыл
 uniform float uPlatesOn;   /* схема литосферных плит */
 uniform float uVolcano;    /* активность вулканизма */
 uniform float uLava;       /* раскалённость лавы */
+uniform float uStorm;      /* грозовая активность */
+uniform float uRingGrain;  /* размер частиц колец */
 uniform vec3  uStarCol;     /* спектральный цвет */
 uniform float uStarRadius;  /* относительный видимый диск */
 uniform float uStarFlux;    /* поток излучения */
