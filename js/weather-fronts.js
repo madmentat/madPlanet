@@ -11,8 +11,8 @@
    front, cold advection -> cold front, near-zero advection -> stationary.
 
    This module never edits airTemp, vaporColumn, cloudWaterState or pressure.
-   Its only physical forcing output is a bounded frontalVerticalVelocity used
-   by the following vertical-stability layer. Condensation, precipitation and
+   Its only physical forcing output is a bounded frontVerticalVelocity used by
+   the following vertical-stability layer. Condensation, precipitation and
    latent heat remain owned by their existing modules.
 */
 
@@ -52,6 +52,24 @@ function frontEnsureFields(core){
   return core;
 }
 
+/* Wind components are stored in each cell's own east/north tangent basis.
+   Across cubed-sphere seams those bases rotate, so neighbour U/V values may
+   not be subtracted directly. Store six world-space basis components once;
+   convergence then projects neighbour velocity into the current cell basis. */
+function frontBuildWindBasis(core,axis){
+  const n=core.count;
+  const f32=k=>{if(!core[k]||core[k].length!==n) core[k]=new Float32Array(n);};
+  for(const k of ['frontEastX','frontEastY','frontEastZ','frontNorthX','frontNorthY','frontNorthZ']) f32(k);
+  const ax=axis?weatherNorm3(axis[0],axis[1],axis[2]):weatherCoreAxis();
+  const b={};
+  for(let i=0;i<n;i++){
+    windTangentBasis(core.dirX[i],core.dirY[i],core.dirZ[i],ax,b);
+    core.frontEastX[i]=b.ex;core.frontEastY[i]=b.ey;core.frontEastZ[i]=b.ez;
+    core.frontNorthX[i]=b.nx;core.frontNorthY[i]=b.ny;core.frontNorthZ[i]=b.nz;
+  }
+  return core;
+}
+
 function frontScalarGradient(core,field,i,out){
   const a=field[i];let ge=0,gn=0;
   for(let k=0;k<4;k++){
@@ -62,15 +80,22 @@ function frontScalarGradient(core,field,i,out){
   out.e=ge;out.n=gn;return out;
 }
 
-/* Local horizontal divergence in the same tangent basis used by windU/V.
-   Negative divergence means convergence and therefore low-level mass piling
-   up that can be relieved by ascent. */
+/* Local horizontal divergence. Neighbour wind is first reconstructed in world
+   coordinates and then projected into the basis of cell i; this prevents cube
+   face seams from masquerading as convergent frontal boundaries. */
 function frontWindDivergence(core,i){
   const u=core.windStateU||core.windU,v=core.windStateV||core.windV;
   const u0=u[i],v0=v[i];let div=0;
+  const eix=core.frontEastX[i],eiy=core.frontEastY[i],eiz=core.frontEastZ[i];
+  const nix=core.frontNorthX[i],niy=core.frontNorthY[i],niz=core.frontNorthZ[i];
   for(let k=0;k<4;k++){
     const j=core.windNeighbor[k][i];
-    div+=core.windGradE[k][i]*(u[j]-u0)+core.windGradN[k][i]*(v[j]-v0);
+    const wx=u[j]*core.frontEastX[j]+v[j]*core.frontNorthX[j];
+    const wy=u[j]*core.frontEastY[j]+v[j]*core.frontNorthY[j];
+    const wz=u[j]*core.frontEastZ[j]+v[j]*core.frontNorthZ[j];
+    const uj=wx*eix+wy*eiy+wz*eiz;
+    const vj=wx*nix+wy*niy+wz*niz;
+    div+=core.windGradE[k][i]*(uj-u0)+core.windGradN[k][i]*(vj-v0);
   }
   return div;
 }
@@ -82,9 +107,10 @@ function frontScaleHeightM(core,i,climate){
   return 8400;
 }
 
-function frontRefresh(core,climate){
+function frontRefresh(core,climate,axis){
   if(!core||!core.count||!core.windNeighbor) return core;
   frontEnsureFields(core);
+  if(!core.frontEastX||core.frontEastX.length!==core.count) frontBuildWindBasis(core,axis);
   const gT={e:0,n:0},gRH={e:0,n:0},gP={e:0,n:0};
   const u=core.windStateU||core.windU,v=core.windStateV||core.windV;
   const rhField=core.relativeHumidity||core.humidity;
@@ -149,8 +175,8 @@ function frontRefresh(core,climate){
 const weatherCoreCreateBeforeFronts=weatherCoreCreate;
 weatherCoreCreate=function(seed,N,climate,axis){
   const core=weatherCoreCreateBeforeFronts(seed,N,climate,axis);
-  frontEnsureFields(core);
-  frontRefresh(core,climate);
+  frontEnsureFields(core);frontBuildWindBasis(core,axis);
+  frontRefresh(core,climate,axis);
   return core;
 };
 
@@ -158,7 +184,7 @@ const weatherCoreStepBeforeFronts=weatherCoreStep;
 weatherCoreStep=function(core,dtSec,climate,axis){
   if(!core||!core.count) return core;
   weatherCoreStepBeforeFronts(core,dtSec,climate,axis);
-  frontRefresh(core,climate);
+  frontRefresh(core,climate,axis);
   return core;
 };
 
