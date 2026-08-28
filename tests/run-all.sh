@@ -26,6 +26,7 @@ node tests/stellar-weather-coupling.test.js
 node tests/weather-core.test.js
 node tests/local-energy-balance.test.js
 node tests/baric-field.test.js
+node tests/wind-dynamics.test.js
 node tests/touch-ux.test.js
 node tests/chromium-compat.test.js
 node tests/hydrology.test.js
