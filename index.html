@@ -101,9 +101,16 @@
     padding:8px 14px 14px;overflow-y:auto;flex:1;
     -webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 
-  .row{margin-bottom:10px}
-  .row label{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
-             color:var(--mut);margin-bottom:2px}
+  /* Заголовок строки и сама дорожка стоят друг под другом. Раньше значение
+     вытягивалось наверх отрицательным отступом и float-ом, попадая прямо в
+     34-пиксельную полосу ползунка: бегунок накрывал число, и проценты было
+     не прочитать. Теперь подпись, метка и значение делят одну строку, а
+     дорожка идёт под ними во всю ширину и ни с чем не пересекается. */
+  .row{margin-bottom:6px}
+  .row-head{display:flex;align-items:baseline;gap:7px;min-height:13px}
+  .row label{flex:1 1 auto;min-width:0;font-size:10px;letter-spacing:.12em;
+             text-transform:uppercase;color:var(--mut);margin:0;
+             overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* Дорожка тонкая, но брать её нужно пальцем: высота области нажатия
      поднята, ползунок увеличен, а собственный жест браузера разрешён явно. */
   input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:34px;
@@ -118,8 +125,18 @@
   input[type=range]::-moz-range-thumb{width:17px;height:17px;border:none;border-radius:50%;
     background:#dce8ff;box-shadow:0 0 8px rgba(159,194,255,.55)}
   input[type=range]:focus-visible{outline:1px solid var(--acc);outline-offset:2px;border-radius:4px}
-  .slval{font-size:11px;opacity:.7;min-width:5em;text-align:right;float:right;margin-top:-17px;
-         font-family:var(--mono);font-size:10px}
+  .slval{flex:0 0 auto;font-family:var(--mono);font-size:10px;opacity:.72;
+         text-align:right;white-space:nowrap}
+  /* Метка происхождения величины: «база» - от неё считают другие, «расчёт» -
+     её считают сами. Расчётную можно закрепить, взяв рукой, и отпустить
+     обратно нажатием на метку. */
+  .tag{flex:0 0 auto;font-family:var(--mono);font-size:9px;line-height:1;
+       letter-spacing:.05em;padding:2px 5px;border-radius:4px;white-space:nowrap;
+       border:1px solid var(--line);background:transparent;color:var(--mut)}
+  button.tag{cursor:pointer;-webkit-appearance:none;appearance:none}
+  button.tag.pinned{color:#dce8ff;border-color:var(--acc)}
+  .row.derived input[type=range]::-webkit-slider-thumb{background:#bcd0f0}
+  .row.derived input[type=range]::-moz-range-thumb{background:#bcd0f0}
 
   /* ── утилитарная полоса (сид, тоглы, кнопки) ── */
   .util-bar{
@@ -313,7 +330,9 @@ uniform vec3  uStarCol;     /* спектральный цвет */
 uniform float uStarRadius;  /* относительный видимый диск */
 uniform float uStarFlux;    /* поток излучения */
 uniform float uStarDist;    /* расстояние до звезды, AU */
-uniform float uAtmoComp;    /* состав атмосферы 0= земля … 1= газовый гигант */
+uniform float uAtmoComp;    /* сводный индекс смеси 0= земля … 1= газовый гигант */
+uniform float uCO2;         /* доля углекислого газа - удобрение для растительности */
+uniform float uSnowAlt;     /* высота снеговой линии на хребтах */
 uniform float uWind;
 uniform float uConvection;
 uniform float uLowOn, uMidOn, uHighOn;  /* включение/выключение ярусов облаков */
@@ -1224,13 +1243,33 @@ vec3 fogLayer(vec3 dir, float foot){
    программы при линковке и на каждый кадр. Гроза оценивается по обстановке
    в самой точке кадра: свечение всё равно локально (радиус ~0.1 рад), а
    main() и без того вызывает разряд только там, где есть облачная масса. */
+
+/* Ломаная жила разряда. Форму набирают три синуса со случайными фазами:
+   этого хватает на узнаваемый зигзаг с изломами, а стоит он втрое дешевле
+   шумовой выборки — за размер этой программы мы платим временем линковки.
+   Отклонение растёт вниз по каналу: у вершины жила почти прямая, к земле
+   разброс шире — так и ведёт себя ступенчатый лидер.
+   w — половинная ширина канала в радианах, привязанная к размеру пикселя,
+   иначе на отдалении жила тоньше пикселя и рассыпается в пунктир. */
+float boltChannel(vec2 uv, float len, float wob, vec3 h, float w){
+  float t = clamp(uv.y/len, 0.0, 1.0);
+  float x = wob*(0.55*sin(uv.y*37.0  + h.x*39.0)
+               + 0.30*sin(uv.y*89.0  + h.y*61.0)
+               + 0.15*sin(uv.y*197.0 + h.z*97.0))*(0.25 + 0.75*t);
+  float d = abs(uv.x - x);
+  float live = ss(-0.006, 0.006, uv.y)*(1.0 - ss(len*0.78, len, uv.y));
+  /* Профиль гауссов, а не лоренцев. Лоренциан 1/(1+d²/w²) спадает как 1/d²,
+     и при усилении в два десятка раз даже сотая его доля остаётся хорошо
+     видимой: вместо жилы получалась светящаяся плита во весь очаг, ровно
+     обрезанная сверху и снизу границами канала. Ядро плюс широкий чехол
+     дают резкую нить с ореолом и ничего за его пределами. */
+  float k = d/w;
+  return live*(exp(-k*k) + 0.14*exp(-k*k*0.06));
+}
+
 vec3 lightningGlow(vec3 dirW, float cloudA){
   vec3 acc = vec3(0.0);
   if(uLowOn < 0.5 || uCloudLow < 0.05) return acc;
-  /* Пороги были подобраны так, что разряд разрешался редко: гроза должна
-     была быть сильной и облако плотным одновременно. Смягчено — вспышки
-     всё ещё только на ночной стороне и только под облаком, но встречаются
-     заметно чаще. */
   /* Ворота плавные, а не ступенькой. Раньше это были ранние выходы: стоило
      грозовому полю или облачной массе чуть просесть, как разряды пропадали
      разом по всему кадру — отсюда «фигачили, и вдруг перестали». Теперь
@@ -1243,6 +1282,15 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
      этом шаге остаётся пара сотен различимых значений — очаги вырождаются.
      Пятнадцатиминутный оборот держит аргумент в разумных пределах. */
   float lt = mod(uTime, 900.0);
+
+  /* Первый проход дешёвый: он ищет, какая из шести ячеек сейчас светит в
+     эту точку ярче прочих, и попутно набирает засветку облачной массы.
+     Подсветка облака — вещь широкая и размытая, ей хватает гауссианы;
+     подробный рисунок жилы нужен ровно один, иначе шесть его копий снова
+     раздуют программу. */
+  float halo = 0.0;
+  float bestScore = 0.0, bestWin = 0.0;
+  vec3 bestF = vec3(0.0, 0.0, 1.0), bestH = vec3(0.0);
   for(int i=0;i<6;i++){
     float fi = float(i);
     float per = mix(1.15, 0.32, uStormRate) + fi*0.28;
@@ -1252,13 +1300,10 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
     /* Модель конденсатора: быстрый разряд → медленная перезарядка.
        Первый удар — яркий, второй — 70% интенсивности. */
     float capPhase = fract(lt*per*0.7 + fi*3.14);
-    float discharge = exp(-capPhase * 8.0);
-    float recharge = 1.0 - exp(-capPhase * 2.0);
-    float capFlick = discharge * recharge;
+    float capFlick = exp(-capPhase * 8.0) * (1.0 - exp(-capPhase * 2.0));
     float capPhase2 = fract(lt*per*0.73 + fi*3.14 + 0.4);
     float capFlick2 = exp(-capPhase2 * 12.0) * (1.0 - exp(-capPhase2 * 3.0));
     float win = max(capFlick, capFlick2 * 0.7);
-    /* Старая модель для обратной совместимости — микс с новой */
     float winLegacy = ss(0.0,0.012,fr)*(1.0-ss(0.025,0.08,fr))
               + 0.7*(ss(0.10,0.112,fr)*(1.0-ss(0.125,0.17,fr)));
     win = max(win, winLegacy * 0.5);
@@ -1266,24 +1311,45 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
     vec3 hh = hash33(vec3(cyc*13.1+fi*71.7, cyc*7.7+3.3, fi*29.3) + uSeedC);
     vec3 fpC = normalize(hh*2.0-1.0);
     vec3 fp = uRotCInv * fpC;
-    /* Гроза идёт и днём, и разряд бьёт одинаково на обеих сторонах: раньше
-       дневная сторона была запрещена наглухо, потом приглушена, а теперь
-       вспышка везде одна и та же. */
+    /* Гроза идёт и днём, и разряд бьёт одинаково на обеих сторонах. */
     float ang = distance(dirW, fp);
-    /* Трёхкомпонентное свечение: ядро + ветви + диффузия */
-    /* Радиусы расширены: прежнее ядро в 0.04 рад давало точку в десяток
-       пикселей, и вспышку можно было просто не заметить. Теперь засветка
-       охватывает область грозового очага целиком. */
-    float core = min(exp(-ang*ang*900.0), 0.4) * 5.0;
-    float angAtan = atan(dirW.z - fp.z, dirW.x - fp.x);
-    float branch = exp(-ang*ang*160.0) * (1.0 + 0.3*sin(angAtan*7.0));
-    float diffuse = exp(-ang*ang*24.0) * 0.22;
-    float g = core + branch * 0.6 + diffuse;
-    acc += vec3(0.72,0.80,1.0) * g * win * mix(2.5, 13.0, uStormGlow);
+    halo += exp(-ang*ang*26.0) * win;
+    float score = win * exp(-ang*ang*40.0);
+    if(score > bestScore){ bestScore = score; bestWin = win; bestF = fp; bestH = hh; }
+  }
+
+  vec3 tint = vec3(0.72, 0.80, 1.0);
+  float amp = mix(2.5, 13.0, uStormGlow);
+  acc += tint * halo * 0.30 * amp;
+
+  /* Второй проход — сама жила. Раньше очаг рисовался тремя гауссианами по
+     угловому расстоянию, то есть кружком: издали это читалось как round
+     пятно света, а не как разряд. Теперь канал строится в касательной
+     плоскости у очага и ветвится. Отводов ровно два: с тремя и больше
+     вместо молнии выходит куст. */
+  if(bestScore > 0.0004){
+    vec3 up = (abs(bestF.y) < 0.94) ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0);
+    vec3 tx = normalize(cross(bestF, up));
+    vec3 ty = cross(bestF, tx);
+    vec3 dp = dirW - bestF*dot(dirW, bestF);
+    vec2 uv = vec2(dot(dp, tx), dot(dp, ty));
+    /* Канал вытянут: при прежней длине в 0.09 рад и разбросе ±0.03 жила
+       выходила почти такой же широкой, как длинной, и читалась кляксой, а
+       не разрядом. */
+    float len = 0.17 + 0.10*bestH.x;
+    uv.y += len*0.5;                     /* очаг — середина канала, а не его верх */
+    float w = max(0.0030, uPixA*1.8);
+    float g = boltChannel(uv, len, 0.028, bestH, w);
+    vec2 b1 = uv - vec2(0.0, len*0.42);
+    b1 = vec2(b1.x*0.87 - b1.y*0.50, b1.x*0.50 + b1.y*0.87);
+    g += 0.45*boltChannel(b1, len*0.42, 0.022, bestH.yzx, w*0.72);
+    vec2 b2 = uv - vec2(0.0, len*0.66);
+    b2 = vec2(b2.x*0.80 + b2.y*0.60, -b2.x*0.60 + b2.y*0.80);
+    g += 0.35*boltChannel(b2, len*0.32, 0.018, bestH.zxy, w*0.66);
+    acc += tint * g * bestWin * amp * 2.2;
   }
   return acc*gate;
 }
-
 
 /* ---------- поверхность ---------- */
 vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
@@ -1330,8 +1396,11 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   /* Альпийское похолодание. Общий высотный градиент нарочно пологий, иначе
      любое плоскогорье промерзает и планета выцветает в снег. Но снеговая
      шапка нужна именно хребтам, поэтому добавка идёт только от орогенной
-     высоты: чем жарче у подножия, тем выше по склону уходит линия снега. */
-  temp -= 2.0*mount;
+     высоты: чем жарче у подножия, тем выше по склону уходит линия снега.
+     Крутизна этого градиента и есть высота снеговой линии: при uSnowAlt=0
+     склон выстывает быстро и белеют уже предгорья, при 1 снег держится
+     только на самых вершинах. */
+  temp -= mix(3.6, 0.55, uSnowAlt)*mount;
   float moist = 0.5 + 0.5*fbm(sN*2.4 + uSeedS*1.3 + vec3(17.0), 4);
 
   /* ---- опустынивание и приморское озеленение ----
@@ -1345,6 +1414,12 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float coastal = 1.0 - contin;
   float arid = ss(0.46, 1.00, temp) * contin * (0.30 + 0.70*ss(0.06, 0.55, lee));
   moist = clamp(moist*(1.0 - 0.78*arid) + 0.22*coastal*coastal, 0.0, 1.0);
+  /* Углекислый газ - сырьё фотосинтеза, и при его избытке растительность
+     заходит туда, где иначе была бы степь. Отсчёт от земных 0.04%: ниже
+     этого уровня прибавки нет, к нескольким процентам зелень заметно
+     гуще. В сухих поясах прибавка не работает - там не хватает воды,
+     а не углерода. */
+  moist = clamp(moist + 0.20*ss(0.0004, 0.040, uCO2)*(1.0 - arid), 0.0, 1.0);
 
   /* биомы */
   /* Альбедо близко к настоящим: песок ~0.4, лес ~0.12, снег ~0.8.
@@ -1608,7 +1683,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
       /* густые кварталы и пустыри — иначе вблизи выходит ровная россыпь */
       float quarters = clamp(0.55 + 0.9*fbm(sN*mix(16.0, 85.0, fine) + uSeedS*4.3, 3), 0.15, 1.6);
       float urban = clamp(gate*habit*quarters*(0.30 + 1.0*web), 0.0, 1.0);
-      float mask = land*(1.0-snowM);
+      /* На свежих лавовых полях и вокруг действующих жерл городов не
+         бывает: раньше огни спокойно загорались поверх раскалённого
+         базальта. */
+      float mask = land*(1.0-snowM)*(1.0 - ss(0.02, 0.22, volc));
 
       /* отдельные огни: решётка на каждом уровне повёрнута, ячейка зажигается
          случайно с вероятностью от плотности — это и ломает регулярность */
@@ -2352,7 +2430,7 @@ let usedVariant = 'none';
 const shaderFailureLog = [];
 
 const UNIFORM_NAMES = ['uRes','uTime','uCamPos','uCamMat','uFocal','uCamDist','uPixA','uRotS','uRotC','uRotCInv',
- 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle','uRingInner','uRingWidth','uRingDens','uRingCount','uRingMaterial','uPlatesOn','uVolcano','uLava','uStorm','uStormRate','uStormGlow','uRingGrain',
+ 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle','uRingInner','uRingWidth','uRingDens','uRingCount','uRingMaterial','uPlatesOn','uVolcano','uLava','uStorm','uStormRate','uStormGlow','uCO2','uSnowAlt','uRingGrain',
  'uLake','uCity','uAtmo','uRingsOn','uRingMat','uSeedS','uSeedC','uDraft','uVoid',
  'uStarCol','uMagAxis','uAtmoComp','uLowOn','uMidOn','uHighOn','uWind','uConvection','uMagField','uAurora',
  'uStarRadius','uStarFlux','uStarDist','uPlateN'];
@@ -3321,14 +3399,15 @@ function mulberry32(seed){
 
 /* ============ состояние ============ */
 const PARAMS = [
-  {k:'temp',       label:'Температура',           def:0.52, group:'Планета'},
+  {k:'temp',       label:'Средняя температура',   def:0.52, group:'Планета', derived:'temp'},
   {k:'sea',        label:'Океан',                 def:0.58, group:'Планета'},
   {k:'cont',       label:'Материки',              def:0.45, group:'Планета'},
   {k:'tect',       label:'Тектоника',             def:0.55, group:'Планета'},
   {k:'isle',       label:'Острова',                def:0.45, group:'Планета'},
   {k:'lake',       label:'Озёра',                 def:0.45, group:'Планета'},
+  {k:'snowAlt',    label:'Высота снеговой линии', def:0.45, group:'Планета'},
   {k:'city',       label:'Огни городов',           def:0.55, group:'Поверхность'},
-  {k:'volcano',    label:'Вулканизм',              def:0.35, group:'Поверхность'},
+  {k:'volcano',    label:'Вулканизм',              def:0.35, group:'Поверхность', base:true},
   {k:'lava',       label:'Свечение лавы',          def:0.55, group:'Поверхность'},
   {k:'ringInner',  label:'Радиус колец',           def:0.40, group:'Кольца'},
   {k:'ringWidth',  label:'Ширина колец',           def:0.62, group:'Кольца'},
@@ -3344,8 +3423,18 @@ const PARAMS = [
   {k:'storm',      label:'Грозовая активность',    def:0.55, group:'Погода'},
   {k:'stormRate',  label:'Частота вспышек',        def:0.60, group:'Погода'},
   {k:'stormGlow',  label:'Яркость вспышек',        def:0.55, group:'Погода'},
-  {k:'atmo',       label:'Плотность атмосферы',    def:0.60, group:'Атмосфера'},
-  {k:'atmoComp',   label:'Состав атмосферы',       def:0.00, group:'Атмосфера'},
+  {k:'atmo',       label:'Плотность атмосферы',    def:0.60, group:'Атмосфера', base:true},
+  /* Газы - не один ползунок на всё, а смесь: доли всегда дают в сумме 100%,
+     и подъём одного газа пропорционально теснит остальные. Значения по
+     умолчанию - земной воздух. Три из них помечены расчётными: их гонит
+     вулканизм. */
+  {k:'gasN2',      label:'Азот N₂',                def:0.780800, group:'Атмосфера', gas:true},
+  {k:'gasO2',      label:'Кислород O₂',            def:0.209500, group:'Атмосфера', gas:true},
+  {k:'gasH2O',     label:'Водяной пар H₂O',        def:0.004000, group:'Атмосфера', gas:true, derived:'volcano'},
+  {k:'gasCO2',     label:'Углекислый газ CO₂',     def:0.000420, group:'Атмосфера', gas:true, derived:'volcano'},
+  {k:'gasSO2',     label:'Диоксид серы SO₂',       def:0.000001, group:'Атмосфера', gas:true, derived:'volcano'},
+  {k:'gasCH4',     label:'Метан CH₄',              def:0.000002, group:'Атмосфера', gas:true},
+  {k:'gasHHe',     label:'Водород и гелий H₂/He',  def:0.000005, group:'Атмосфера', gas:true},
   {k:'magnet',     label:'Мощность магнитного поля', def:0.52, group:'Магнитосфера'},
   {k:'magTilt',    label:'Наклон магнитной оси',    def:0.50, group:'Магнитосфера'},
   {k:'magAzimuth', label:'Направление магнитной оси',def:0.50, group:'Магнитосфера'},
@@ -3363,8 +3452,178 @@ const PARAMS = [
    В интерфейсе это обратный тумблер «Детали». */
 const state = {seed: 8127344, rings: false, draft: true, voidbg: false, platesOn: false,
                lowOn: true, midOn: false, highOn: false,
-               auroraOn: true, fieldLinesOn: false, auroraFootpoints: false};
+               auroraOn: true, fieldLinesOn: false, auroraFootpoints: false,
+               /* Расчётный ползунок можно взять рукой - тогда он закрепляется
+                  и перестаёт следовать за базой, пока метку не снимут. */
+               pinTemp: false, pinH2O: false, pinCO2: false, pinSO2: false,
+               atmoComp: 0.0};
 PARAMS.forEach(p => state[p.k] = p.def);
+
+/* ---------- смесь газов ----------
+   Доли нормированы: сумма ровно единица, поэтому подъём одного газа
+   пропорционально ужимает все прочие. Ползунок логарифмический - газы
+   расходятся на семь порядков, и на линейной шкале следовые (CO₂ в 0.04%)
+   были бы неотличимы от нуля. */
+const GAS_KEYS = PARAMS.filter(p => p.gas).map(p => p.k);
+const GAS_MIN = 1e-7;
+function gasSliderToVal(x){
+  if(x <= 0.004) return 0.0;
+  return GAS_MIN * Math.pow(1/GAS_MIN, Math.max(0, Math.min(1, x)));
+}
+function gasValToSlider(f){
+  if(!(f > GAS_MIN)) return 0.0;
+  return Math.max(0, Math.min(1, Math.log(f/GAS_MIN)/Math.log(1/GAS_MIN)));
+}
+function gasFractions(){
+  const g = {}; let sum = 0;
+  GAS_KEYS.forEach(k => { const v = Math.max(0, state[k]||0); g[k] = v; sum += v; });
+  if(sum > 1e-12) GAS_KEYS.forEach(k => g[k] /= sum);
+  else g[GAS_KEYS[0]] = 1.0;
+  return g;
+}
+function normalizeGases(){
+  const g = gasFractions();
+  GAS_KEYS.forEach(k => state[k] = g[k]);
+}
+/* Конкуренция: заданный газ получает свою долю, остальные делят остаток в
+   прежней пропорции между собой. */
+function setGasFraction(key, f){
+  f = Math.max(0, Math.min(0.999999, f));
+  const rest = GAS_KEYS.filter(k => k !== key);
+  let sum = 0; rest.forEach(k => sum += Math.max(0, state[k]||0));
+  const room = 1 - f;
+  if(sum > 1e-12) rest.forEach(k => state[k] = Math.max(0, state[k]||0) * room/sum);
+  else rest.forEach(k => state[k] = room/rest.length);
+  state[key] = f;
+}
+function gasLabel(f){
+  const pc = f*100;
+  if(pc >= 10)    return pc.toFixed(1)+'%';
+  if(pc >= 1)     return pc.toFixed(2)+'%';
+  if(pc >= 0.01)  return pc.toFixed(3)+'%';
+  if(pc >= 1e-5)  return pc.toPrecision(2)+'%';
+  return 'следы';
+}
+
+/* Значения по умолчанию берутся из состава земного воздуха и в сумме дают
+   99.47%: остальное - аргон, который отдельным ползунком не нужен. Смесь
+   приводится к единице сразу, чтобы проценты в панели сходились. */
+normalizeGases();
+
+/* ---------- вулканизм как база ----------
+   Извержение выбрасывает прежде всего водяной пар (до 70-90% массы), затем
+   диоксид серы и лишь малую долю углекислого газа. Времена жизни у них
+   разные, и это важнее состава: сульфатный аэрозоль вымывается из
+   стратосферы за годы, поэтому SO₂ идёт почти вплотную за текущей
+   активностью, а CO₂ копится геологическими эпохами - его постоянная
+   времени на порядок больше. Отсюда и обещанное поведение: опущенный в ноль
+   CO₂ при работающих вулканах медленно восстанавливается сам.
+   Порог 0.32 - это земной уровень вулканизма: ниже него добавки нет и
+   состав возвращается к фоновому. */
+const GAS_TAU = {gasSO2: 1.2, gasH2O: 1.8, gasCO2: 11.0};
+const GAS_PIN = {gasSO2: 'pinSO2', gasH2O: 'pinH2O', gasCO2: 'pinCO2'};
+function volcanicTargets(){
+  const v = Math.max(0, Math.min(1, state.volcano));
+  const q = Math.pow(Math.max(0, v-0.32)/0.68, 1.6);
+  return {
+    gasH2O: 0.004000 + 0.052*q,
+    gasSO2: 0.000001 + 0.013*q,
+    gasCO2: 0.000420 + 0.078*q,
+  };
+}
+
+/* ---------- средняя температура планеты ----------
+   Считается по-настоящему, а не берётся с ползунка: светимость звезды и
+   расстояние дают приток, облака, океан, лёд и сульфатный аэрозоль - альбедо,
+   а парниковые газы - добавку сверху. Ледовая обратная связь нелинейна
+   (похолодание растит лёд, лёд растит альбедо), поэтому баланс ищется
+   несколькими итерациями.
+   Калибровка: земные значения дают 254 K равновесных и +33 K парниковых. */
+function climateModel(){
+  const st = starPhysics(state.star, state.luminosity);
+  const au = 0.22*Math.pow(4.8/0.22, Math.max(0,Math.min(1,state.distance)));
+  const S  = st.L/(au*au);
+  /* Масса столба в земных единицах. */
+  const dens = 0.10 + 1.55*Math.max(0,Math.min(1,state.atmo));
+  const g = gasFractions();
+  /* Парниковая эффективность на единицу доли. Метан на порядок сильнее
+     углекислого газа, водяной пар - основной парниковый газ Земли. */
+  const tau = dens*(g.gasCO2*180 + g.gasCH4*1400 + g.gasH2O*70
+                  + g.gasSO2*40  + g.gasHHe*4);
+  /* Сульфатный аэрозоль работает зеркалом, а не одеялом: SO₂ окисляется в
+     стратосфере до серной кислоты и отражает свет обратно в космос.
+     Пинатубо (18 Мт SO₂) охладил планету примерно на 0.5 °C. */
+  const aer = Math.min(0.42, 3.4*Math.sqrt(Math.max(0,g.gasSO2)*dens));
+  const cloudCov = Math.max(0, Math.min(1,
+      0.55*state.cloudLow + 0.30*state.cloudMid + 0.15*state.cloudHigh));
+  let T = 288, A = 0.3;
+  for(let i=0;i<6;i++){
+    const iceFrac = Math.max(0, Math.min(1, (273.15-T)/55));
+    A = Math.max(0.03, Math.min(0.88,
+        0.055 + 0.16*(1-state.sea) + 0.30*cloudCov + 0.40*iceFrac + aer));
+    T = 278.6*Math.pow(Math.max(S,1e-4)*(1-A), 0.25) + 108*Math.log(1+tau);
+  }
+  return {T, C: T-273.15, S, au, A, aer, tau, dens};
+}
+/* Средняя температура <-> положение ползунка. Шкала -78..+97 °C покрывает всё
+   от промёрзшего шарика до венерианской печи, а земные +15 °C ложатся
+   примерно на середину. */
+function tempToSlider(C){ return Math.max(0, Math.min(1, (C+78)/175)); }
+function sliderToTemp(v){ return v*175 - 78; }
+function tempLabel(){
+  const C = state.pinTemp ? sliderToTemp(state.temp) : climateModel().C;
+  const a = Math.abs(C);
+  const d = a < 10 ? 1 : 0;
+  return (C >= 0 ? '+' : '\u2212') + a.toFixed(d) + ' °C';
+}
+
+/* Состав для окраски дымки выводится из смеси, а не задаётся отдельно:
+   ползунок состава был единственным на все газы сразу. */
+function atmoCompFromGases(){
+  const g = gasFractions();
+  const cl = x => Math.max(0, Math.min(1, x));
+  let c = 0.25*cl(g.gasCO2/0.30);
+  c = Math.max(c, 0.50*cl((g.gasCO2-0.25)/0.60 + g.gasSO2*8.0));
+  c = Math.max(c, 0.75*cl(g.gasCH4/0.06));
+  c = Math.max(c, 1.00*cl(g.gasHHe/0.50));
+  return cl(c);
+}
+
+/* Расчётные ползунки подтягиваются к цели, а не прыгают: постоянные времени
+   и есть физика процесса. Незакреплённые следуют за базой, закреплённые
+   стоят там, где их поставили. */
+function relaxDerived(dtSec){
+  const dt = Math.max(0, Math.min(0.5, dtSec));
+  let moved = false;
+  const tg = volcanicTargets();
+  const auto = GAS_KEYS.filter(k => tg[k] !== undefined && !state[GAS_PIN[k]]);
+  if(auto.length){
+    let sumA = 0;
+    const next = {};
+    auto.forEach(k => {
+      const a = 1 - Math.exp(-dt/GAS_TAU[k]);
+      const v = state[k] + (tg[k]-state[k])*a;
+      next[k] = Math.max(0, v); sumA += next[k];
+      if(Math.abs(v-state[k]) > 1e-9) moved = true;
+    });
+    if(sumA > 0.97){ const sc = 0.97/sumA; auto.forEach(k => next[k] *= sc); sumA = 0.97; }
+    const rest = GAS_KEYS.filter(k => next[k] === undefined);
+    let sumR = 0; rest.forEach(k => sumR += Math.max(0, state[k]||0));
+    const room = 1 - sumA;
+    if(sumR > 1e-12) rest.forEach(k => state[k] = Math.max(0,state[k]||0)*room/sumR);
+    else if(rest.length) rest.forEach(k => state[k] = room/rest.length);
+    auto.forEach(k => state[k] = next[k]);
+  }
+  state.atmoComp = atmoCompFromGases();
+  if(!state.pinTemp){
+    const target = tempToSlider(climateModel().C);
+    const a = 1 - Math.exp(-dt/2.2);
+    const v = state.temp + (target-state.temp)*a;
+    if(Math.abs(v-state.temp) > 1e-5) moved = true;
+    state.temp = v;
+  }
+  return moved;
+}
 
 /* Спектральный класс звезды → цвет RGB.
    Класс: M(0) K(0.17) G(0.43) F(0.57) A(0.71) B(0.86) O(1.0).
@@ -3435,14 +3694,6 @@ function ringGrainLabel(t){
   if(t < 0.70) return 'гравий';
   return 'глыбы';
 }
-function atmoLabel(t){
-  if(t < 0.12) return 'N₂/O₂';
-  if(t < 0.37) return 'CO₂';
-  if(t < 0.62) return 'CO₂+H₂SO₄';
-  if(t < 0.87) return 'N₂+CH₄';
-  return 'H₂/He';
-}
-
 function auroraKpLabel(v){ return 'Kp '+(Math.max(0,Math.min(1,v))*9).toFixed(1); }
 function auroraLatitudeRad(v=state.aurora){
   const a=Math.max(0,Math.min(1,v));
@@ -3919,38 +4170,62 @@ function createPanel(group){
   const groupParams = PARAMS.filter(p => p.group === group);
   groupParams.forEach(p => {
     const row = document.createElement('div');
-    row.className = 'row';
+    row.className = 'row' + (p.derived ? ' derived' : '');
+    const head = document.createElement('div');
+    head.className = 'row-head';
     const lab = document.createElement('label');
     lab.textContent = p.label;
     lab.htmlFor = 'sl_' + p.k;
     const inp = document.createElement('input');
     inp.type = 'range'; inp.min = 0; inp.max = 1; inp.step = 0.001;
-    inp.value = state[p.k]; inp.id = 'sl_' + p.k;
-    inp.style.setProperty('--fill', (state[p.k]*100)+'%');
+    inp.id = 'sl_' + p.k;
+    setSliderPos(p, inp);
     const valSpan = document.createElement('span');
     valSpan.className = 'slval';
-    const updateLabel = () => {
-      let text = (state[p.k]*100).toFixed(0)+'%';
-      if(p.k==='star') text = starLabel(state.star);
-      if(p.k==='magTilt') text = ((state.magTilt-0.5)*80).toFixed(0)+'°';
-      if(p.k==='magAzimuth') text = (state.magAzimuth*360).toFixed(0)+'°';
-      if(p.k==='aurora') text = auroraKpLabel(state.aurora);
-      if(p.k==='atmoComp') text = atmoLabel(state.atmoComp);
-      if(p.k==='ringMat') text = ringMatLabel(state.ringMat);
-      if(p.k==='ringGrain') text = ringGrainLabel(state.ringGrain);
-      if(p.k==='luminosity') text = luminosityLabel(state.luminosity);
-      if(p.k==='distance'){ const q=distanceInfo(state.distance); text=q.label; }
-      valSpan.textContent = text;
-    };
-    updateLabel();
+    valSpan.textContent = valueText(p);
+
+    /* Метка происхождения. База - та величина, от которой считают другие;
+       расчётная считается сама и следует за базой, пока её не закрепят. */
+    head.appendChild(lab);
+    if(p.base){
+      const t = document.createElement('span');
+      t.className = 'tag'; t.textContent = 'база';
+      t.title = 'От этого параметра считаются другие';
+      head.appendChild(t);
+    }
+    const pinKey = PIN_OF[p.k];
+    if(pinKey){
+      const t = document.createElement('button');
+      t.type = 'button'; t.className = 'tag';
+      t.title = 'Расчётная величина. Нажмите, чтобы вернуть её под расчёт';
+      const refreshTag = () => {
+        t.classList.toggle('pinned', !!state[pinKey]);
+        t.textContent = state[pinKey] ? 'вручную' : 'расчёт';
+      };
+      refreshTag();
+      t.addEventListener('click', () => {
+        state[pinKey] = !state[pinKey];
+        refreshTag(); markRenderUniformsDirty(); syncUI(); saveHash();
+      });
+      pinTags[p.k] = refreshTag;
+      head.appendChild(t);
+    }
+    head.appendChild(valSpan);
+
     inp.addEventListener('input', () => {
-      state[p.k] = +inp.value;
+      const s = +inp.value;
+      if(p.gas) setGasFraction(p.k, gasSliderToVal(s));
+      else state[p.k] = s;
+      /* Взяли расчётный ползунок рукой - он закрепляется сам: иначе
+         значение тут же уползло бы обратно к расчётному. */
+      if(pinKey && !state[pinKey]) state[pinKey] = true;
       markRenderUniformsDirty();
-      inp.style.setProperty('--fill', (state[p.k]*100)+'%');
+      inp.style.setProperty('--fill', (s*100)+'%');
+      if(p.gas) syncGasSliders(p.k);
       syncDynamicLabels();
       saveHash();
     });
-    row.append(lab, inp, valSpan);
+    row.append(head, inp);
     body.appendChild(row);
     sliders[p.k] = inp;
   });
@@ -4134,26 +4409,69 @@ document.getElementById('rubToggle').addEventListener('click', () => {
 });
 
 /* ── Синхронизация UI ── */
+/* Расчётные ползунки, которые можно закрепить. */
+const PIN_OF = {temp:'pinTemp', gasH2O:'pinH2O', gasCO2:'pinCO2', gasSO2:'pinSO2'};
+const pinTags = {};
+
+/* Газы живут на логарифмической шкале: доли расходятся на семь порядков, и
+   на линейной дорожке следовой CO₂ был бы неотличим от нуля. */
+function sliderPos(p){ return p.gas ? gasValToSlider(state[p.k]) : state[p.k]; }
+function setSliderPos(p, inp){
+  const s = sliderPos(p);
+  inp.value = s;
+  inp.style.setProperty('--fill', (s*100)+'%');
+}
+function valueText(p){
+  if(p.gas) return gasLabel(state[p.k]);
+  switch(p.k){
+    case 'temp':       return tempLabel();
+    case 'snowAlt':    return snowLineLabel(state.snowAlt);
+    case 'star':       return starLabel(state.star);
+    case 'magTilt':    return ((state.magTilt-0.5)*80).toFixed(0)+'°';
+    case 'magAzimuth': return (state.magAzimuth*360).toFixed(0)+'°';
+    case 'aurora':     return auroraKpLabel(state.aurora);
+    case 'ringMat':    return ringMatLabel(state.ringMat);
+    case 'ringGrain':  return ringGrainLabel(state.ringGrain);
+    case 'luminosity': return luminosityLabel(state.luminosity);
+    case 'distance':   return distanceInfo(state.distance).label;
+  }
+  return (state[p.k]*100).toFixed(0)+'%';
+}
+/* Снеговая линия — высота, выше которой на хребтах ложится снег. */
+function snowLineLabel(v){
+  return (Math.round((600 + 5400*v)/100)*100).toLocaleString('ru-RU')+' м';
+}
+/* Подъём одного газа теснит остальные, поэтому после правки надо обновить
+   положение всех прочих дорожек, а не только тронутой. */
+function syncGasSliders(except){
+  PARAMS.forEach(p => {
+    if(!p.gas || p.k === except || !sliders[p.k]) return;
+    setSliderPos(p, sliders[p.k]);
+  });
+}
 function syncDynamicLabels(){
   PARAMS.forEach(p => {
     const el = sliders[p.k]?.parentElement?.querySelector('.slval');
-    if(!el) return;
-    if(p.k==='star') el.textContent = starLabel(state.star);
-    else if(p.k==='magTilt') el.textContent = ((state.magTilt-0.5)*80).toFixed(0)+'°';
-    else if(p.k==='magAzimuth') el.textContent = (state.magAzimuth*360).toFixed(0)+'°';
-    else if(p.k==='aurora') el.textContent = auroraKpLabel(state.aurora);
-    else if(p.k==='atmoComp') el.textContent = atmoLabel(state.atmoComp);
-    else if(p.k==='ringMat') el.textContent = ringMatLabel(state.ringMat);
-    else if(p.k==='ringGrain') el.textContent = ringGrainLabel(state.ringGrain);
-    else if(p.k==='luminosity') el.textContent = luminosityLabel(state.luminosity);
-    else if(p.k==='distance') el.textContent = distanceInfo(state.distance).label;
+    if(el) el.textContent = valueText(p);
+    if(pinTags[p.k]) pinTags[p.k]();
   });
+}
+/* Расчётные ползунки движутся сами, и открытая панель должна это
+   показывать. Когда панель закрыта, DOM не трогаем вовсе: иначе правка шла
+   бы каждый кадр впустую. */
+function refreshDerivedUI(){
+  if(!openPanelGroup) return;
+  let touched = false;
+  PARAMS.forEach(p => {
+    if(!p.derived || p.group !== openPanelGroup || !sliders[p.k]) return;
+    setSliderPos(p, sliders[p.k]); touched = true;
+  });
+  if(touched) syncDynamicLabels();
 }
 function syncUI(){
   PARAMS.forEach(p => {
     if(!sliders[p.k]) return;
-    sliders[p.k].value = state[p.k];
-    sliders[p.k].style.setProperty('--fill', (state[p.k]*100)+'%');
+    setSliderPos(p, sliders[p.k]);
   });
   syncDynamicLabels();
   document.getElementById('rings').checked = state.rings;
@@ -4210,7 +4528,18 @@ document.getElementById('rand').addEventListener('click', () => {
   state.city  = r() < 0.2 ? r()*0.15 : 0.35+r()*0.6;
   state.atmo  = 0.4 + r()*0.55;
   state.star     = r() < 0.3 ? 0.43+r()*0.15 : r();
-  state.atmoComp = r() < 0.7 ? r()*0.15 : r();
+  state.snowAlt = 0.15 + r()*0.75;
+  /* Состав: чаще земной воздух, иногда углекислая или водородная планета.
+     Дальше смесь нормируется, а вулканические газы всё равно подтянет
+     сам вулканизм. */
+  const air = r();
+  state.gasN2 = 0.78; state.gasO2 = 0.21; state.gasH2O = 0.004;
+  state.gasCO2 = 0.0004; state.gasSO2 = 1e-6; state.gasCH4 = 2e-6; state.gasHHe = 5e-6;
+  if(air > 0.55 && air <= 0.80){ state.gasCO2 = 0.30 + r()*0.65; state.gasN2 = 0.2; state.gasO2 = 0.002; }
+  else if(air > 0.80 && air <= 0.92){ state.gasCH4 = 0.02 + r()*0.06; state.gasO2 = 0.001; }
+  else if(air > 0.92){ state.gasHHe = 0.55 + r()*0.40; state.gasN2 = 0.05; state.gasO2 = 0.0005; }
+  normalizeGases();
+  state.pinTemp = false; state.pinCO2 = false; state.pinSO2 = false; state.pinH2O = false;
   state.magnet = 0.15 + r()*0.8;
   state.aurora = 0.20 + r()*0.8;
   state.luminosity = 0.25 + r()*0.65;
@@ -4233,7 +4562,8 @@ document.getElementById('rand').addEventListener('click', () => {
 /* ── URL hash ── */
 let hashT = 0;
 const FLAG_KEYS = ['rings','draft','voidbg','lowOn','midOn','highOn',
-                   'auroraOn','fieldLinesOn','auroraFootpoints','platesOn'];
+                   'auroraOn','fieldLinesOn','auroraFootpoints','platesOn',
+                   'pinTemp','pinH2O','pinCO2','pinSO2'];
 
 /* Формат v4 — по именам. Позиционный ломался дважды: стоило добавить ползунок
    или убрать флаг, как всё съезжало, и у старой ссылки молча пропадали
@@ -4243,7 +4573,9 @@ function saveHash(){
   clearTimeout(hashT);
   hashT = setTimeout(() => {
     const out = ['v4', 's' + state.seed];
-    PARAMS.forEach(p => out.push(p.k + '=' + (+state[p.k]).toFixed(3)));
+    /* Долям газов трёх знаков после запятой мало: земной CO₂ - это 0.00042,
+       и он записался бы нулём. */
+    PARAMS.forEach(p => out.push(p.k + '=' + (+state[p.k]).toFixed(p.gas ? 8 : 3)));
     FLAG_KEYS.forEach(k => out.push(k + '=' + (state[k] ? 1 : 0)));
     try{ history.replaceState(null, '', '#' + out.join(',')); }catch(e){}
   }, 200);
@@ -4274,6 +4606,7 @@ function loadHash(){
       if(Number.isFinite(v)) state[p.k] = Math.max(0, Math.min(1, v));
     });
     FLAG_KEYS.forEach(k => { if(k in map) state[k] = map[k] === '1'; });
+    normalizeGases();
     return;
   }
 
@@ -4645,6 +4978,8 @@ function drawFrame(now){
     gl.uniform1f(U.uStarFlux, starPhys.L / Math.max(distInfo.au*distInfo.au, 0.02));
     gl.uniform1f(U.uStarDist, distInfo.au);
     gl.uniform1f(U.uAtmoComp, state.atmoComp);
+    gl.uniform1f(U.uCO2, gasFractions().gasCO2);
+    gl.uniform1f(U.uSnowAlt, state.snowAlt);
     gl.uniform1f(U.uWind, state.wind);
     gl.uniform1f(U.uConvection, state.convection);
     gl.uniform1f(U.uMagField, state.magnet);
@@ -4693,6 +5028,15 @@ function drawFrame(now){
 function loop(now){
   const dt = Math.min(now - lastNow, 100);
   lastNow = now;
+
+  /* Расчётные величины ползут к своим целям от баз: сера идёт следом за
+     вулканизмом почти сразу, углекислый газ копится медленно, а средняя
+     температура подтягивается вслед за составом. Ссылку при этом не
+     переписываем: значения выводятся из баз и восстановятся сами. */
+  if(relaxDerived(dt/1000)){
+    markRenderUniformsDirty();
+    refreshDerivedUI();
+  }
   frameMsEwma += (dt-frameMsEwma)*0.06;
   if(qualityCooldown > 0) qualityCooldown--;
 

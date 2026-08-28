@@ -113,7 +113,7 @@ let usedVariant = 'none';
 const shaderFailureLog = [];
 
 const UNIFORM_NAMES = ['uRes','uTime','uCamPos','uCamMat','uFocal','uCamDist','uPixA','uRotS','uRotC','uRotCInv',
- 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle','uRingInner','uRingWidth','uRingDens','uRingCount','uRingMaterial','uPlatesOn','uVolcano','uLava','uStorm','uStormRate','uStormGlow','uRingGrain',
+ 'uRotC2','uRotC3','uSunDir','uAxis','uMilky','uTemp','uCloudLow','uCloudMid','uCloudHigh','uSea','uCont','uTect','uIsle','uRingInner','uRingWidth','uRingDens','uRingCount','uRingMaterial','uPlatesOn','uVolcano','uLava','uStorm','uStormRate','uStormGlow','uCO2','uSnowAlt','uRingGrain',
  'uLake','uCity','uAtmo','uRingsOn','uRingMat','uSeedS','uSeedC','uDraft','uVoid',
  'uStarCol','uMagAxis','uAtmoComp','uLowOn','uMidOn','uHighOn','uWind','uConvection','uMagField','uAurora',
  'uStarRadius','uStarFlux','uStarDist','uPlateN'];

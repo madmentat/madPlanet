@@ -33,7 +33,9 @@ uniform vec3  uStarCol;     /* спектральный цвет */
 uniform float uStarRadius;  /* относительный видимый диск */
 uniform float uStarFlux;    /* поток излучения */
 uniform float uStarDist;    /* расстояние до звезды, AU */
-uniform float uAtmoComp;    /* состав атмосферы 0= земля … 1= газовый гигант */
+uniform float uAtmoComp;    /* сводный индекс смеси 0= земля … 1= газовый гигант */
+uniform float uCO2;         /* доля углекислого газа - удобрение для растительности */
+uniform float uSnowAlt;     /* высота снеговой линии на хребтах */
 uniform float uWind;
 uniform float uConvection;
 uniform float uLowOn, uMidOn, uHighOn;  /* включение/выключение ярусов облаков */

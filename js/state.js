@@ -1,13 +1,14 @@
 /* ============ состояние ============ */
 const PARAMS = [
-  {k:'temp',       label:'Температура',           def:0.52, group:'Планета'},
+  {k:'temp',       label:'Средняя температура',   def:0.52, group:'Планета', derived:'temp'},
   {k:'sea',        label:'Океан',                 def:0.58, group:'Планета'},
   {k:'cont',       label:'Материки',              def:0.45, group:'Планета'},
   {k:'tect',       label:'Тектоника',             def:0.55, group:'Планета'},
   {k:'isle',       label:'Острова',                def:0.45, group:'Планета'},
   {k:'lake',       label:'Озёра',                 def:0.45, group:'Планета'},
+  {k:'snowAlt',    label:'Высота снеговой линии', def:0.45, group:'Планета'},
   {k:'city',       label:'Огни городов',           def:0.55, group:'Поверхность'},
-  {k:'volcano',    label:'Вулканизм',              def:0.35, group:'Поверхность'},
+  {k:'volcano',    label:'Вулканизм',              def:0.35, group:'Поверхность', base:true},
   {k:'lava',       label:'Свечение лавы',          def:0.55, group:'Поверхность'},
   {k:'ringInner',  label:'Радиус колец',           def:0.40, group:'Кольца'},
   {k:'ringWidth',  label:'Ширина колец',           def:0.62, group:'Кольца'},
@@ -23,8 +24,18 @@ const PARAMS = [
   {k:'storm',      label:'Грозовая активность',    def:0.55, group:'Погода'},
   {k:'stormRate',  label:'Частота вспышек',        def:0.60, group:'Погода'},
   {k:'stormGlow',  label:'Яркость вспышек',        def:0.55, group:'Погода'},
-  {k:'atmo',       label:'Плотность атмосферы',    def:0.60, group:'Атмосфера'},
-  {k:'atmoComp',   label:'Состав атмосферы',       def:0.00, group:'Атмосфера'},
+  {k:'atmo',       label:'Плотность атмосферы',    def:0.60, group:'Атмосфера', base:true},
+  /* Газы - не один ползунок на всё, а смесь: доли всегда дают в сумме 100%,
+     и подъём одного газа пропорционально теснит остальные. Значения по
+     умолчанию - земной воздух. Три из них помечены расчётными: их гонит
+     вулканизм. */
+  {k:'gasN2',      label:'Азот N₂',                def:0.780800, group:'Атмосфера', gas:true},
+  {k:'gasO2',      label:'Кислород O₂',            def:0.209500, group:'Атмосфера', gas:true},
+  {k:'gasH2O',     label:'Водяной пар H₂O',        def:0.004000, group:'Атмосфера', gas:true, derived:'volcano'},
+  {k:'gasCO2',     label:'Углекислый газ CO₂',     def:0.000420, group:'Атмосфера', gas:true, derived:'volcano'},
+  {k:'gasSO2',     label:'Диоксид серы SO₂',       def:0.000001, group:'Атмосфера', gas:true, derived:'volcano'},
+  {k:'gasCH4',     label:'Метан CH₄',              def:0.000002, group:'Атмосфера', gas:true},
+  {k:'gasHHe',     label:'Водород и гелий H₂/He',  def:0.000005, group:'Атмосфера', gas:true},
   {k:'magnet',     label:'Мощность магнитного поля', def:0.52, group:'Магнитосфера'},
   {k:'magTilt',    label:'Наклон магнитной оси',    def:0.50, group:'Магнитосфера'},
   {k:'magAzimuth', label:'Направление магнитной оси',def:0.50, group:'Магнитосфера'},
@@ -42,8 +53,178 @@ const PARAMS = [
    В интерфейсе это обратный тумблер «Детали». */
 const state = {seed: 8127344, rings: false, draft: true, voidbg: false, platesOn: false,
                lowOn: true, midOn: false, highOn: false,
-               auroraOn: true, fieldLinesOn: false, auroraFootpoints: false};
+               auroraOn: true, fieldLinesOn: false, auroraFootpoints: false,
+               /* Расчётный ползунок можно взять рукой - тогда он закрепляется
+                  и перестаёт следовать за базой, пока метку не снимут. */
+               pinTemp: false, pinH2O: false, pinCO2: false, pinSO2: false,
+               atmoComp: 0.0};
 PARAMS.forEach(p => state[p.k] = p.def);
+
+/* ---------- смесь газов ----------
+   Доли нормированы: сумма ровно единица, поэтому подъём одного газа
+   пропорционально ужимает все прочие. Ползунок логарифмический - газы
+   расходятся на семь порядков, и на линейной шкале следовые (CO₂ в 0.04%)
+   были бы неотличимы от нуля. */
+const GAS_KEYS = PARAMS.filter(p => p.gas).map(p => p.k);
+const GAS_MIN = 1e-7;
+function gasSliderToVal(x){
+  if(x <= 0.004) return 0.0;
+  return GAS_MIN * Math.pow(1/GAS_MIN, Math.max(0, Math.min(1, x)));
+}
+function gasValToSlider(f){
+  if(!(f > GAS_MIN)) return 0.0;
+  return Math.max(0, Math.min(1, Math.log(f/GAS_MIN)/Math.log(1/GAS_MIN)));
+}
+function gasFractions(){
+  const g = {}; let sum = 0;
+  GAS_KEYS.forEach(k => { const v = Math.max(0, state[k]||0); g[k] = v; sum += v; });
+  if(sum > 1e-12) GAS_KEYS.forEach(k => g[k] /= sum);
+  else g[GAS_KEYS[0]] = 1.0;
+  return g;
+}
+function normalizeGases(){
+  const g = gasFractions();
+  GAS_KEYS.forEach(k => state[k] = g[k]);
+}
+/* Конкуренция: заданный газ получает свою долю, остальные делят остаток в
+   прежней пропорции между собой. */
+function setGasFraction(key, f){
+  f = Math.max(0, Math.min(0.999999, f));
+  const rest = GAS_KEYS.filter(k => k !== key);
+  let sum = 0; rest.forEach(k => sum += Math.max(0, state[k]||0));
+  const room = 1 - f;
+  if(sum > 1e-12) rest.forEach(k => state[k] = Math.max(0, state[k]||0) * room/sum);
+  else rest.forEach(k => state[k] = room/rest.length);
+  state[key] = f;
+}
+function gasLabel(f){
+  const pc = f*100;
+  if(pc >= 10)    return pc.toFixed(1)+'%';
+  if(pc >= 1)     return pc.toFixed(2)+'%';
+  if(pc >= 0.01)  return pc.toFixed(3)+'%';
+  if(pc >= 1e-5)  return pc.toPrecision(2)+'%';
+  return 'следы';
+}
+
+/* Значения по умолчанию берутся из состава земного воздуха и в сумме дают
+   99.47%: остальное - аргон, который отдельным ползунком не нужен. Смесь
+   приводится к единице сразу, чтобы проценты в панели сходились. */
+normalizeGases();
+
+/* ---------- вулканизм как база ----------
+   Извержение выбрасывает прежде всего водяной пар (до 70-90% массы), затем
+   диоксид серы и лишь малую долю углекислого газа. Времена жизни у них
+   разные, и это важнее состава: сульфатный аэрозоль вымывается из
+   стратосферы за годы, поэтому SO₂ идёт почти вплотную за текущей
+   активностью, а CO₂ копится геологическими эпохами - его постоянная
+   времени на порядок больше. Отсюда и обещанное поведение: опущенный в ноль
+   CO₂ при работающих вулканах медленно восстанавливается сам.
+   Порог 0.32 - это земной уровень вулканизма: ниже него добавки нет и
+   состав возвращается к фоновому. */
+const GAS_TAU = {gasSO2: 1.2, gasH2O: 1.8, gasCO2: 11.0};
+const GAS_PIN = {gasSO2: 'pinSO2', gasH2O: 'pinH2O', gasCO2: 'pinCO2'};
+function volcanicTargets(){
+  const v = Math.max(0, Math.min(1, state.volcano));
+  const q = Math.pow(Math.max(0, v-0.32)/0.68, 1.6);
+  return {
+    gasH2O: 0.004000 + 0.052*q,
+    gasSO2: 0.000001 + 0.013*q,
+    gasCO2: 0.000420 + 0.078*q,
+  };
+}
+
+/* ---------- средняя температура планеты ----------
+   Считается по-настоящему, а не берётся с ползунка: светимость звезды и
+   расстояние дают приток, облака, океан, лёд и сульфатный аэрозоль - альбедо,
+   а парниковые газы - добавку сверху. Ледовая обратная связь нелинейна
+   (похолодание растит лёд, лёд растит альбедо), поэтому баланс ищется
+   несколькими итерациями.
+   Калибровка: земные значения дают 254 K равновесных и +33 K парниковых. */
+function climateModel(){
+  const st = starPhysics(state.star, state.luminosity);
+  const au = 0.22*Math.pow(4.8/0.22, Math.max(0,Math.min(1,state.distance)));
+  const S  = st.L/(au*au);
+  /* Масса столба в земных единицах. */
+  const dens = 0.10 + 1.55*Math.max(0,Math.min(1,state.atmo));
+  const g = gasFractions();
+  /* Парниковая эффективность на единицу доли. Метан на порядок сильнее
+     углекислого газа, водяной пар - основной парниковый газ Земли. */
+  const tau = dens*(g.gasCO2*180 + g.gasCH4*1400 + g.gasH2O*70
+                  + g.gasSO2*40  + g.gasHHe*4);
+  /* Сульфатный аэрозоль работает зеркалом, а не одеялом: SO₂ окисляется в
+     стратосфере до серной кислоты и отражает свет обратно в космос.
+     Пинатубо (18 Мт SO₂) охладил планету примерно на 0.5 °C. */
+  const aer = Math.min(0.42, 3.4*Math.sqrt(Math.max(0,g.gasSO2)*dens));
+  const cloudCov = Math.max(0, Math.min(1,
+      0.55*state.cloudLow + 0.30*state.cloudMid + 0.15*state.cloudHigh));
+  let T = 288, A = 0.3;
+  for(let i=0;i<6;i++){
+    const iceFrac = Math.max(0, Math.min(1, (273.15-T)/55));
+    A = Math.max(0.03, Math.min(0.88,
+        0.055 + 0.16*(1-state.sea) + 0.30*cloudCov + 0.40*iceFrac + aer));
+    T = 278.6*Math.pow(Math.max(S,1e-4)*(1-A), 0.25) + 108*Math.log(1+tau);
+  }
+  return {T, C: T-273.15, S, au, A, aer, tau, dens};
+}
+/* Средняя температура <-> положение ползунка. Шкала -78..+97 °C покрывает всё
+   от промёрзшего шарика до венерианской печи, а земные +15 °C ложатся
+   примерно на середину. */
+function tempToSlider(C){ return Math.max(0, Math.min(1, (C+78)/175)); }
+function sliderToTemp(v){ return v*175 - 78; }
+function tempLabel(){
+  const C = state.pinTemp ? sliderToTemp(state.temp) : climateModel().C;
+  const a = Math.abs(C);
+  const d = a < 10 ? 1 : 0;
+  return (C >= 0 ? '+' : '\u2212') + a.toFixed(d) + ' °C';
+}
+
+/* Состав для окраски дымки выводится из смеси, а не задаётся отдельно:
+   ползунок состава был единственным на все газы сразу. */
+function atmoCompFromGases(){
+  const g = gasFractions();
+  const cl = x => Math.max(0, Math.min(1, x));
+  let c = 0.25*cl(g.gasCO2/0.30);
+  c = Math.max(c, 0.50*cl((g.gasCO2-0.25)/0.60 + g.gasSO2*8.0));
+  c = Math.max(c, 0.75*cl(g.gasCH4/0.06));
+  c = Math.max(c, 1.00*cl(g.gasHHe/0.50));
+  return cl(c);
+}
+
+/* Расчётные ползунки подтягиваются к цели, а не прыгают: постоянные времени
+   и есть физика процесса. Незакреплённые следуют за базой, закреплённые
+   стоят там, где их поставили. */
+function relaxDerived(dtSec){
+  const dt = Math.max(0, Math.min(0.5, dtSec));
+  let moved = false;
+  const tg = volcanicTargets();
+  const auto = GAS_KEYS.filter(k => tg[k] !== undefined && !state[GAS_PIN[k]]);
+  if(auto.length){
+    let sumA = 0;
+    const next = {};
+    auto.forEach(k => {
+      const a = 1 - Math.exp(-dt/GAS_TAU[k]);
+      const v = state[k] + (tg[k]-state[k])*a;
+      next[k] = Math.max(0, v); sumA += next[k];
+      if(Math.abs(v-state[k]) > 1e-9) moved = true;
+    });
+    if(sumA > 0.97){ const sc = 0.97/sumA; auto.forEach(k => next[k] *= sc); sumA = 0.97; }
+    const rest = GAS_KEYS.filter(k => next[k] === undefined);
+    let sumR = 0; rest.forEach(k => sumR += Math.max(0, state[k]||0));
+    const room = 1 - sumA;
+    if(sumR > 1e-12) rest.forEach(k => state[k] = Math.max(0,state[k]||0)*room/sumR);
+    else if(rest.length) rest.forEach(k => state[k] = room/rest.length);
+    auto.forEach(k => state[k] = next[k]);
+  }
+  state.atmoComp = atmoCompFromGases();
+  if(!state.pinTemp){
+    const target = tempToSlider(climateModel().C);
+    const a = 1 - Math.exp(-dt/2.2);
+    const v = state.temp + (target-state.temp)*a;
+    if(Math.abs(v-state.temp) > 1e-5) moved = true;
+    state.temp = v;
+  }
+  return moved;
+}
 
 /* Спектральный класс звезды → цвет RGB.
    Класс: M(0) K(0.17) G(0.43) F(0.57) A(0.71) B(0.86) O(1.0).
@@ -114,14 +295,6 @@ function ringGrainLabel(t){
   if(t < 0.70) return 'гравий';
   return 'глыбы';
 }
-function atmoLabel(t){
-  if(t < 0.12) return 'N₂/O₂';
-  if(t < 0.37) return 'CO₂';
-  if(t < 0.62) return 'CO₂+H₂SO₄';
-  if(t < 0.87) return 'N₂+CH₄';
-  return 'H₂/He';
-}
-
 function auroraKpLabel(v){ return 'Kp '+(Math.max(0,Math.min(1,v))*9).toFixed(1); }
 function auroraLatitudeRad(v=state.aurora){
   const a=Math.max(0,Math.min(1,v));

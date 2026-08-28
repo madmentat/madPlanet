@@ -227,6 +227,8 @@ function drawFrame(now){
     gl.uniform1f(U.uStarFlux, starPhys.L / Math.max(distInfo.au*distInfo.au, 0.02));
     gl.uniform1f(U.uStarDist, distInfo.au);
     gl.uniform1f(U.uAtmoComp, state.atmoComp);
+    gl.uniform1f(U.uCO2, gasFractions().gasCO2);
+    gl.uniform1f(U.uSnowAlt, state.snowAlt);
     gl.uniform1f(U.uWind, state.wind);
     gl.uniform1f(U.uConvection, state.convection);
     gl.uniform1f(U.uMagField, state.magnet);
@@ -275,6 +277,15 @@ function drawFrame(now){
 function loop(now){
   const dt = Math.min(now - lastNow, 100);
   lastNow = now;
+
+  /* Расчётные величины ползут к своим целям от баз: сера идёт следом за
+     вулканизмом почти сразу, углекислый газ копится медленно, а средняя
+     температура подтягивается вслед за составом. Ссылку при этом не
+     переписываем: значения выводятся из баз и восстановятся сами. */
+  if(relaxDerived(dt/1000)){
+    markRenderUniformsDirty();
+    refreshDerivedUI();
+  }
   frameMsEwma += (dt-frameMsEwma)*0.06;
   if(qualityCooldown > 0) qualityCooldown--;
 

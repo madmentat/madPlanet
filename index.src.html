@@ -101,9 +101,16 @@
     padding:8px 14px 14px;overflow-y:auto;flex:1;
     -webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 
-  .row{margin-bottom:10px}
-  .row label{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
-             color:var(--mut);margin-bottom:2px}
+  /* Заголовок строки и сама дорожка стоят друг под другом. Раньше значение
+     вытягивалось наверх отрицательным отступом и float-ом, попадая прямо в
+     34-пиксельную полосу ползунка: бегунок накрывал число, и проценты было
+     не прочитать. Теперь подпись, метка и значение делят одну строку, а
+     дорожка идёт под ними во всю ширину и ни с чем не пересекается. */
+  .row{margin-bottom:6px}
+  .row-head{display:flex;align-items:baseline;gap:7px;min-height:13px}
+  .row label{flex:1 1 auto;min-width:0;font-size:10px;letter-spacing:.12em;
+             text-transform:uppercase;color:var(--mut);margin:0;
+             overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* Дорожка тонкая, но брать её нужно пальцем: высота области нажатия
      поднята, ползунок увеличен, а собственный жест браузера разрешён явно. */
   input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:34px;
@@ -118,8 +125,18 @@
   input[type=range]::-moz-range-thumb{width:17px;height:17px;border:none;border-radius:50%;
     background:#dce8ff;box-shadow:0 0 8px rgba(159,194,255,.55)}
   input[type=range]:focus-visible{outline:1px solid var(--acc);outline-offset:2px;border-radius:4px}
-  .slval{font-size:11px;opacity:.7;min-width:5em;text-align:right;float:right;margin-top:-17px;
-         font-family:var(--mono);font-size:10px}
+  .slval{flex:0 0 auto;font-family:var(--mono);font-size:10px;opacity:.72;
+         text-align:right;white-space:nowrap}
+  /* Метка происхождения величины: «база» - от неё считают другие, «расчёт» -
+     её считают сами. Расчётную можно закрепить, взяв рукой, и отпустить
+     обратно нажатием на метку. */
+  .tag{flex:0 0 auto;font-family:var(--mono);font-size:9px;line-height:1;
+       letter-spacing:.05em;padding:2px 5px;border-radius:4px;white-space:nowrap;
+       border:1px solid var(--line);background:transparent;color:var(--mut)}
+  button.tag{cursor:pointer;-webkit-appearance:none;appearance:none}
+  button.tag.pinned{color:#dce8ff;border-color:var(--acc)}
+  .row.derived input[type=range]::-webkit-slider-thumb{background:#bcd0f0}
+  .row.derived input[type=range]::-moz-range-thumb{background:#bcd0f0}
 
   /* ── утилитарная полоса (сид, тоглы, кнопки) ── */
   .util-bar{

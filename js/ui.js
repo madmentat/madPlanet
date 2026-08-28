@@ -90,38 +90,62 @@ function createPanel(group){
   const groupParams = PARAMS.filter(p => p.group === group);
   groupParams.forEach(p => {
     const row = document.createElement('div');
-    row.className = 'row';
+    row.className = 'row' + (p.derived ? ' derived' : '');
+    const head = document.createElement('div');
+    head.className = 'row-head';
     const lab = document.createElement('label');
     lab.textContent = p.label;
     lab.htmlFor = 'sl_' + p.k;
     const inp = document.createElement('input');
     inp.type = 'range'; inp.min = 0; inp.max = 1; inp.step = 0.001;
-    inp.value = state[p.k]; inp.id = 'sl_' + p.k;
-    inp.style.setProperty('--fill', (state[p.k]*100)+'%');
+    inp.id = 'sl_' + p.k;
+    setSliderPos(p, inp);
     const valSpan = document.createElement('span');
     valSpan.className = 'slval';
-    const updateLabel = () => {
-      let text = (state[p.k]*100).toFixed(0)+'%';
-      if(p.k==='star') text = starLabel(state.star);
-      if(p.k==='magTilt') text = ((state.magTilt-0.5)*80).toFixed(0)+'°';
-      if(p.k==='magAzimuth') text = (state.magAzimuth*360).toFixed(0)+'°';
-      if(p.k==='aurora') text = auroraKpLabel(state.aurora);
-      if(p.k==='atmoComp') text = atmoLabel(state.atmoComp);
-      if(p.k==='ringMat') text = ringMatLabel(state.ringMat);
-      if(p.k==='ringGrain') text = ringGrainLabel(state.ringGrain);
-      if(p.k==='luminosity') text = luminosityLabel(state.luminosity);
-      if(p.k==='distance'){ const q=distanceInfo(state.distance); text=q.label; }
-      valSpan.textContent = text;
-    };
-    updateLabel();
+    valSpan.textContent = valueText(p);
+
+    /* Метка происхождения. База - та величина, от которой считают другие;
+       расчётная считается сама и следует за базой, пока её не закрепят. */
+    head.appendChild(lab);
+    if(p.base){
+      const t = document.createElement('span');
+      t.className = 'tag'; t.textContent = 'база';
+      t.title = 'От этого параметра считаются другие';
+      head.appendChild(t);
+    }
+    const pinKey = PIN_OF[p.k];
+    if(pinKey){
+      const t = document.createElement('button');
+      t.type = 'button'; t.className = 'tag';
+      t.title = 'Расчётная величина. Нажмите, чтобы вернуть её под расчёт';
+      const refreshTag = () => {
+        t.classList.toggle('pinned', !!state[pinKey]);
+        t.textContent = state[pinKey] ? 'вручную' : 'расчёт';
+      };
+      refreshTag();
+      t.addEventListener('click', () => {
+        state[pinKey] = !state[pinKey];
+        refreshTag(); markRenderUniformsDirty(); syncUI(); saveHash();
+      });
+      pinTags[p.k] = refreshTag;
+      head.appendChild(t);
+    }
+    head.appendChild(valSpan);
+
     inp.addEventListener('input', () => {
-      state[p.k] = +inp.value;
+      const s = +inp.value;
+      if(p.gas) setGasFraction(p.k, gasSliderToVal(s));
+      else state[p.k] = s;
+      /* Взяли расчётный ползунок рукой - он закрепляется сам: иначе
+         значение тут же уползло бы обратно к расчётному. */
+      if(pinKey && !state[pinKey]) state[pinKey] = true;
       markRenderUniformsDirty();
-      inp.style.setProperty('--fill', (state[p.k]*100)+'%');
+      inp.style.setProperty('--fill', (s*100)+'%');
+      if(p.gas) syncGasSliders(p.k);
       syncDynamicLabels();
       saveHash();
     });
-    row.append(lab, inp, valSpan);
+    row.append(head, inp);
     body.appendChild(row);
     sliders[p.k] = inp;
   });
@@ -305,26 +329,69 @@ document.getElementById('rubToggle').addEventListener('click', () => {
 });
 
 /* ── Синхронизация UI ── */
+/* Расчётные ползунки, которые можно закрепить. */
+const PIN_OF = {temp:'pinTemp', gasH2O:'pinH2O', gasCO2:'pinCO2', gasSO2:'pinSO2'};
+const pinTags = {};
+
+/* Газы живут на логарифмической шкале: доли расходятся на семь порядков, и
+   на линейной дорожке следовой CO₂ был бы неотличим от нуля. */
+function sliderPos(p){ return p.gas ? gasValToSlider(state[p.k]) : state[p.k]; }
+function setSliderPos(p, inp){
+  const s = sliderPos(p);
+  inp.value = s;
+  inp.style.setProperty('--fill', (s*100)+'%');
+}
+function valueText(p){
+  if(p.gas) return gasLabel(state[p.k]);
+  switch(p.k){
+    case 'temp':       return tempLabel();
+    case 'snowAlt':    return snowLineLabel(state.snowAlt);
+    case 'star':       return starLabel(state.star);
+    case 'magTilt':    return ((state.magTilt-0.5)*80).toFixed(0)+'°';
+    case 'magAzimuth': return (state.magAzimuth*360).toFixed(0)+'°';
+    case 'aurora':     return auroraKpLabel(state.aurora);
+    case 'ringMat':    return ringMatLabel(state.ringMat);
+    case 'ringGrain':  return ringGrainLabel(state.ringGrain);
+    case 'luminosity': return luminosityLabel(state.luminosity);
+    case 'distance':   return distanceInfo(state.distance).label;
+  }
+  return (state[p.k]*100).toFixed(0)+'%';
+}
+/* Снеговая линия — высота, выше которой на хребтах ложится снег. */
+function snowLineLabel(v){
+  return (Math.round((600 + 5400*v)/100)*100).toLocaleString('ru-RU')+' м';
+}
+/* Подъём одного газа теснит остальные, поэтому после правки надо обновить
+   положение всех прочих дорожек, а не только тронутой. */
+function syncGasSliders(except){
+  PARAMS.forEach(p => {
+    if(!p.gas || p.k === except || !sliders[p.k]) return;
+    setSliderPos(p, sliders[p.k]);
+  });
+}
 function syncDynamicLabels(){
   PARAMS.forEach(p => {
     const el = sliders[p.k]?.parentElement?.querySelector('.slval');
-    if(!el) return;
-    if(p.k==='star') el.textContent = starLabel(state.star);
-    else if(p.k==='magTilt') el.textContent = ((state.magTilt-0.5)*80).toFixed(0)+'°';
-    else if(p.k==='magAzimuth') el.textContent = (state.magAzimuth*360).toFixed(0)+'°';
-    else if(p.k==='aurora') el.textContent = auroraKpLabel(state.aurora);
-    else if(p.k==='atmoComp') el.textContent = atmoLabel(state.atmoComp);
-    else if(p.k==='ringMat') el.textContent = ringMatLabel(state.ringMat);
-    else if(p.k==='ringGrain') el.textContent = ringGrainLabel(state.ringGrain);
-    else if(p.k==='luminosity') el.textContent = luminosityLabel(state.luminosity);
-    else if(p.k==='distance') el.textContent = distanceInfo(state.distance).label;
+    if(el) el.textContent = valueText(p);
+    if(pinTags[p.k]) pinTags[p.k]();
   });
+}
+/* Расчётные ползунки движутся сами, и открытая панель должна это
+   показывать. Когда панель закрыта, DOM не трогаем вовсе: иначе правка шла
+   бы каждый кадр впустую. */
+function refreshDerivedUI(){
+  if(!openPanelGroup) return;
+  let touched = false;
+  PARAMS.forEach(p => {
+    if(!p.derived || p.group !== openPanelGroup || !sliders[p.k]) return;
+    setSliderPos(p, sliders[p.k]); touched = true;
+  });
+  if(touched) syncDynamicLabels();
 }
 function syncUI(){
   PARAMS.forEach(p => {
     if(!sliders[p.k]) return;
-    sliders[p.k].value = state[p.k];
-    sliders[p.k].style.setProperty('--fill', (state[p.k]*100)+'%');
+    setSliderPos(p, sliders[p.k]);
   });
   syncDynamicLabels();
   document.getElementById('rings').checked = state.rings;
@@ -381,7 +448,18 @@ document.getElementById('rand').addEventListener('click', () => {
   state.city  = r() < 0.2 ? r()*0.15 : 0.35+r()*0.6;
   state.atmo  = 0.4 + r()*0.55;
   state.star     = r() < 0.3 ? 0.43+r()*0.15 : r();
-  state.atmoComp = r() < 0.7 ? r()*0.15 : r();
+  state.snowAlt = 0.15 + r()*0.75;
+  /* Состав: чаще земной воздух, иногда углекислая или водородная планета.
+     Дальше смесь нормируется, а вулканические газы всё равно подтянет
+     сам вулканизм. */
+  const air = r();
+  state.gasN2 = 0.78; state.gasO2 = 0.21; state.gasH2O = 0.004;
+  state.gasCO2 = 0.0004; state.gasSO2 = 1e-6; state.gasCH4 = 2e-6; state.gasHHe = 5e-6;
+  if(air > 0.55 && air <= 0.80){ state.gasCO2 = 0.30 + r()*0.65; state.gasN2 = 0.2; state.gasO2 = 0.002; }
+  else if(air > 0.80 && air <= 0.92){ state.gasCH4 = 0.02 + r()*0.06; state.gasO2 = 0.001; }
+  else if(air > 0.92){ state.gasHHe = 0.55 + r()*0.40; state.gasN2 = 0.05; state.gasO2 = 0.0005; }
+  normalizeGases();
+  state.pinTemp = false; state.pinCO2 = false; state.pinSO2 = false; state.pinH2O = false;
   state.magnet = 0.15 + r()*0.8;
   state.aurora = 0.20 + r()*0.8;
   state.luminosity = 0.25 + r()*0.65;
@@ -404,7 +482,8 @@ document.getElementById('rand').addEventListener('click', () => {
 /* ── URL hash ── */
 let hashT = 0;
 const FLAG_KEYS = ['rings','draft','voidbg','lowOn','midOn','highOn',
-                   'auroraOn','fieldLinesOn','auroraFootpoints','platesOn'];
+                   'auroraOn','fieldLinesOn','auroraFootpoints','platesOn',
+                   'pinTemp','pinH2O','pinCO2','pinSO2'];
 
 /* Формат v4 — по именам. Позиционный ломался дважды: стоило добавить ползунок
    или убрать флаг, как всё съезжало, и у старой ссылки молча пропадали
@@ -414,7 +493,9 @@ function saveHash(){
   clearTimeout(hashT);
   hashT = setTimeout(() => {
     const out = ['v4', 's' + state.seed];
-    PARAMS.forEach(p => out.push(p.k + '=' + (+state[p.k]).toFixed(3)));
+    /* Долям газов трёх знаков после запятой мало: земной CO₂ - это 0.00042,
+       и он записался бы нулём. */
+    PARAMS.forEach(p => out.push(p.k + '=' + (+state[p.k]).toFixed(p.gas ? 8 : 3)));
     FLAG_KEYS.forEach(k => out.push(k + '=' + (state[k] ? 1 : 0)));
     try{ history.replaceState(null, '', '#' + out.join(',')); }catch(e){}
   }, 200);
@@ -445,6 +526,7 @@ function loadHash(){
       if(Number.isFinite(v)) state[p.k] = Math.max(0, Math.min(1, v));
     });
     FLAG_KEYS.forEach(k => { if(k in map) state[k] = map[k] === '1'; });
+    normalizeGases();
     return;
   }
 
