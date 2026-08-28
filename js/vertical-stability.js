@@ -3,8 +3,9 @@
    Weather Core v10 derives a compact vertical-column diagnosis from the
    resolved near-surface state. This is intentionally not a full 3-D model.
    Surface/air temperature, humidity, pressure, scale height and resolved
-   orographic/frontal ascent are used to estimate bulk stability,
-   lifting-condensation level (LCL), and a plausible cloud-column top.
+   orographic/frontal/synoptic vertical motion are used to estimate bulk
+   stability, lifting-condensation level (LCL), and a plausible cloud-column
+   top.
 
    The authoritative condensate remains cloudWaterState (kg/m2). This module
    only partitions that existing mass into low/mid/high layers by geometric
@@ -95,20 +96,25 @@ function verticalCellState(core,i,climate,out){
   const parcelGamma=VERTICAL_DRY_LAPSE_K_M+(VERTICAL_MOIST_LAPSE_K_M-VERTICAL_DRY_LAPSE_K_M)*moist;
   const envGamma=verticalClamp((Ts-Ta)/Math.max(100,zRef),-0.025,0.030);
   const excess=envGamma-parcelGamma; /* >0: environment cools faster than parcel => unstable */
-  const stability=verticalClamp(0.5-excess/0.012,0,1); /* 1 stable, 0 unstable */
+  const rawStability=verticalClamp(0.5-excess/0.012,0,1); /* 1 stable, 0 unstable */
   const oroW=Math.max(0,Number(core.orographicVerticalVelocity?.[i])||0);
   const frontW=Math.max(0,Number(core.frontVerticalVelocity?.[i])||0);
-  const resolvedW=oroW+frontW;
+  const systemW=Number(core.systemVerticalVelocity?.[i])||0;
+  const systemUp=Math.max(0,systemW),systemDown=Math.max(0,-systemW);
+  const resolvedW=oroW+frontW+systemUp;
+  const subsidence=verticalSmooth(0.02,0.55,systemDown);
+  const stability=verticalClamp(rawStability+0.38*subsidence,0,1);
   const buoyant=verticalSmooth(-0.0015,0.0060,excess);
   const lift=verticalSmooth(0.05,1.5,resolvedW);
-  const convective=verticalClamp(buoyant*(0.45+0.55*verticalClamp(rh,0,1))+0.22*lift,0,1);
+  const convective=verticalClamp(buoyant*(0.45+0.55*verticalClamp(rh,0,1))+0.22*lift-0.52*subsidence,0,1);
   const lcl=verticalLclHeightM(Ta,rh,H);
   const maxTop=VERTICAL_MAX_TOP_SCALE*H;
   const base=verticalClamp(lcl,0,maxTop*0.96);
   const cloud=Math.max(0,Number(core.cloudWaterState?.[i])||0);
   const cloudBoost=verticalSmooth(0.01,0.60,cloud);
   let depth=H*(0.07+0.18*(1-stability)+0.92*convective+0.10*cloudBoost);
-  depth+=Math.min(0.35*H,oroW*420+frontW*650);
+  depth+=Math.min(0.42*H,oroW*420+frontW*650+systemUp*720);
+  depth-=Math.min(0.24*H,systemDown*620);
   depth=verticalClamp(depth,0.04*H,1.55*H);
   const top=verticalClamp(base+depth,base,maxTop);
   const p0=Math.max(1,Number(core.pressure?.[i])||Math.max(1,Number(climate?.pressureBar)||0)*1e5);
@@ -170,8 +176,8 @@ weatherCoreStep=function(core,dtSec,climate,axis){
   if(!core||!core.count) return core;
   weatherCoreStepBeforeVerticalStability(core,dtSec,climate,axis);
   /* Diagnostic/partition-only pass after condensation, precipitation, soil
-     hydrology and (when loaded) frontal diagnosis. It never changes
-     temperature, vapor or bulk condensate. */
+     hydrology, frontal diagnosis and pressure-system diagnosis when loaded.
+     It never changes temperature, vapor or bulk condensate. */
   verticalRefresh(core,climate);
   return core;
 };
