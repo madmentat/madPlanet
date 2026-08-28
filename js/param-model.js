@@ -10,13 +10,17 @@ const PARAM_ROLE = Object.freeze({
 const PARAM_ROLE_BY_KEY = Object.freeze({
   /* Physical inputs that remain user-controlled. Some are legacy proxies
      (sea/atmo/magnet) and will get stricter meanings in later patches.
-     Volcanism is a BASE slow forcing for now: later its natural level should
-     follow internal heat, age, size and interior composition rather than the
-     other way around. Magnetic field must not be derived directly from it. */
+     Planet age, size, interior type, rotation and axial tilt are explicit
+     BASE inputs from 0.5.35 onward. Volcanism is also a BASE slow forcing for
+     now; later its natural level can follow an interior thermal model without
+     making age a magic direct multiplier. Magnetic field is not derived
+     directly from volcanism. */
   sea:'base', cont:'base', isle:'base', lake:'base', atmo:'base',
   gasN2:'base', gasO2:'base', gasCH4:'base', gasHHe:'base',
   magnet:'base', magTilt:'base', magAzimuth:'base', aurora:'base',
   star:'base', luminosity:'base', distance:'base', volcano:'base',
+  planetAge:'base', planetRadius:'base', coreType:'base',
+  rotationPeriod:'base', axialTilt:'base',
 
   tect:'geo',
 
