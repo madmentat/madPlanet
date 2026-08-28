@@ -228,7 +228,7 @@
 
 <div class="mark">
   <h1>madPlanet</h1>
-  <div class="ver">v0.5.29</div>
+  <div class="ver">v0.5.30</div>
   <div class="sub">МИР <b id="seedLabel">№ —</b></div>
 </div>
 
@@ -273,7 +273,7 @@
 <script>
 'use strict';
 
-const APP_VERSION = '0.5.29';
+const APP_VERSION = '0.5.30';
 const VERT = `#version 300 es
 layout(location=0) in vec2 aPos;
 void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
@@ -1670,47 +1670,6 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   return col;
 }
 
-/* ---------- звёзды и туманности ---------- */
-vec3 stars(vec3 rd){
-  vec3 col = vec3(0.0);
-  vec3 q = rd*2.0 + uSeedS*0.07;
-  float band = exp(-pow(dot(rd, uMilky)*2.4, 2.0));
-  if(uDraft < 0.5){
-    float n1 = fbm(q*1.9+vec3(3.1), 3);
-    float n2 = fbm(q*3.6+vec3(11.2), 2);
-    col += vec3(0.10,0.06,0.16)*ss(0.05,0.75,n1)*(0.35+0.75*band);
-    col += vec3(0.04,0.07,0.13)*ss(0.02,0.8,n2)*(0.3+0.7*band);
-    col += vec3(0.20,0.17,0.22)*band*ss(-0.05,0.7,n1+0.25*n2)*0.5;
-  } else {
-    col += vec3(0.035,0.026,0.055)*band;
-  }
-  for(int L=0; L<2; L++){
-    float sc = (L==0) ? 34.0 : 82.0;
-    vec3 p = rd*sc + uSeedS*(3.0+float(L)*1.7);
-    vec3 id = floor(p), f = fract(p);
-    vec3 hh = hash33(id);
-    vec3 sp = 0.2 + 0.6*hh;
-    float d = length(f - sp);
-    float sigma = max(uPixA*sc*1.1, 0.010);
-    float br = pow(hh.x, 22.0)*((L==0)?2.6:1.3) + pow(hh.x,70.0)*5.0;
-    vec3 stc = mix(vec3(1.0,0.78,0.58), vec3(0.72,0.82,1.15), hh.y);
-    col += stc * br * exp(-d*d/(sigma*sigma)) * (0.55+0.45*band);
-  }
-  /* солнце — цвет зависит от спектрального класса */
-  float sd = max(dot(rd, uSunDir), 0.0);
-  vec3 starDisc = mix(uStarCol, vec3(1.0), 0.35);
-  /* Видимый размер звезды определяется физическим радиусом / расстоянием,
-     а не одним лишь спектральным классом. Поэтому изменение расстояния и
-     светимости действительно меняет сам диск звезды. */
-  float apparent = max(uStarRadius / max(uStarDist, 0.03), 0.02);
-  float radius = 5200.0 / apparent;
-  float halo = 1.0 - smoothstep(0.0, 0.020 + 0.010*apparent, 1.0-sd);
-  float disc = pow(sd, radius);
-  float flare = 0.65 + 0.35*clamp(uStarFlux,0.0,3.0);
-  col += starDisc * (disc*(18.0 + 14.0*uStarFlux)*flare + halo*(0.012 + 0.020*uStarFlux));
-  return col;
-}
-
 /* ---------- пересечение сферы ---------- */
 float iSphere(vec3 ro, vec3 rd, float r){
   float b = dot(ro, rd);
@@ -1789,6 +1748,10 @@ void main(){
     bolt = lightningGlow(normalize(ro + rd*tLo), cl0.a) * (0.25 + cl0.a*1.7);
 
   vec3 col;
+  /* Покрытие пикселя планетой: 1 на диске, доля на лимбе, 0 в пустоте. Ореол
+     атмосферы прибавляется с нулевым покрытием, то есть светится поверх неба,
+     как и положено свечению. */
+  float aPlanet = 1.0;
 
   if(tP > 0.0){
     vec3 pos = ro + rd*tP;
@@ -1830,7 +1793,12 @@ void main(){
     vec4 rg = ringColor(ro, rd, tP, tR);
     col = mix(col, rg.rgb, rg.a);
   } else {
-    col = (uVoid > 0.5) ? vec3(0.0) : stars(rd);
+    /* Небо рисует отдельный проход, который уже лежит в кадре. Здесь копится
+       только то, что принадлежит планете: ореол атмосферы, кольца, облака на
+       лимбе и молнии. Цвет копится предумноженным на покрытие, поэтому
+       обычный mix() и есть корректное наложение «источник поверх». */
+    col = vec3(0.0);
+    aPlanet = 0.0;
     /* ореол атмосферы */
     float tca = -dot(ro, rd);
     if(tca > 0.0){
@@ -1856,13 +1824,19 @@ void main(){
     col += bolt;
     if(rg.a > 0.0 && (tLo < 0.0 || tR > tLo)){
       col = mix(col, rg.rgb, rg.a);      /* кольцо за облачным лимбом */
+      aPlanet = rg.a + aPlanet*(1.0-rg.a);
       col = mix(col, cl0.rgb, cl0.a);
+      aPlanet = cl0.a + aPlanet*(1.0-cl0.a);
     } else {
       col = mix(col, cl0.rgb, cl0.a);
+      aPlanet = cl0.a + aPlanet*(1.0-cl0.a);
       col = mix(col, rg.rgb, rg.a);
+      aPlanet = rg.a + aPlanet*(1.0-rg.a);
     }
     col = mix(col, cl1.rgb, cl1.a);
+    aPlanet = cl1.a + aPlanet*(1.0-cl1.a);
     col = mix(col, cl2.rgb, cl2.a);
+    aPlanet = cl2.a + aPlanet*(1.0-cl2.a);
   }
 
   /* тонмап + виньетка + дизеринг */
@@ -1870,7 +1844,7 @@ void main(){
   col = pow(col, vec3(1.0/2.2));
   col *= 1.0 - 0.16*pow(length(uv)*1.15, 2.4);
   col += (hash33(vec3(gl_FragCoord.xy, uTime)).x - 0.5)/255.0;
-  fragColor = vec4(col, 1.0);
+  fragColor = vec4(col, clamp(aPlanet, 0.0, 1.0));
 }
 `;
 const COMPAT_FRAG = `#version 300 es
@@ -2117,6 +2091,140 @@ void main(){
      painting the whole polar cap when viewed from above. */
   sum*=clamp(stepLen/0.010,0.35,1.65);
   fragColor=vec4(clamp(sum,vec3(0.0),vec3(0.72)),1.0);
+}
+`;
+const SKY_FRAG = `#version 300 es
+/* ---------- небо ----------
+   Отдельная маленькая программа, как и аврора. Небо рисуется только там, где
+   нет планеты, и тащить его в основной шейдер незачем: за ту программу мы
+   платим минутами линковки, а здесь можно позволить себе и туманности, и
+   пылевые прожилки, и разброс цвета звёзд.
+
+   Проход идёт первым и непрозрачно заливает кадр, а планета поверх
+   накладывается с предумноженной альфой. */
+precision highp float;
+out vec4 fragColor;
+
+uniform vec2  uRes;
+uniform mat3  uCamMat;
+uniform float uFocal;
+uniform float uPixA;
+uniform vec3  uMilky;
+uniform vec3  uSeedS;
+uniform vec3  uSunDir;
+uniform vec3  uStarCol;
+uniform float uStarRadius, uStarDist, uStarFlux;
+uniform float uVoid;
+uniform float uSkyStars;   /* плотность звёздного поля */
+uniform float uSkyMilky;   /* яркость галактической полосы */
+uniform float uSkyNebula;  /* обилие туманностей */
+uniform float uSkyHue;     /* холодный - тёплый оттенок поля */
+
+vec3 h33(vec3 p){
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yxz + 33.33);
+  return fract((p.xxy + p.yxx) * p.zyx);
+}
+float n3(vec3 p){
+  vec3 i = floor(p), f = fract(p);
+  vec3 u = f*f*(3.0-2.0*f);
+  float a = dot(h33(i)             -0.5, f);
+  float b = dot(h33(i+vec3(1,0,0)) -0.5, f-vec3(1,0,0));
+  float c = dot(h33(i+vec3(0,1,0)) -0.5, f-vec3(0,1,0));
+  float d = dot(h33(i+vec3(1,1,0)) -0.5, f-vec3(1,1,0));
+  float e = dot(h33(i+vec3(0,0,1)) -0.5, f-vec3(0,0,1));
+  float g = dot(h33(i+vec3(1,0,1)) -0.5, f-vec3(1,0,1));
+  float h = dot(h33(i+vec3(0,1,1)) -0.5, f-vec3(0,1,1));
+  float k = dot(h33(i+vec3(1,1,1)) -0.5, f-vec3(1,1,1));
+  return 2.0*mix(mix(mix(a,b,u.x),mix(c,d,u.x),u.y),
+                 mix(mix(e,g,u.x),mix(h,k,u.x),u.y),u.z);
+}
+const mat3 M3 = mat3(0.00,0.80,0.60, -0.80,0.36,-0.48, -0.60,-0.48,0.64);
+float fbm(vec3 p, int oct){
+  float a = 0.5, s = 0.0;
+  for(int i=0;i<7;i++){
+    if(i>=oct) break;
+    s += a*n3(p); p = M3*p*2.03 + vec3(3.1); a *= 0.5;
+  }
+  return s;
+}
+float ss(float a, float b, float x){
+  float t = clamp((x-a)/(b-a), 0.0, 1.0);
+  return t*t*(3.0-2.0*t);
+}
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy - 0.5*uRes)/uRes.y;
+  vec3 rd = normalize(uCamMat * normalize(vec3(uv, uFocal)));
+  vec3 col = vec3(0.0);
+
+  if(uVoid < 0.5){
+    /* Галактическая полоса. Она не ровная лента: её рвут пылевые прожилки,
+       из-за которых у настоящего Млечного Пути посередине идёт тёмная щель. */
+    float lat  = dot(rd, uMilky);
+    float band = exp(-pow(lat*2.4, 2.0));
+    vec3  q    = rd*2.0 + uSeedS*0.07;
+    float warp = fbm(q*1.1 + vec3(17.0), 3);
+    float bandW = exp(-pow((lat + 0.12*warp)*2.4, 2.0));
+    float dust = ss(0.10, 0.75, fbm(q*2.6 + vec3(41.0), 4));
+    float rift = 1.0 - 0.85*ss(0.35, 0.95, fbm(q*1.7 + vec3(7.0), 3) + 0.6*exp(-pow(lat*7.0,2.0)));
+
+    /* Оттенок поля: холодный синий - нейтральный - тёплый янтарный. */
+    vec3 coolC = vec3(0.36,0.52,1.00);
+    vec3 warmC = vec3(1.00,0.66,0.38);
+    vec3 hueC  = mix(coolC, warmC, uSkyHue);
+
+    vec3 milkyC = mix(vec3(0.62,0.66,0.82), hueC, 0.35);
+    col += milkyC * bandW * rift * (0.070 + 0.20*dust) * uSkyMilky * 3.2;
+
+    /* Туманности: широкое свечение, поверх него волокна, и тёмная пыль,
+       которая их подрезает. Волокна берут оттенок поля, ядра светлее. */
+    if(uSkyNebula > 0.01){
+      float nb  = fbm(q*0.85 + vec3(83.0), 4);
+      float neb = ss(0.06, 0.62, nb + 0.35*bandW);
+      float fil = ss(0.20, 0.78, fbm(q*2.3 + vec3(151.0), 4));
+      float core= ss(0.45, 0.85, nb);
+      vec3  nc   = mix(hueC, vec3(1.0,0.86,0.92), core*0.55);
+      float shade= 1.0 - 0.7*ss(0.30, 0.85, fbm(q*3.9 + vec3(211.0), 3));
+      col += nc * neb * (0.35 + 0.85*fil) * shade * uSkyNebula * 0.62;
+    }
+
+    /* Звёзды в три яруса: редкие яркие, обычные и мелкая россыпь. Цвет
+       разбросан по спектру от красных карликов до голубых гигантов, а размер
+       пятна не даёт им мерцать при субпиксельном размере. */
+    for(int L=0; L<3; L++){
+      float sc = (L==0) ? 26.0 : ((L==1) ? 62.0 : 140.0);
+      vec3 p = rd*sc + uSeedS*(3.0 + float(L)*1.7);
+      vec3 id = floor(p), f = fract(p);
+      vec3 hh = h33(id);
+      vec3 sp = 0.2 + 0.6*hh;
+      float d = length(f - sp);
+      float sigma = max(uPixA*sc*1.1, 0.010);
+      float thr = mix(30.0, 12.0, uSkyStars);
+      float br = pow(hh.x, thr)*((L==0) ? 2.8 : ((L==1) ? 1.5 : 0.7))
+               + pow(hh.x, thr*3.0)*5.0;
+      vec3 stc = mix(vec3(1.00,0.72,0.50), vec3(0.68,0.80,1.20), hh.y);
+      stc = mix(stc, mix(stc, hueC, 0.5), 0.25);
+      col += stc * br * exp(-d*d/(sigma*sigma)) * (0.55 + 0.45*band);
+    }
+  }
+
+  /* Звезда системы. Видимый размер идёт от физического радиуса и расстояния,
+     поэтому оба ползунка действительно меняют диск. */
+  float sd = max(dot(rd, uSunDir), 0.0);
+  vec3 starDisc = mix(uStarCol, vec3(1.0), 0.35);
+  float apparent = max(uStarRadius / max(uStarDist, 0.03), 0.02);
+  float radius = 5200.0 / apparent;
+  float halo = 1.0 - smoothstep(0.0, 0.020 + 0.010*apparent, 1.0-sd);
+  float disc = pow(sd, radius);
+  float flare = 0.65 + 0.35*clamp(uStarFlux, 0.0, 3.0);
+  col += starDisc * (disc*(18.0 + 14.0*uStarFlux)*flare + halo*(0.012 + 0.020*uStarFlux));
+
+  /* Тонмап и виньетка те же, что у планеты: иначе шов между проходами виден. */
+  col = clamp((col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14), 0.0, 1.0);
+  col = pow(col, vec3(1.0/2.2));
+  col *= 1.0 - 0.16*pow(length(uv)*1.15, 2.4);
+  fragColor = vec4(col, 1.0);
 }
 `;
 /* ============ инициализация GL ============ */
@@ -2452,6 +2560,28 @@ gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 /* Aurora is a separate tiny additive pass. Keeping it out of the monolithic
    planet shader reduces ANGLE compile pressure and means aurora can be fully
    skipped when disabled. Failure of this optional pass never kills the app. */
+/* Небо — такой же отдельный маленький проход, как аврора. Оно рисуется
+   первым и непрозрачно заливает кадр, планета ложится поверх с
+   предумноженной альфой. Держать звёзды и туманности в монолитной программе
+   незачем: за неё мы платим минутами линковки. */
+let skyProg = null;
+const SK = {};
+try{
+  const sp = buildProgram(SKY_FRAG);
+  if(gl.getProgramParameter(sp, gl.LINK_STATUS)){
+    skyProg = sp;
+    ['uRes','uCamMat','uFocal','uPixA','uMilky','uSeedS','uSunDir','uStarCol',
+     'uStarRadius','uStarDist','uStarFlux','uVoid',
+     'uSkyStars','uSkyMilky','uSkyNebula','uSkyHue']
+      .forEach(n => SK[n] = gl.getUniformLocation(sp, n));
+  } else {
+    console.warn('[madPlanet] Sky pass link failed:', gl.getProgramInfoLog(sp) || '');
+    gl.deleteProgram(sp);
+  }
+} catch(e){
+  console.warn('[madPlanet] Sky pass disabled:', String(e.message || e));
+}
+
 let auroraProg = null;
 const AU = {};
 try{
@@ -3208,6 +3338,10 @@ const PARAMS = [
   {k:'magTilt',    label:'Наклон магнитной оси',    def:0.50, group:'Магнитосфера'},
   {k:'magAzimuth', label:'Направление магнитной оси',def:0.50, group:'Магнитосфера'},
   {k:'aurora',     label:'Солнечная активность (Kp)', def:0.62, group:'Магнитосфера'},
+  {k:'skyStars',   label:'Плотность звёзд',        def:0.55, group:'Небо'},
+  {k:'skyMilky',   label:'Млечный Путь',           def:0.60, group:'Небо'},
+  {k:'skyNebula',  label:'Туманности',             def:0.45, group:'Небо'},
+  {k:'skyHue',     label:'Оттенок поля',           def:0.45, group:'Небо'},
   {k:'star',       label:'Спектральный класс',     def:0.38, group:'Звезда'},
   {k:'luminosity', label:'Светимость',              def:0.43, group:'Звезда'},
   {k:'distance',   label:'Расстояние',              def:0.51, group:'Звезда'},
@@ -3223,6 +3357,22 @@ PARAMS.forEach(p => state[p.k] = p.def);
 /* Спектральный класс звезды → цвет RGB.
    Класс: M(0) K(0.17) G(0.43) F(0.57) A(0.71) B(0.86) O(1.0).
    Аппроксимация по цветовой температуре чёрного тела. */
+/* Пресеты неба. Ползунки остаются доступны: пресет только расставляет их,
+   дальше можно крутить руками. */
+const SKY_PRESETS = [
+  {name:'Тихий космос',        skyStars:0.35, skyMilky:0.25, skyNebula:0.05, skyHue:0.50},
+  {name:'Млечный Путь',        skyStars:0.70, skyMilky:0.92, skyNebula:0.28, skyHue:0.45},
+  {name:'Туманность',          skyStars:0.50, skyMilky:0.40, skyNebula:0.95, skyHue:0.32},
+  {name:'Ядро галактики',      skyStars:0.95, skyMilky:1.00, skyNebula:0.70, skyHue:0.62},
+  {name:'Холодная туманность', skyStars:0.45, skyMilky:0.35, skyNebula:0.85, skyHue:0.08},
+  {name:'Межгалактическая пустота', skyStars:0.10, skyMilky:0.03, skyNebula:0.02, skyHue:0.50},
+];
+function applySkyPreset(i){
+  const p = SKY_PRESETS[i];
+  if(!p) return;
+  ['skyStars','skyMilky','skyNebula','skyHue'].forEach(k => { state[k] = p[k]; });
+}
+
 const STAR_LABELS = ['M','K','G','F','A','B','O'];
 function starPhysics(t, lumT=0.52){
   const T = 3000 * Math.pow(40000/3000, Math.max(0, Math.min(1, t)));
@@ -3680,11 +3830,12 @@ const GROUP_ICONS = {
   'Магнитосфера': '<svg viewBox="0 0 18 18" fill="none"><path d="M9 2v14M5 5c2 2 2 6 0 8M13 5c-2 2-2 6 0 8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
   'Кольца':       '<svg viewBox="0 0 18 18" fill="none"><ellipse cx="9" cy="9" rx="7.5" ry="2.6" stroke="currentColor" stroke-width="1.2"/><ellipse cx="9" cy="9" rx="4.6" ry="1.5" stroke="currentColor" stroke-width="1" opacity=".55"/></svg>',
   'Звезда':       '<svg viewBox="0 0 18 18" fill="none"><path d="M9 2l1.5 4.5L15 8l-4.5 1.5L9 14l-1.5-4.5L3 8l4.5-1.5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>',
+  'Небо':         '<svg viewBox="0 0 18 18" fill="none"><circle cx="5" cy="5" r="1" fill="currentColor"/><circle cx="12.5" cy="4" r=".8" fill="currentColor"/><circle cx="8" cy="9" r=".7" fill="currentColor"/><circle cx="14" cy="11" r="1" fill="currentColor"/><circle cx="4" cy="13" r=".8" fill="currentColor"/><path d="M2 15c4-2.5 9-4 14-9" stroke="currentColor" stroke-width="1" opacity=".45"/></svg>',
 };
 
 const GROUP_SHORT = {
   'Планета':'ПЛ', 'Поверхность':'ПВ', 'Погода':'ПГ',
-  'Атмосфера':'АТ', 'Магнитосфера':'МГ', 'Звезда':'ЗВ', 'Кольца':'КЦ'
+  'Атмосфера':'АТ', 'Магнитосфера':'МГ', 'Звезда':'ЗВ', 'Кольца':'КЦ', 'Небо':'НБ'
 };
 
 const isMobile = () => matchMedia('(max-width:700px)').matches;
@@ -3721,6 +3872,36 @@ function createPanel(group){
 
   el.append(head, body);
   document.body.appendChild(el);
+
+  /* Пресеты неба: выпадающий список над ползунками. */
+  if(group === 'Небо'){
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:12px';
+    const lbl = document.createElement('span');
+    lbl.textContent = 'Пресет';
+    lbl.style.cssText = 'font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:var(--mut);flex:none';
+    const sel = document.createElement('select');
+    sel.id = 'skyPreset';
+    sel.style.cssText = 'flex:1;min-width:0;background:rgba(255,255,255,.05);border:1px solid var(--line);'
+      + 'border-radius:6px;color:var(--txt);font-family:var(--sans);font-size:11px;padding:5px 6px';
+    const none = document.createElement('option');
+    none.value = ''; none.textContent = 'свои настройки';
+    sel.appendChild(none);
+    SKY_PRESETS.forEach((p,i) => {
+      const o = document.createElement('option');
+      o.value = String(i); o.textContent = p.name;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', e => {
+      const i = parseInt(e.target.value, 10);
+      if(!Number.isFinite(i)) return;
+      applySkyPreset(i);
+      markRenderUniformsDirty(); syncUI(); saveHash();
+    });
+    row.append(lbl, sel);
+    body.appendChild(row);
+  }
 
   /* Создание слайдеров для этой группы */
   const groupParams = PARAMS.filter(p => p.group === group);
@@ -4357,6 +4538,37 @@ function drawAuroraWebGL(t, pos, camMat, magAxis, sunDir){
   gl.useProgram(prog);
 }
 
+/* Небо кладётся в кадр до планеты. Если проход не собрался, кадр просто
+   чистится в чёрное, чтобы не осталось мусора от предыдущего. */
+function drawSkyWebGL(camMat, sunDir){
+  if(!skyProg){
+    gl.clearColor(0,0,0,1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    return;
+  }
+  const starPhys = starPhysics(state.star, state.luminosity);
+  const distInfo = distanceInfo(state.distance);
+  gl.useProgram(skyProg);
+  gl.uniform2f(SK.uRes, canvas.width, canvas.height);
+  gl.uniformMatrix3fv(SK.uCamMat, false, camMat);
+  gl.uniform1f(SK.uFocal, FOCAL);
+  gl.uniform1f(SK.uPixA, (52*Math.PI/180)/canvas.height);
+  gl.uniform3fv(SK.uMilky, world.milky);
+  gl.uniform3fv(SK.uSeedS, world.seedS);
+  gl.uniform3fv(SK.uSunDir, sunDir);
+  gl.uniform3fv(SK.uStarCol, starTempToColor(state.star));
+  gl.uniform1f(SK.uStarRadius, Math.min(2.8, Math.max(0.45, starPhys.R)));
+  gl.uniform1f(SK.uStarDist, distInfo.au);
+  gl.uniform1f(SK.uStarFlux, starPhys.L / Math.max(distInfo.au*distInfo.au, 0.02));
+  gl.uniform1f(SK.uVoid, state.voidbg ? 1 : 0);
+  gl.uniform1f(SK.uSkyStars, state.skyStars);
+  gl.uniform1f(SK.uSkyMilky, state.skyMilky);
+  gl.uniform1f(SK.uSkyNebula, state.skyNebula);
+  gl.uniform1f(SK.uSkyHue, state.skyHue);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.useProgram(prog);
+}
+
 function drawFrame(now){
   if(!prog) return;
   const t = (now - t0)/1000;
@@ -4377,6 +4589,8 @@ function drawFrame(now){
   const rotC2 = m3axis(world.axis, -(t*SPIN*0.72 + world.cloudOff*1.7));
   const rotC3 = m3axis(world.axis, -(t*SPIN*2.60 + world.cloudOff*2.3));
   const sunDir = norm3([Math.cos(sunEl)*Math.sin(sunAz), Math.sin(sunEl), Math.cos(sunEl)*Math.cos(sunAz)]);
+
+  drawSkyWebGL(camMat, sunDir);
 
   gl.uniform2f(U.uRes, canvas.width, canvas.height);
   gl.uniform1f(U.uTime, t);
@@ -4448,7 +4662,14 @@ function drawFrame(now){
     gl.uniform4fv(U.uPlateW, world.plateW);
     appliedUniformRevision = renderUniformRevision;
   }
+  /* Предумноженная альфа: планета непрозрачна на диске, полупрозрачна на
+     лимбе, а ореол атмосферы приходит с нулевым покрытием и просто светится
+     поверх неба. */
+  gl.enable(gl.BLEND);
+  gl.blendEquation(gl.FUNC_ADD);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.disable(gl.BLEND);
   drawAuroraWebGL(t, pos, camMat, magAxis, sunDir);
   drawMagnetosphereOverlay(t, pos, rgt, up, fwd, magAxis, sunDir);
 }

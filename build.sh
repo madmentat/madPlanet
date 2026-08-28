@@ -18,13 +18,14 @@ $(cat "$DIR/shaders/rings.glsl")
 $(cat "$DIR/shaders/fog.glsl")
 $(cat "$DIR/shaders/lightning.glsl")
 $(cat "$DIR/shaders/surface.glsl")
-$(cat "$DIR/shaders/stars.glsl")
 $(cat "$DIR/shaders/sphere.glsl")
 $(cat "$DIR/shaders/main.glsl")"
 COMPAT_FRAG="#version 300 es
 $(cat "$DIR/shaders/compat.glsl")"
 AURORA_FRAG="#version 300 es
 $(cat "$DIR/shaders/aurora-pass.glsl")"
+SKY_FRAG="#version 300 es
+$(cat "$DIR/shaders/sky-pass.glsl")"
 {
   cat "$DIR/index.src.html"
   printf '\nconst APP_VERSION = %q;\n' "$VERSION" | sed "s/^const APP_VERSION = /const APP_VERSION = '/; s/;$/';/"
@@ -32,6 +33,7 @@ $(cat "$DIR/shaders/aurora-pass.glsl")"
   printf '\nconst FRAG = `%s`;\n' "$FRAG"
   printf '\nconst COMPAT_FRAG = `%s`;\n' "$COMPAT_FRAG"
   printf '\nconst AURORA_FRAG = `%s`;\n' "$AURORA_FRAG"
+  printf '\nconst SKY_FRAG = `%s`;\n' "$SKY_FRAG"
   for f in js/gl-init.js js/math.js js/hydrology.js js/state.js js/camera.js js/magnetosphere.js js/ui.js js/screenshot.js js/render.js; do cat "$DIR/$f"; printf '\n'; done
   printf '</script>\n</body>\n</html>\n'
 } > "$OUT"

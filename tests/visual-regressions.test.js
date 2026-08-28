@@ -12,8 +12,8 @@ const state = read('js/state.js');
 const versionText = read('VERSION.txt');
 const version = (versionText.match(/^VERSION\s+(\d+\.\d+\.\d+)\s*$/m) || [])[1];
 
-assert.equal(version, '0.5.29', 'visual regression test belongs to release 0.5.29');
-assert.match(shell, /<div class="ver">v0\.5\.29<\/div>/, 'visible app version must match');
+assert.equal(version, '0.5.30', 'visual regression test belongs to release 0.5.30');
+assert.match(shell, /<div class="ver">v0\.5\.30<\/div>/, 'visible app version must match');
 assert.match(shell, /\.mark h1\{[^}]*font-size:19px/s, 'desktop wordmark should remain larger');
 assert.match(shell, /\.mark h1\{font-size:16px/s, 'mobile wordmark should remain compact');
 
@@ -178,5 +178,17 @@ assert.match(rings, /float iceSafe = /, 'ice must sublimate near a hot star');
 assert.match(rings, /refl \* mix\(vec3\(1\.0\), uStarCol/, 'ring colour must be lit by the star spectrum');
 assert.match(state, /k:'ringGrain'/, 'particle size slider missing');
 assert.match(state, /group:'Погода'/, 'the Climate rubric should read as Weather');
+
+/* 0.5.30: небо — отдельный дешёвый проход, планета ложится поверх. */
+const sky = read('shaders/sky-pass.glsl');
+assert.match(sky, /uSkyNebula/, 'sky pass must expose nebula control');
+assert.ok(!fs.existsSync(path.join(root, 'shaders/stars.glsl')), 'stars must leave the monolithic program');
+assert.ok(!/stars\s*\(rd\)/.test(main), 'the planet program must not draw the sky itself');
+assert.match(main, /fragColor = vec4\(col, clamp\(aPlanet/, 'planet must output coverage for compositing');
+assert.match(render, /gl\.blendFunc\(gl\.ONE, gl\.ONE_MINUS_SRC_ALPHA\)/, 'planet must composite with premultiplied alpha');
+assert.match(render, /drawSkyWebGL/, 'sky pass draw call missing');
+assert.match(state, /const SKY_PRESETS = /, 'sky presets missing');
+assert.match(state, /k:'skyNebula'/, 'sky sliders missing');
+assert.match(ui, /id = 'skyPreset'/, 'sky preset selector missing');
 
 console.log('visual-regressions.test.js: OK');

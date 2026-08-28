@@ -331,6 +331,28 @@ gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 /* Aurora is a separate tiny additive pass. Keeping it out of the monolithic
    planet shader reduces ANGLE compile pressure and means aurora can be fully
    skipped when disabled. Failure of this optional pass never kills the app. */
+/* Небо — такой же отдельный маленький проход, как аврора. Оно рисуется
+   первым и непрозрачно заливает кадр, планета ложится поверх с
+   предумноженной альфой. Держать звёзды и туманности в монолитной программе
+   незачем: за неё мы платим минутами линковки. */
+let skyProg = null;
+const SK = {};
+try{
+  const sp = buildProgram(SKY_FRAG);
+  if(gl.getProgramParameter(sp, gl.LINK_STATUS)){
+    skyProg = sp;
+    ['uRes','uCamMat','uFocal','uPixA','uMilky','uSeedS','uSunDir','uStarCol',
+     'uStarRadius','uStarDist','uStarFlux','uVoid',
+     'uSkyStars','uSkyMilky','uSkyNebula','uSkyHue']
+      .forEach(n => SK[n] = gl.getUniformLocation(sp, n));
+  } else {
+    console.warn('[madPlanet] Sky pass link failed:', gl.getProgramInfoLog(sp) || '');
+    gl.deleteProgram(sp);
+  }
+} catch(e){
+  console.warn('[madPlanet] Sky pass disabled:', String(e.message || e));
+}
+
 let auroraProg = null;
 const AU = {};
 try{

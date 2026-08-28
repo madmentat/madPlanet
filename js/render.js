@@ -134,6 +134,37 @@ function drawAuroraWebGL(t, pos, camMat, magAxis, sunDir){
   gl.useProgram(prog);
 }
 
+/* Небо кладётся в кадр до планеты. Если проход не собрался, кадр просто
+   чистится в чёрное, чтобы не осталось мусора от предыдущего. */
+function drawSkyWebGL(camMat, sunDir){
+  if(!skyProg){
+    gl.clearColor(0,0,0,1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    return;
+  }
+  const starPhys = starPhysics(state.star, state.luminosity);
+  const distInfo = distanceInfo(state.distance);
+  gl.useProgram(skyProg);
+  gl.uniform2f(SK.uRes, canvas.width, canvas.height);
+  gl.uniformMatrix3fv(SK.uCamMat, false, camMat);
+  gl.uniform1f(SK.uFocal, FOCAL);
+  gl.uniform1f(SK.uPixA, (52*Math.PI/180)/canvas.height);
+  gl.uniform3fv(SK.uMilky, world.milky);
+  gl.uniform3fv(SK.uSeedS, world.seedS);
+  gl.uniform3fv(SK.uSunDir, sunDir);
+  gl.uniform3fv(SK.uStarCol, starTempToColor(state.star));
+  gl.uniform1f(SK.uStarRadius, Math.min(2.8, Math.max(0.45, starPhys.R)));
+  gl.uniform1f(SK.uStarDist, distInfo.au);
+  gl.uniform1f(SK.uStarFlux, starPhys.L / Math.max(distInfo.au*distInfo.au, 0.02));
+  gl.uniform1f(SK.uVoid, state.voidbg ? 1 : 0);
+  gl.uniform1f(SK.uSkyStars, state.skyStars);
+  gl.uniform1f(SK.uSkyMilky, state.skyMilky);
+  gl.uniform1f(SK.uSkyNebula, state.skyNebula);
+  gl.uniform1f(SK.uSkyHue, state.skyHue);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.useProgram(prog);
+}
+
 function drawFrame(now){
   if(!prog) return;
   const t = (now - t0)/1000;
@@ -154,6 +185,8 @@ function drawFrame(now){
   const rotC2 = m3axis(world.axis, -(t*SPIN*0.72 + world.cloudOff*1.7));
   const rotC3 = m3axis(world.axis, -(t*SPIN*2.60 + world.cloudOff*2.3));
   const sunDir = norm3([Math.cos(sunEl)*Math.sin(sunAz), Math.sin(sunEl), Math.cos(sunEl)*Math.cos(sunAz)]);
+
+  drawSkyWebGL(camMat, sunDir);
 
   gl.uniform2f(U.uRes, canvas.width, canvas.height);
   gl.uniform1f(U.uTime, t);
@@ -225,7 +258,14 @@ function drawFrame(now){
     gl.uniform4fv(U.uPlateW, world.plateW);
     appliedUniformRevision = renderUniformRevision;
   }
+  /* Предумноженная альфа: планета непрозрачна на диске, полупрозрачна на
+     лимбе, а ореол атмосферы приходит с нулевым покрытием и просто светится
+     поверх неба. */
+  gl.enable(gl.BLEND);
+  gl.blendEquation(gl.FUNC_ADD);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.disable(gl.BLEND);
   drawAuroraWebGL(t, pos, camMat, magAxis, sunDir);
   drawMagnetosphereOverlay(t, pos, rgt, up, fwd, magAxis, sunDir);
 }

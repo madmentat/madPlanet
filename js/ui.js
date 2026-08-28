@@ -13,11 +13,12 @@ const GROUP_ICONS = {
   'Магнитосфера': '<svg viewBox="0 0 18 18" fill="none"><path d="M9 2v14M5 5c2 2 2 6 0 8M13 5c-2 2-2 6 0 8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
   'Кольца':       '<svg viewBox="0 0 18 18" fill="none"><ellipse cx="9" cy="9" rx="7.5" ry="2.6" stroke="currentColor" stroke-width="1.2"/><ellipse cx="9" cy="9" rx="4.6" ry="1.5" stroke="currentColor" stroke-width="1" opacity=".55"/></svg>',
   'Звезда':       '<svg viewBox="0 0 18 18" fill="none"><path d="M9 2l1.5 4.5L15 8l-4.5 1.5L9 14l-1.5-4.5L3 8l4.5-1.5z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>',
+  'Небо':         '<svg viewBox="0 0 18 18" fill="none"><circle cx="5" cy="5" r="1" fill="currentColor"/><circle cx="12.5" cy="4" r=".8" fill="currentColor"/><circle cx="8" cy="9" r=".7" fill="currentColor"/><circle cx="14" cy="11" r="1" fill="currentColor"/><circle cx="4" cy="13" r=".8" fill="currentColor"/><path d="M2 15c4-2.5 9-4 14-9" stroke="currentColor" stroke-width="1" opacity=".45"/></svg>',
 };
 
 const GROUP_SHORT = {
   'Планета':'ПЛ', 'Поверхность':'ПВ', 'Погода':'ПГ',
-  'Атмосфера':'АТ', 'Магнитосфера':'МГ', 'Звезда':'ЗВ', 'Кольца':'КЦ'
+  'Атмосфера':'АТ', 'Магнитосфера':'МГ', 'Звезда':'ЗВ', 'Кольца':'КЦ', 'Небо':'НБ'
 };
 
 const isMobile = () => matchMedia('(max-width:700px)').matches;
@@ -54,6 +55,36 @@ function createPanel(group){
 
   el.append(head, body);
   document.body.appendChild(el);
+
+  /* Пресеты неба: выпадающий список над ползунками. */
+  if(group === 'Небо'){
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:12px';
+    const lbl = document.createElement('span');
+    lbl.textContent = 'Пресет';
+    lbl.style.cssText = 'font-size:10px;letter-spacing:.10em;text-transform:uppercase;color:var(--mut);flex:none';
+    const sel = document.createElement('select');
+    sel.id = 'skyPreset';
+    sel.style.cssText = 'flex:1;min-width:0;background:rgba(255,255,255,.05);border:1px solid var(--line);'
+      + 'border-radius:6px;color:var(--txt);font-family:var(--sans);font-size:11px;padding:5px 6px';
+    const none = document.createElement('option');
+    none.value = ''; none.textContent = 'свои настройки';
+    sel.appendChild(none);
+    SKY_PRESETS.forEach((p,i) => {
+      const o = document.createElement('option');
+      o.value = String(i); o.textContent = p.name;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', e => {
+      const i = parseInt(e.target.value, 10);
+      if(!Number.isFinite(i)) return;
+      applySkyPreset(i);
+      markRenderUniformsDirty(); syncUI(); saveHash();
+    });
+    row.append(lbl, sel);
+    body.appendChild(row);
+  }
 
   /* Создание слайдеров для этой группы */
   const groupParams = PARAMS.filter(p => p.group === group);

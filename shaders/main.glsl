@@ -66,6 +66,10 @@ void main(){
     bolt = lightningGlow(normalize(ro + rd*tLo), cl0.a) * (0.25 + cl0.a*1.7);
 
   vec3 col;
+  /* Покрытие пикселя планетой: 1 на диске, доля на лимбе, 0 в пустоте. Ореол
+     атмосферы прибавляется с нулевым покрытием, то есть светится поверх неба,
+     как и положено свечению. */
+  float aPlanet = 1.0;
 
   if(tP > 0.0){
     vec3 pos = ro + rd*tP;
@@ -107,7 +111,12 @@ void main(){
     vec4 rg = ringColor(ro, rd, tP, tR);
     col = mix(col, rg.rgb, rg.a);
   } else {
-    col = (uVoid > 0.5) ? vec3(0.0) : stars(rd);
+    /* Небо рисует отдельный проход, который уже лежит в кадре. Здесь копится
+       только то, что принадлежит планете: ореол атмосферы, кольца, облака на
+       лимбе и молнии. Цвет копится предумноженным на покрытие, поэтому
+       обычный mix() и есть корректное наложение «источник поверх». */
+    col = vec3(0.0);
+    aPlanet = 0.0;
     /* ореол атмосферы */
     float tca = -dot(ro, rd);
     if(tca > 0.0){
@@ -133,13 +142,19 @@ void main(){
     col += bolt;
     if(rg.a > 0.0 && (tLo < 0.0 || tR > tLo)){
       col = mix(col, rg.rgb, rg.a);      /* кольцо за облачным лимбом */
+      aPlanet = rg.a + aPlanet*(1.0-rg.a);
       col = mix(col, cl0.rgb, cl0.a);
+      aPlanet = cl0.a + aPlanet*(1.0-cl0.a);
     } else {
       col = mix(col, cl0.rgb, cl0.a);
+      aPlanet = cl0.a + aPlanet*(1.0-cl0.a);
       col = mix(col, rg.rgb, rg.a);
+      aPlanet = rg.a + aPlanet*(1.0-rg.a);
     }
     col = mix(col, cl1.rgb, cl1.a);
+    aPlanet = cl1.a + aPlanet*(1.0-cl1.a);
     col = mix(col, cl2.rgb, cl2.a);
+    aPlanet = cl2.a + aPlanet*(1.0-cl2.a);
   }
 
   /* тонмап + виньетка + дизеринг */
@@ -147,5 +162,5 @@ void main(){
   col = pow(col, vec3(1.0/2.2));
   col *= 1.0 - 0.16*pow(length(uv)*1.15, 2.4);
   col += (hash33(vec3(gl_FragCoord.xy, uTime)).x - 0.5)/255.0;
-  fragColor = vec4(col, 1.0);
+  fragColor = vec4(col, clamp(aPlanet, 0.0, 1.0));
 }

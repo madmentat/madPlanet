@@ -27,6 +27,10 @@ const PARAMS = [
   {k:'magTilt',    label:'Наклон магнитной оси',    def:0.50, group:'Магнитосфера'},
   {k:'magAzimuth', label:'Направление магнитной оси',def:0.50, group:'Магнитосфера'},
   {k:'aurora',     label:'Солнечная активность (Kp)', def:0.62, group:'Магнитосфера'},
+  {k:'skyStars',   label:'Плотность звёзд',        def:0.55, group:'Небо'},
+  {k:'skyMilky',   label:'Млечный Путь',           def:0.60, group:'Небо'},
+  {k:'skyNebula',  label:'Туманности',             def:0.45, group:'Небо'},
+  {k:'skyHue',     label:'Оттенок поля',           def:0.45, group:'Небо'},
   {k:'star',       label:'Спектральный класс',     def:0.38, group:'Звезда'},
   {k:'luminosity', label:'Светимость',              def:0.43, group:'Звезда'},
   {k:'distance',   label:'Расстояние',              def:0.51, group:'Звезда'},
@@ -42,6 +46,22 @@ PARAMS.forEach(p => state[p.k] = p.def);
 /* Спектральный класс звезды → цвет RGB.
    Класс: M(0) K(0.17) G(0.43) F(0.57) A(0.71) B(0.86) O(1.0).
    Аппроксимация по цветовой температуре чёрного тела. */
+/* Пресеты неба. Ползунки остаются доступны: пресет только расставляет их,
+   дальше можно крутить руками. */
+const SKY_PRESETS = [
+  {name:'Тихий космос',        skyStars:0.35, skyMilky:0.25, skyNebula:0.05, skyHue:0.50},
+  {name:'Млечный Путь',        skyStars:0.70, skyMilky:0.92, skyNebula:0.28, skyHue:0.45},
+  {name:'Туманность',          skyStars:0.50, skyMilky:0.40, skyNebula:0.95, skyHue:0.32},
+  {name:'Ядро галактики',      skyStars:0.95, skyMilky:1.00, skyNebula:0.70, skyHue:0.62},
+  {name:'Холодная туманность', skyStars:0.45, skyMilky:0.35, skyNebula:0.85, skyHue:0.08},
+  {name:'Межгалактическая пустота', skyStars:0.10, skyMilky:0.03, skyNebula:0.02, skyHue:0.50},
+];
+function applySkyPreset(i){
+  const p = SKY_PRESETS[i];
+  if(!p) return;
+  ['skyStars','skyMilky','skyNebula','skyHue'].forEach(k => { state[k] = p[k]; });
+}
+
 const STAR_LABELS = ['M','K','G','F','A','B','O'];
 function starPhysics(t, lumT=0.52){
   const T = 3000 * Math.pow(40000/3000, Math.max(0, Math.min(1, t)));
