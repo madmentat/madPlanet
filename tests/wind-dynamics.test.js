@@ -12,10 +12,10 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'wind dynamics test must see a semantic version');
-assert.ok(buildPs.includes("'js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/render.js'"),
-  'PowerShell build must load wind dynamics before H2O/condensation and render');
-assert.ok(buildSh.includes('js/local-energy-balance.js js/baric-field.js js/wind-dynamics.js js/h2o-advection.js js/condensation.js js/render.js'),
-  'shell build must load wind dynamics before H2O/condensation and render');
+assert.ok(buildPs.includes("'js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/precipitation.js','js/render.js'"),
+  'PowerShell build must load wind dynamics before H2O/condensation/precipitation and render');
+assert.ok(buildSh.includes('js/local-energy-balance.js js/baric-field.js js/wind-dynamics.js js/h2o-advection.js js/condensation.js js/precipitation.js js/render.js'),
+  'shell build must load wind dynamics before H2O/condensation/precipitation and render');
 
 const state={seed:123,draft:true,sea:0.58,star:0.43,luminosity:0.43,tect:0.80};
 const world={
@@ -58,14 +58,11 @@ assert.equal(core.windNeighbor.length,4,'wind stencil must have four tangent nei
 assert.ok(core.windNeighbor.every(a=>a instanceof Int32Array),'wind neighbour stencil must use compact integer arrays');
 assert.ok(ctx.weatherCoreFinite(core),'wind-extended Weather Core must start finite');
 
-/* A cube-face edge must point into an adjacent face rather than stopping at
-   the storage seam. */
 const N=core.N,edge=Math.floor(N/2)*N+(N-1);
 const edgeFace=Math.floor(edge/(N*N));
 assert.ok(core.windNeighbor.some(a=>Math.floor(a[edge]/(N*N))!==edgeFace),
   'pressure stencil must cross cubed-sphere face seams');
 
-/* Construct a clean eastward pressure gradient around one interior cell. */
 const i=Math.floor(N/2)*N+Math.floor(N/2);
 const p0=101325;
 for(let q=0;q<core.count;q++) core.pressure[q]=p0;
@@ -81,8 +78,6 @@ assert.ok(grad.e>0,'synthetic eastward pressure increase must yield a positive e
 assert.ok(-grad.e/Math.max(1e-5,core.airDensity[i])<0,
   'pressure-gradient acceleration must point from high pressure toward low pressure');
 
-/* Coriolis is a pure rotation: northward flow bends east in the northern
-   hemisphere and west in the southern hemisphere without changing speed. */
 const north={},south={};
 ctx.windApplyCoriolis(0,10,1e-4,300,north);
 ctx.windApplyCoriolis(0,10,-1e-4,300,south);
@@ -90,7 +85,6 @@ assert.ok(north.u>0&&south.u<0,'Coriolis sign must reverse between hemispheres')
 assert.ok(Math.abs(Math.hypot(north.u,north.v)-10)<1e-10,
   'exact Coriolis rotation must not create kinetic energy');
 
-/* Restore the physical baric field and let it drive momentum. */
 ctx.baricComputeTargets(core,climate);
 for(let q=0;q<core.count;q++){
   core.pressureState[q]=core.pressureTarget[q];core.pressure[q]=core.pressureState[q];
@@ -103,8 +97,6 @@ assert.ok(wd.mean>0.01&&wd.max>wd.mean,'real baric gradients must generate a non
 assert.ok(wd.max<500,'wind field must remain numerically bounded below the stability cap');
 assert.ok(ctx.weatherCoreFinite(core),'stepped wind Weather Core must remain finite');
 
-/* Orographic resistance is tied to tectonic plate geometry and disappears
-   when tectonic relief is disabled. */
 let roughMax=0;for(const r of core.orographicRoughness)if(r>roughMax)roughMax=r;
 assert.ok(roughMax>0.01,'plate boundaries with tectonics must create local orographic resistance');
 state.tect=0;ctx.windRefreshOrography(core,axis);
