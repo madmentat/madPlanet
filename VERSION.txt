@@ -1,4 +1,4 @@
-VERSION 0.5.41
-Base: 0.5.40
-Changes: local Weather Core baric field v1 - each cell now owns a persistent mass-conserving pressure state, pressure target/anomaly, local air density and hydrostatic scale height. Thermal contrasts diagnose redistribution tendencies so warm regions relax toward relative lows and cold regions toward highs, while the cubed-sphere area-weighted mean pressure remains exactly tied to the real atmospheric gas column and gravity; temperature never creates or destroys global surface pressure. Baric anomalies relax on a multi-hour timescale and are ready to drive pressure-gradient winds in 0.5.42.
+VERSION 0.5.42
+Base: 0.5.41
+Changes: local Weather Core wind dynamics v1 - persistent tangent wind momentum is driven by the mass-conserving baric pressure gradient through -grad(P)/rho, deflected by Coriolis using the real planetary rotation period, damped by explicit near-surface friction, and locally blocked/deflected by an orographic proxy derived from the same tectonic plate geometry used by the visible terrain shader. Cubed-sphere pressure-gradient stencils are precomputed across face seams, physical wind state is isolated from the old compatibility damping, and speed remains bounded by a subsonic stability cap. Pressure continuity/mass transport remains a later coupling; this milestone supplies the momentum field that H2O advection can use next.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
