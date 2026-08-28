@@ -10,10 +10,10 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m);
-assert.ok(buildPs.includes("'js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/local-energy-balance.js','js/render.js'"),
-  'PowerShell build must apply stellar/weather bridge before Weather Core, local energy and render');
-assert.ok(buildSh.includes('js/climate-regimes.js js/stellar-weather-coupling.js js/weather-core.js js/local-energy-balance.js js/render.js'),
-  'shell build must apply stellar/weather bridge before Weather Core, local energy and render');
+function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
+const order=['js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/local-energy-balance.js','js/baric-field.js','js/render.js'];
+assertOrdered(buildPs,order,'PowerShell stellar/weather order');
+assertOrdered(buildSh,order,'shell stellar/weather order');
 
 function clamp01(x){return Math.max(0,Math.min(1,Number(x)||0));}
 function pivotLogSlider(v,pivot,lo,hi){
