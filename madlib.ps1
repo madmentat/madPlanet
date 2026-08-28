@@ -37,13 +37,23 @@ function Invoke-Git([string[]]$GitArgs) {
   $old = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   try {
-    $out = & git @GitArgs
+    $raw = & git @GitArgs 2>&1
     $code = $LASTEXITCODE
   } finally {
     $ErrorActionPreference = $old
   }
-  if($code -ne 0) { throw ('git ' + ($GitArgs -join ' ') + " failed with exit code $code") }
-  return (($out | ForEach-Object { "$_" }) -join "`n").Trim()
+  # Keep the two streams apart. Merging them would be simpler, but the callers
+  # parse this return value - a branch name, a short hash - and a stray notice
+  # mixed into it would be read as data.
+  $out = @(); $err = @()
+  foreach($item in $raw) {
+    if($item -is [System.Management.Automation.ErrorRecord]) { $err += "$item" } else { $out += "$item" }
+  }
+  foreach($line in $err) { if($line.Trim()) { Write-Host "  git: $line" } }
+  if($code -ne 0) {
+    throw ('git ' + ($GitArgs -join ' ') + " failed with exit code $code`n" + ($err -join "`n"))
+  }
+  return (($out -join "`n")).Trim()
 }
 
 # Same, but hands back the exit code instead of throwing. For the calls where
@@ -52,7 +62,7 @@ function Invoke-Git([string[]]$GitArgs) {
 function Get-GitExitCode([string[]]$GitArgs) {
   $old = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
-  try { & git @GitArgs | Out-Null; $code = $LASTEXITCODE } finally { $ErrorActionPreference = $old }
+  try { & git @GitArgs 2>&1 | Out-Null; $code = $LASTEXITCODE } finally { $ErrorActionPreference = $old }
   return $code
 }
 
