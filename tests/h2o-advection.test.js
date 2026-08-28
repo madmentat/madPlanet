@@ -13,10 +13,10 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'H2O advection test must see a semantic version');
-assert.ok(buildPs.includes("'js/baric-field.js','js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/render.js'"),
-  'PowerShell build must load H2O transport after wind and before condensation/render');
-assert.ok(buildSh.includes('js/baric-field.js js/wind-dynamics.js js/h2o-advection.js js/condensation.js js/render.js'),
-  'shell build must load H2O transport after wind and before condensation/render');
+assert.ok(buildPs.includes("'js/baric-field.js','js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/precipitation.js','js/render.js'"),
+  'PowerShell build must load H2O transport after wind and before condensation/precipitation/render');
+assert.ok(buildSh.includes('js/baric-field.js js/wind-dynamics.js js/h2o-advection.js js/condensation.js js/precipitation.js js/render.js'),
+  'shell build must load H2O transport after wind and before condensation/precipitation/render');
 
 const state={seed:123,draft:true,sea:0.58,cont:0.45,tect:0.65,star:0.43,luminosity:0.43};
 const world={
@@ -80,9 +80,6 @@ ctx.h2oRefreshRelativeHumidity(core,climate);
 assert.ok(core.relativeHumidity[i]>core.relativeHumidity[j],
   'same vapor column must be relatively wetter in colder air');
 
-/* The standalone 0.5.43 transport module still exposes its vapor-only
-   normalizer. 0.5.44 overrides that hook in the assembled application to
-   preserve vapor+cloud together. */
 for(let n=0;n<core.count;n++) core.vaporColumn[n]=1+(n%17);
 ctx.h2oNormalizeGlobalVapor(core,climate);
 assert.ok(Math.abs(ctx.h2oAreaMean(core,core.vaporColumn)-target)<2e-4,
@@ -101,7 +98,7 @@ assert.ok(h2oSrc.includes('windStateU')&&h2oSrc.includes('h2oAdvectConservative'
 assert.ok(h2oSrc.includes('world.seedS')&&h2oSrc.includes('h2oMacroTerrainHeight'),
   'evaporation geography must derive from the terrain macro field, not random cloud noise');
 assert.ok(h2oSrc.includes('h2oNormalizeGlobalVapor'),
-  'H2O transport must expose the normalization hook extended by condensation');
+  'H2O transport must expose the normalization hook extended by later water phases');
 assert.ok(!h2oSrc.includes('requestAnimationFrame'),'H2O physics must stay on the slow fixed Weather Core clock');
 
 console.log('h2o-advection.test.js: OK');
