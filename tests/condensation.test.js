@@ -9,11 +9,11 @@ const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.44\s*$/m,'condensation milestone must be 0.5.44');
-assert.ok(buildPs.includes("'js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/render.js'"),
-  'PowerShell build must load condensation after H2O transport and before render');
-assert.ok(buildSh.includes('js/wind-dynamics.js js/h2o-advection.js js/condensation.js js/render.js'),
-  'shell build must load condensation after H2O transport and before render');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'condensation test must see a semantic version');
+assert.ok(buildPs.includes("'js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/precipitation.js','js/render.js'"),
+  'PowerShell build must load condensation before precipitation and render');
+assert.ok(buildSh.includes('js/wind-dynamics.js js/h2o-advection.js js/condensation.js js/precipitation.js js/render.js'),
+  'shell build must load condensation before precipitation and render');
 
 const state={seed:123,draft:true,sea:0.58,cont:0.45,tect:0.65,star:0.43,luminosity:0.43};
 const world={
@@ -42,8 +42,6 @@ for(const k of ['cloudWaterState','condensationRate','cloudEvaporationRate','pha
 }
 assert.ok(ctx.weatherCoreFinite(core),'condensation-extended Weather Core must start finite');
 
-/* Supersaturation must transfer local mass from vapor into cloud condensate,
-   conserve vapor+cloud exactly, and release latent heat into the air. */
 const i=17;
 core.airTemp[i]=275;core.pressure[i]=101325;core.cloudWaterState[i]=0;
 const satCold=ctx.h2oSaturationColumnKgM2(core.airTemp[i],climate);
@@ -57,8 +55,6 @@ assert.ok(Math.abs(local1-local0)<1e-5,'local condensation must conserve H2O mas
 assert.ok(core.airTemp[i]>t0,'condensation must release latent heat');
 assert.ok(core.airTemp[i]-t0<=4.0001,'latent heating must stay numerically bounded per tick');
 
-/* Dry air with existing condensate must evaporate cloud water back to vapor
-   and consume latent heat. */
 core.airTemp[i]=295;core.cloudWaterState[i]=0.8;
 const satWarm=ctx.h2oSaturationColumnKgM2(core.airTemp[i],climate);
 core.vaporColumn[i]=satWarm*0.20;
@@ -70,9 +66,6 @@ assert.ok(Math.abs(core.vaporColumn[i]+core.cloudWaterState[i]-dry0)<1e-5,
   'cloud evaporation must conserve local H2O mass');
 assert.ok(core.airTemp[i]<td0,'cloud evaporation must cool the air through latent heat');
 
-/* Global normalization must now preserve the atmospheric reservoir as the
-   combined vapor+cloud column, not create a full vapor reservoir on top of
-   existing cloud water. */
 for(let n=0;n<core.count;n++){
   core.vaporColumn[n]=2+(n%7);
   core.cloudWaterState[n]=0.3*(n%5);
@@ -80,12 +73,10 @@ for(let n=0;n<core.count;n++){
 ctx.h2oNormalizeGlobalVapor(core,climate);
 const target=climate.h2oBar*1e5/climate.gravityMS2;
 assert.ok(Math.abs(ctx.condAreaMeanTotal(core)-target)<3e-4,
-  'global atmospheric H2O target must apply to vapor plus condensate');
+  'without precipitation loaded, global atmospheric target applies to vapor plus condensate');
 assert.ok(ctx.h2oAreaMean(core,core.vaporColumn)<target,
-  'cloud condensate must occupy part of the global atmospheric H2O reservoir');
+  'cloud condensate must occupy part of the atmospheric H2O reservoir');
 
-/* Cloud condensate is air-borne and must advect conservatively with the same
-   cross-face wind graph as vapor. */
 core.cloudWaterState.fill(0);core.windStateU.fill(0);core.windStateV.fill(0);core.windU.fill(0);core.windV.fill(0);
 const e=0,a=core.h2oEdgeI[e],b=core.h2oEdgeJ[e];
 core.cloudWaterState[a]=1;
@@ -97,15 +88,13 @@ const cloudMass1=ctx.h2oAreaMean(core,core.cloudWaterState);
 assert.ok(moved>0&&core.cloudWaterState[b]>0,'wind must carry cloud condensate into a downwind neighbour');
 assert.ok(Math.abs(cloudMass1-cloudMass0)<2e-6,'cloud advection must conserve area-weighted condensate mass');
 
-/* A coupled run must remain finite, preserve total atmospheric H2O and keep
-   precipitation disabled until the dedicated 0.5.45 milestone. */
 const live=ctx.weatherCoreCreate(77,12,climate,axis);
 for(let n=0;n<12;n++) ctx.weatherCoreStep(live,300,climate,axis);
 assert.ok(ctx.weatherCoreFinite(live),'coupled condensation weather ticks must remain finite');
 assert.ok(Math.abs(ctx.condAreaMeanTotal(live)-target)<4e-4,
-  'coupled ticks must not drift combined atmospheric H2O mass');
+  'condensation layer alone must not drift combined atmospheric H2O mass');
 assert.ok(live.cloudWaterState.some(v=>v>0),'Earth-like coupled weather must form some cloud condensate');
-assert.ok(live.precipRate.every(v=>v===0),'0.5.44 must not invent precipitation before 0.5.45');
+assert.ok(live.precipRate.every(v=>v===0),'condensation layer alone must not invent precipitation');
 assert.ok(live.cloudWater.every((v,n)=>Math.abs(v-live.cloudWaterState[n])<1e-7),
   'legacy cloudWater channel must mirror the physical condensate state');
 
