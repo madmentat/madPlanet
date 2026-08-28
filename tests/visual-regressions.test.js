@@ -12,8 +12,10 @@ const state = read('js/state.js');
 const versionText = read('VERSION.txt');
 const version = (versionText.match(/^VERSION\s+(\d+\.\d+\.\d+)\s*$/m) || [])[1];
 
-assert.equal(version, '0.5.31', 'visual regression test belongs to release 0.5.31');
-assert.match(shell, /<div class="ver">v0\.5\.30<\/div>/, 'visible app version must match');
+/* Version comes only from VERSION.txt and is injected by the builders. This
+   regression suite must therefore not pin itself to an old patch number. */
+assert.match(version || '', /^\d+\.\d+\.\d+$/, 'visual regression suite must see a semantic version');
+assert.match(shell, /<div class="ver">[^<]*<\/div>/, 'source shell must keep a replaceable visible-version slot');
 assert.match(shell, /\.mark h1\{[^}]*font-size:19px/s, 'desktop wordmark should remain larger');
 assert.match(shell, /\.mark h1\{font-size:16px/s, 'mobile wordmark should remain compact');
 
@@ -97,9 +99,7 @@ assert.match(state, /k:'ringInner'/, 'ring radius control missing');
 assert.match(state, /k:'ringWidth'/, 'ring width control missing');
 assert.match(state, /k:'ringDens'/, 'ring density control missing');
 
-/* 0.5.23: хэш обязан нести версию и число параметров. Формат позиционный,
-   и без счётчика добавление ползунка сдвигало флаги — у старой ссылки молча
-   пропадали звёзды, потому что «средний ярус» читался как «пустой космос». */
+/* 0.5.23: старые позиционные хэши должны оставаться читаемыми. */
 const ui = read('js/ui.js');
 assert.match(ui, /parts\[0\] === 'v3'/, 'v3 links must still be readable');
 assert.match(ui, /const V2_KEYS = /, 'old v2 links must be migrated by name, not by position');
@@ -140,7 +140,7 @@ assert.ok(!/uTexOn|uTexMean/.test(shell), 'texture uniforms must not remain in t
 assert.ok(!fs.existsSync(path.join(root, 'shaders/textures.glsl')), 'textures.glsl must be removed');
 assert.ok(!fs.existsSync(path.join(root, 'textures')), 'the biome atlas must be removed');
 /* Хэш по именам: позиционный ломался дважды. */
-assert.match(ui, /const out = \['v4', 's' \+ state\.seed\]/, 'hash must be written by names');
+assert.match(ui, /const out = \['v4', 's' \+ state\.seed\]/, 'legacy named v4 hash writer must remain available');
 assert.match(ui, /const FLAG_KEYS = /, 'flags must be named, not positional');
 /* У «пустого космоса» должен быть видимый выключатель. */
 assert.match(shell, /id="starsOn"/, 'starfield toggle missing: a blanked sky had no way back');
@@ -155,9 +155,7 @@ assert.match(glInitSrc, /function showCompileProgress/, 'compile progress bar mi
 assert.match(glInitSrc, /COMPILE_ESTIMATE_KEY/, 'progress must be estimated from the previous compile');
 assert.match(glInitSrc, /Math\.min\(95,/, 'progress must stop short of 100% instead of lying');
 
-/* 0.5.28: пороги должны лежать внутри реального размаха шума.
-   0.5+0.5*fbm(...,3) не выходит за 0.308..0.694, поэтому прежние 0.84..0.97
-   означали, что горячие точки не появлялись ни разу. */
+/* 0.5.28: пороги должны лежать внутри реального размаха шума. */
 assert.ok(!/ss\(0\.84, 0\.97,/.test(surface), 'volcano hotspot threshold must stay inside the noise range');
 assert.ok(!/ss\(0\.60, 0\.88,/.test(surface), 'volcano vent threshold must stay inside the noise range');
 assert.ok(!/ss\(0\.58,0\.84,inst\)/.test(clouds), 'storm threshold must stay inside the noise range');
