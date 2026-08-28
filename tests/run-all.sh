@@ -29,6 +29,7 @@ node tests/baric-field.test.js
 node tests/wind-dynamics.test.js
 node tests/h2o-advection.test.js
 node tests/condensation.test.js
+node tests/precipitation.test.js
 node tests/touch-ux.test.js
 node tests/chromium-compat.test.js
 node tests/hydrology.test.js
