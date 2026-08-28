@@ -4,15 +4,18 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const buildPs = fs.readFileSync(path.join(root, 'build.ps1'), 'utf8');
+const madlibPs = fs.readFileSync(path.join(root, 'madlib.ps1'), 'utf8');
 const glInit = fs.readFileSync(path.join(root, 'js/gl-init.js'), 'utf8');
 const version = fs.readFileSync(path.join(root, 'VERSION.txt'), 'utf8');
 
-const deployBytes = fs.readFileSync(path.join(root, 'deploy.ps1'));
-const buildBytes = fs.readFileSync(path.join(root, 'build.ps1'));
-assert.ok([...deployBytes].every(b => b < 0x80), 'deploy.ps1 must be ASCII-only for Windows PowerShell 5.1');
-assert.ok([...buildBytes].every(b => b < 0x80), 'build.ps1 must be ASCII-only for Windows PowerShell 5.1');
-const deployPs = deployBytes.toString('ascii');
-assert.match(deployPs, /From-CodePoints/, 'deploy.ps1 must construct Unicode sentinels without literal non-ASCII text');
+/* Every PowerShell source stays ASCII-only for Windows PowerShell 5.1. The
+   Unicode sentinel helper moved from deploy.ps1 into the shared madlib.ps1
+   when the two deployment roads were unified. */
+for(const name of fs.readdirSync(root).filter(n => n.endsWith('.ps1'))){
+  const bytes = fs.readFileSync(path.join(root, name));
+  assert.ok([...bytes].every(b => b < 0x80), `${name} must be ASCII-only for Windows PowerShell 5.1`);
+}
+assert.match(madlibPs, /From-CodePoints/, 'madlib.ps1 must construct Unicode sentinels without literal non-ASCII text');
 
 assert.equal((html.match(/<script(?:\s|>)/gi) || []).length, 1, 'index.html must contain exactly one opening <script>');
 assert.equal((html.match(/<\/script>/gi) || []).length, 1, 'index.html must contain exactly one closing </script>');
@@ -35,8 +38,7 @@ assert.ok(currentVersion, 'current version must be readable');
 assert.match(html, new RegExp("const APP_VERSION = '" + currentVersion.replace(/\./g,'\\.') + "';"), 'build version stamp must match VERSION.txt');
 assert.match(html, new RegExp('<div class=\"ver\">v' + currentVersion.replace(/\./g,'\\.') + '<\/div>'), 'visible UI version must match VERSION.txt');
 
-/* Приложение должно быть самодостаточным: ни одного стороннего ресурса.
-   Единственная внешняя загрузка — атлас биомов рядом с index.html. */
+/* Application shell must remain self-contained. */
 assert.ok(!/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(html), 'Google Fonts must not be referenced');
 const externalRefs = html.match(/(?:href|src)\s*=\s*["']https?:\/\/[^"']+/gi) || [];
 assert.deepEqual(externalRefs, [], 'index.html must not reference external resources: ' + externalRefs.join(', '));

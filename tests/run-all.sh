@@ -15,6 +15,7 @@ rm -f .built-script.js
 node tests/build-integrity.test.js
 node tests/performance-guards.test.js
 node tests/visual-regressions.test.js
+node tests/param-model.test.js
 node tests/chromium-compat.test.js
 node tests/hydrology.test.js
 node tests/magnetosphere.test.js

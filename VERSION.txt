@@ -1,4 +1,4 @@
-VERSION 0.5.32
-Base: 0.5.31
-Changes: climate belts v2.1 - stronger ITCZ/subtropical contrast, wind modulates circulation strength and mid-latitude fronts, longer wind-dependent moisture advection trail for low clouds.
+VERSION 0.5.33
+Base: 0.5.32
+Changes: parameter model v1 - explicit base/geo/derived/visual roles; calculated sliders become temporary forcings and relax after release; transient weather no longer persists in shared URLs; legacy permanent pins are retired.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
