@@ -52,7 +52,7 @@ $shell = Read-Utf8Strict (Join-Path $DIR 'index.src.html')
 # rather than at the file that was actually out of date.
 if($shell -notmatch '<div class="ver">[^<]*</div>') { throw 'index.src.html has no version div to fill in' }
 $shell = [regex]::Replace($shell, '<div class="ver">[^<]*</div>', ('<div class="ver">v' + $version + '</div>'))
-$jsFiles = @('js/gl-init.js','js/math.js','js/hydrology.js','js/state.js','js/camera.js','js/magnetosphere.js','js/touch-ux.js','js/ui.js','js/planet-physics.js','js/star-orbit.js','js/param-model.js','js/screenshot.js','js/atmosphere-inventory.js','js/volcanic-atmosphere-coupling.js','js/water-budget.js','js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/render.js')
+$jsFiles = @('js/gl-init.js','js/math.js','js/hydrology.js','js/state.js','js/camera.js','js/magnetosphere.js','js/touch-ux.js','js/ui.js','js/planet-physics.js','js/star-orbit.js','js/param-model.js','js/screenshot.js','js/atmosphere-inventory.js','js/volcanic-atmosphere-coupling.js','js/water-budget.js','js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/local-energy-balance.js','js/render.js')
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine($shell.TrimEnd())
 [void]$sb.AppendLine()
