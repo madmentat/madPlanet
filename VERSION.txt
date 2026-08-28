@@ -1,4 +1,4 @@
-VERSION 0.5.34
-Base: 0.5.33
-Changes: star/orbit physics v1 - spectral temperature anchors, luminosity and orbital distance with Earth/Sun pivots, inverse-square stellar flux, Kopparapu spectral habitable-zone limits and live HZ diagnostics. Volcanism is treated as a base slow forcing until interior-age physics is implemented.
+VERSION 0.5.35
+Base: 0.5.34
+Changes: planet physics scaffold v1 - base age, radius, interior type, rotation period and axial tilt; volcanism grouped with slow planet causes; first-order density/mass/gravity/escape diagnostics. Age/interior/rotation are not yet forced into volcanism, dynamo, seasons or weather until dedicated models are implemented.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
