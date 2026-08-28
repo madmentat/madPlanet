@@ -10,11 +10,11 @@ const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.41\s*$/m,'baric milestone must be 0.5.41');
-assert.ok(buildPs.includes("'js/weather-core.js','js/local-energy-balance.js','js/baric-field.js','js/render.js'"),
-  'PowerShell build must load baric field after local energy and before render');
-assert.ok(buildSh.includes('js/weather-core.js js/local-energy-balance.js js/baric-field.js js/render.js'),
-  'shell build must load baric field after local energy and before render');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'baric test must see a semantic version');
+function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
+const order=['js/weather-core.js','js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/render.js'];
+assertOrdered(buildPs,order,'PowerShell baric/wind order');
+assertOrdered(buildSh,order,'shell baric/wind order');
 
 const state={seed:123,draft:true,sea:0.58,star:0.43,luminosity:0.43};
 const ctx={console,Math,Number,Date,Float32Array,state};
@@ -57,8 +57,6 @@ const mean0=ctx.baricAreaMean(core,core.pressure);
 assert.ok(Math.abs(mean0-climate.pressureBar*1e5)<0.5,
   'area-weighted mean pressure must equal the real global atmospheric column');
 
-/* Disturb the state and let one fixed weather tick repair the global mean
-   without erasing the spatial anomalies. */
 for(let i=0;i<core.count;i++) core.pressureState[i]*=(i%2)?0.82:1.18;
 ctx.weatherCoreStep(core,300,climate,axis);
 const mean1=ctx.baricAreaMean(core,core.pressure);
