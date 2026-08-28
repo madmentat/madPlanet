@@ -58,19 +58,20 @@ function weatherCoreClimateSnapshot(){
     regime:c.regime||''
   };
 }
-function weatherCoreTargetsForCell(c,dx,dy,dz,axis,seed,index){
+function weatherCoreTargetsForCell(c,dx,dy,dz,axis,seed,index,out){
   const lat=Math.abs(dx*axis[0]+dy*axis[1]+dz*axis[2]);
   const thermalLat=38*Math.pow(lat,2.4);
   const perturb=(weatherHash01(seed,index)-0.5)*5.0;
   const surfaceTemp=weatherClamp(c.T-thermalLat+perturb,120,1200);
-  const airTemp=weatherClamp(surfaceTemp-6.0,110,1200);
+  out.surfaceTemp=surfaceTemp;
+  out.airTemp=weatherClamp(surfaceTemp-6.0,110,1200);
   const thermalAnomaly=(surfaceTemp-c.T)/Math.max(80,c.T);
-  const pressurePa=Math.max(0,c.pressureBar*1e5*(1-0.12*thermalAnomaly));
+  out.pressurePa=Math.max(0,c.pressureBar*1e5*(1-0.12*thermalAnomaly));
   const vaporScale=weatherClamp((Math.log10(Math.max(1e-8,c.h2oBar))+5)/3.0,0,1);
   const polarDry=0.35+0.65*(1-Math.pow(lat,1.7));
-  const humidity=weatherClamp((0.18+0.72*vaporScale)*polarDry*c.waterAvail,0,1);
-  const cloudWater=weatherClamp(c.cloudCov*humidity*(0.75+0.25*weatherHash01(seed^0x51f15e,index)),0,1);
-  return {surfaceTemp,airTemp,pressurePa,humidity,cloudWater};
+  out.humidity=weatherClamp((0.18+0.72*vaporScale)*polarDry*c.waterAvail,0,1);
+  out.cloudWater=weatherClamp(c.cloudCov*out.humidity*(0.75+0.25*weatherHash01(seed^0x51f15e,index)),0,1);
+  return out;
 }
 function weatherCoreCreate(seed,N,climate,axis){
   N=Math.max(4,Math.min(96,Math.round(Number(N)||WEATHER_CORE_DRAFT_N)));
@@ -84,12 +85,13 @@ function weatherCoreCreate(seed,N,climate,axis){
     windV:new Float32Array(count),precipRate:new Float32Array(count)
   };
   const ax=weatherNorm3(axis[0],axis[1],axis[2]);
+  const q={surfaceTemp:0,airTemp:0,pressurePa:0,humidity:0,cloudWater:0};
   let index=0;
   for(let face=0;face<6;face++) for(let y=0;y<N;y++) for(let x=0;x<N;x++,index++){
     const u=2*(x+0.5)/N-1, v=2*(y+0.5)/N-1;
     const d=weatherFaceDir(face,u,v),dx=d[0],dy=d[1],dz=d[2];
     core.dirX[index]=dx; core.dirY[index]=dy; core.dirZ[index]=dz;
-    const q=weatherCoreTargetsForCell(climate,dx,dy,dz,ax,core.seed,index);
+    weatherCoreTargetsForCell(climate,dx,dy,dz,ax,core.seed,index,q);
     core.surfaceTemp[index]=q.surfaceTemp;
     core.airTemp[index]=q.airTemp;
     core.pressure[index]=q.pressurePa;
@@ -109,8 +111,9 @@ function weatherCoreStep(core,dtSec,climate,axis){
   const aHumidity=1-Math.exp(-dt/(1.5*3600));
   const aCloud=1-Math.exp(-dt/(45*60));
   const aWind=1-Math.exp(-dt/(2*3600));
+  const q={surfaceTemp:0,airTemp:0,pressurePa:0,humidity:0,cloudWater:0};
   for(let i=0;i<core.count;i++){
-    const q=weatherCoreTargetsForCell(climate,core.dirX[i],core.dirY[i],core.dirZ[i],ax,core.seed,i);
+    weatherCoreTargetsForCell(climate,core.dirX[i],core.dirY[i],core.dirZ[i],ax,core.seed,i,q);
     core.surfaceTemp[i]+=(q.surfaceTemp-core.surfaceTemp[i])*aSurface;
     core.airTemp[i]+=(q.airTemp-core.airTemp[i])*aAir;
     core.pressure[i]+=(q.pressurePa-core.pressure[i])*aPressure;
