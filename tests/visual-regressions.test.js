@@ -12,8 +12,8 @@ const state = read('js/state.js');
 const versionText = read('VERSION.txt');
 const version = (versionText.match(/^VERSION\s+(\d+\.\d+\.\d+)\s*$/m) || [])[1];
 
-assert.equal(version, '0.5.26', 'visual regression test belongs to release 0.5.26');
-assert.match(shell, /<div class="ver">v0\.5\.26<\/div>/, 'visible app version must match');
+assert.equal(version, '0.5.27', 'visual regression test belongs to release 0.5.27');
+assert.match(shell, /<div class="ver">v0\.5\.27<\/div>/, 'visible app version must match');
 assert.match(shell, /\.mark h1\{[^}]*font-size:19px/s, 'desktop wordmark should remain larger');
 assert.match(shell, /\.mark h1\{font-size:16px/s, 'mobile wordmark should remain compact');
 
@@ -144,5 +144,15 @@ assert.match(ui, /const out = \['v4', 's' \+ state\.seed\]/, 'hash must be writt
 assert.match(ui, /const FLAG_KEYS = /, 'flags must be named, not positional');
 /* У «пустого космоса» должен быть видимый выключатель. */
 assert.match(shell, /id="starsOn"/, 'starfield toggle missing: a blanked sky had no way back');
+
+/* 0.5.27: черновик по умолчанию, тумблер и подпись неразрывны,
+   полоса компиляции с таймером и оценкой по прошлому запуску. */
+assert.match(state, /draft: true/, 'draft rendering must be the default');
+assert.match(shell, /id="detailOn"/, 'the draft toggle must read as an inverted Detail switch');
+assert.match(shell, /\.tgw\{[^}]*white-space:nowrap/s, 'a toggle and its label must not wrap apart');
+const glInitSrc = read('js/gl-init.js');
+assert.match(glInitSrc, /function showCompileProgress/, 'compile progress bar missing');
+assert.match(glInitSrc, /COMPILE_ESTIMATE_KEY/, 'progress must be estimated from the previous compile');
+assert.match(glInitSrc, /Math\.min\(95,/, 'progress must stop short of 100% instead of lying');
 
 console.log('visual-regressions.test.js: OK');

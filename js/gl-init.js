@@ -187,29 +187,84 @@ function startNextVariant(){
   return false;
 }
 
-/* ---- индикатор состояния ---- */
-let statusBadge = null;
-function setBadge(text, tone){
-  if(!statusBadge){
-    statusBadge = document.createElement('div');
-    statusBadge.id = 'shaderStatus';
-    /* Ниже вордмарки: на первой загрузке плашка висит минутами, и в левом
-       верхнем углу она закрывала собой название приложения. */
-    Object.assign(statusBadge.style,{
-      position:'fixed',left:'22px',top:'86px',zIndex:'10000',padding:'7px 10px',
-      maxWidth:'calc(100vw - 44px)',
-      font:'12px/1.35 system-ui,sans-serif',borderRadius:'7px',pointerEvents:'none'
-    });
-    document.body.appendChild(statusBadge);
-  }
+/* ---- информ-полоса компиляции ----
+   Раньше это была одна строка текста, и она терялась ровно тогда, когда нужна
+   больше всего. Теперь это отдельная полоса с таймером и полосой прогресса.
+
+   Точного «сколько осталось» драйвер не сообщает: ни WebGL, ни ANGLE не дают
+   ни доли выполненного, ни оценки. Поэтому прогресс честно строится по
+   ПРОШЛОМУ замеру — длительность удачной сборки запоминается в localStorage и
+   служит ожиданием для следующего раза. На первом в жизни запуске берётся
+   типичное значение, а если сборка затягивается дольше ожидаемого, полоса
+   останавливается у 95 % и перестаёт врать. */
+const COMPILE_ESTIMATE_KEY = 'madPlanet.compileMs';
+const COMPILE_ESTIMATE_DEFAULT = 240000;
+function compileEstimateMs(){
+  try{
+    const v = parseFloat(localStorage.getItem(COMPILE_ESTIMATE_KEY));
+    if(Number.isFinite(v) && v > 500) return v;
+  }catch(e){}
+  return COMPILE_ESTIMATE_DEFAULT;
+}
+function rememberCompileMs(ms){
+  try{ localStorage.setItem(COMPILE_ESTIMATE_KEY, String(Math.round(ms))); }catch(e){}
+}
+
+let statusBar = null, statusText = null, statusFill = null, statusNote = null;
+function ensureStatusBar(){
+  if(statusBar) return;
+  statusBar = document.createElement('div');
+  statusBar.id = 'shaderStatus';
+  Object.assign(statusBar.style,{
+    position:'fixed',left:'22px',top:'86px',zIndex:'10000',
+    minWidth:'260px',maxWidth:'calc(100vw - 44px)',
+    padding:'9px 12px 10px',borderRadius:'9px',
+    font:'12px/1.35 system-ui,sans-serif',pointerEvents:'none',
+    color:'#cfe3ff',background:'rgba(10,18,32,.88)',
+    border:'1px solid rgba(130,180,255,.35)',
+    boxShadow:'0 4px 22px rgba(0,0,0,.45)'
+  });
+  statusText = document.createElement('div');
+  const track = document.createElement('div');
+  Object.assign(track.style,{
+    marginTop:'7px',height:'4px',borderRadius:'3px',
+    background:'rgba(159,194,255,.16)',overflow:'hidden'
+  });
+  statusFill = document.createElement('div');
+  Object.assign(statusFill.style,{
+    height:'100%',width:'0%',borderRadius:'3px',
+    background:'linear-gradient(90deg,#5f8fd8,#9fc2ff)',
+    transition:'width .4s linear'
+  });
+  track.appendChild(statusFill);
+  statusNote = document.createElement('div');
+  Object.assign(statusNote.style,{marginTop:'6px',fontSize:'10.5px',opacity:'.72'});
+  statusBar.append(statusText, track, statusNote);
+  document.body.appendChild(statusBar);
+}
+function showCompileProgress(elapsedMs){
+  ensureStatusBar();
+  const est = compileEstimateMs();
+  const pct = Math.min(95, (elapsedMs/est)*100);
+  const left = Math.max(0, (est - elapsedMs)/1000);
+  statusFill.style.width = pct.toFixed(1) + '%';
+  statusText.textContent = 'Компиляция шейдера планеты — ' + (elapsedMs/1000).toFixed(0) + ' с';
+  statusNote.textContent = (elapsedMs < est)
+    ? 'осталось примерно ' + left.toFixed(0) + ' с · пока показан упрощённый рендер'
+    : 'дольше обычного · пока показан упрощённый рендер';
+}
+function showBadge(text, tone){
+  ensureStatusBar();
   const warm = tone === 'warn';
-  statusBadge.style.color = warm ? '#ffdca8' : '#cfe3ff';
-  statusBadge.style.background = warm ? 'rgba(32,20,8,.88)' : 'rgba(10,18,32,.85)';
-  statusBadge.style.border = '1px solid ' + (warm ? 'rgba(255,190,100,.45)' : 'rgba(130,180,255,.35)');
-  statusBadge.textContent = text;
+  statusBar.style.color = warm ? '#ffdca8' : '#cfe3ff';
+  statusBar.style.background = warm ? 'rgba(32,20,8,.9)' : 'rgba(10,18,32,.88)';
+  statusBar.style.border = '1px solid ' + (warm ? 'rgba(255,190,100,.45)' : 'rgba(130,180,255,.35)');
+  statusText.textContent = text;
+  statusFill.parentNode.style.display = 'none';
+  statusNote.textContent = '';
 }
 function clearBadge(){
-  if(statusBadge){ statusBadge.remove(); statusBadge = null; }
+  if(statusBar){ statusBar.remove(); statusBar = null; statusText = statusFill = statusNote = null; }
 }
 
 /* Вызывается из основного цикла раз в кадр. */
@@ -220,7 +275,7 @@ function pollShaderCompile(){
     clearBadge();
     if(prog){
       console.warn('[madPlanet] Полный шейдер отклонён GPU, работает совместимый рендер:', shaderFailureLog);
-      setBadge('Совместимый рендер Chromium/ANGLE: облегчённый procedural mode', 'warn');
+      showBadge('Совместимый рендер Chromium/ANGLE: облегчённый procedural mode', 'warn');
     } else {
       const details = shaderFailureLog.join('\n').substring(0,2600);
       showFatal('madPlanet v' + APP_VERSION + '\n\nWebGL есть, но GPU отклонил оба рендера.\n\n' +
@@ -229,9 +284,10 @@ function pollShaderCompile(){
     }
     return;
   }
-  const waited = (performance.now() - linkStartedAt)/1000;
+  const waitedMs = performance.now() - linkStartedAt;
+  const waited = waitedMs/1000;
   if(!linkFinished(pendingProgram)){
-    setBadge('Компиляция шейдера планеты… ' + waited.toFixed(0) + ' с · пока показан упрощённый рендер');
+    showCompileProgress(waitedMs);
     return;
   }
   if(gl.getProgramParameter(pendingProgram, gl.LINK_STATUS)){
@@ -241,8 +297,9 @@ function pollShaderCompile(){
     pendingProgram = null;
     fullShaderDone = true;
     clearBadge();
+    rememberCompileMs(waitedMs);
     console.log('[madPlanet] Полный шейдер готов за ' + waited.toFixed(1) + ' с (variant: ' + usedVariant + ')');
-    if(usedVariant !== 'original') setBadge('Совместимый вариант WebGL: ' + usedVariant, 'warn');
+    if(usedVariant !== 'original') showBadge('Совместимый вариант WebGL: ' + usedVariant, 'warn');
     return;
   }
   const log = gl.getProgramInfoLog(pendingProgram) || '';
@@ -260,7 +317,7 @@ if(!prog && !pendingProgram){
     'GPU: ' + dbgInfo.renderer + '\nGLSL: ' + dbgInfo.shadingLang + '\n\n' + details);
   throw new Error('all shader variants failed');
 }
-setBadge('Компиляция шейдера планеты… пока показан упрощённый рендер');
+showCompileProgress(0);
 
 const errorBoxAfterShader = document.getElementById('err');
 if(errorBoxAfterShader) errorBoxAfterShader.style.display = 'none';

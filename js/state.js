@@ -29,7 +29,10 @@ const PARAMS = [
   {k:'luminosity', label:'Светимость',              def:0.43, group:'Звезда'},
   {k:'distance',   label:'Расстояние',              def:0.51, group:'Звезда'},
 ];
-const state = {seed: 8127344, rings: false, draft: false, voidbg: false, platesOn: false,
+/* draft по умолчанию включён: он снимает мелкую детализацию рельефа, верхний
+   ярус облаков и лишние слои объёма — картинка выходит чище и вдвое дешевле.
+   В интерфейсе это обратный тумблер «Детали». */
+const state = {seed: 8127344, rings: false, draft: true, voidbg: false, platesOn: false,
                lowOn: true, midOn: false, highOn: false,
                auroraOn: true, fieldLinesOn: false, auroraFootpoints: false};
 PARAMS.forEach(p => state[p.k] = p.def);

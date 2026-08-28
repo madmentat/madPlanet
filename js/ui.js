@@ -295,7 +295,7 @@ function syncUI(){
   });
   syncDynamicLabels();
   document.getElementById('rings').checked = state.rings;
-  document.getElementById('draft').checked = state.draft;
+  document.getElementById('detailOn').checked = !state.draft;
   document.getElementById('platesOn').checked = state.platesOn;
   document.getElementById('starsOn').checked = !state.voidbg;
   /* Тоглы облаков — могут быть в панелях или ещё не созданы */
@@ -312,7 +312,9 @@ function syncUI(){
 
 /* ── Тоглы ── */
 document.getElementById('rings').addEventListener('change', e => { state.rings = e.target.checked; markRenderUniformsDirty(); saveHash(); });
-document.getElementById('draft').addEventListener('change', e => { state.draft = e.target.checked; markRenderUniformsDirty(); saveHash(); });
+/* Галка отвечает за видимое: детали включены. Внутри это отрицание
+   черновика — режим по умолчанию именно черновой. */
+document.getElementById('detailOn').addEventListener('change', e => { state.draft = !e.target.checked; markRenderUniformsDirty(); saveHash(); });
 document.getElementById('platesOn').addEventListener('change', e => { state.platesOn = e.target.checked; markRenderUniformsDirty(); saveHash(); });
 /* Галка отвечает за видимое: звёзды есть. Внутри это отрицание «пустого
    космоса», у которого раньше не было ни одного элемента управления — если

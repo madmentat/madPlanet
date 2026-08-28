@@ -1,4 +1,4 @@
-VERSION 0.5.26
-Base: 0.5.25
-Changes: removed the biome texture atlas entirely; named URL hash format (v4); visible starfield toggle replacing the textures one.
+VERSION 0.5.27
+Base: 0.5.26
+Changes: draft rendering is now the default behind an inverted "Detail" toggle; toggle label no longer wraps away from its switch; compile status became a bar with a timer and a progress estimate learned from the previous run.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
