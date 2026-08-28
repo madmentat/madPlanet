@@ -23,6 +23,7 @@ node tests/volcanic-atmosphere-coupling.test.js
 node tests/water-budget.test.js
 node tests/climate-regimes.test.js
 node tests/stellar-weather-coupling.test.js
+node tests/ui-random-polish.test.js
 node tests/weather-core.test.js
 node tests/local-energy-balance.test.js
 node tests/baric-field.test.js
