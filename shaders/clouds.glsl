@@ -285,7 +285,11 @@ vec4 weather(vec3 dir, vec3 sd){
   float fz=clamp(fr*(midl*1.8+subtr*0.35+0.08),0.0,1.0);
   float cu=clamp(itcz*1.8*ss(0.34,0.70,conv)+midl*0.7*ss(0.40,0.72,conv),0.0,1.0);
   float sc=clamp(subtr*1.45*ss(0.26,0.64,1.0-conv)+polar*0.85*ss(0.18,0.52,conv),0.0,1.0);
-  float iw=clamp(itcz*2.4*uConvection*ss(0.58,0.84,inst)+midl*1.1*ss(0.50,0.80,inst),0.0,1.0);
+  /* inst — это 0.5+0.5*fbm(...,2), он не выходит за ~0.35..0.65, так что
+     пороги 0.58..0.84 и 0.50..0.80 почти всегда давали ноль и гроз не было.
+     Плотная атмосфера и густая облачность усиливают неустойчивость. */
+  float stormy=mix(0.55,1.45,uAtmo)*mix(0.65,1.30,uCloudLow);
+  float iw=clamp((itcz*2.4*uConvection*ss(0.44,0.58,inst)+midl*1.1*ss(0.40,0.55,inst))*stormy,0.0,1.0);
   return vec4(cu,sc,fz,iw);
 }
 

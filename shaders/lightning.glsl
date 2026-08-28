@@ -19,7 +19,7 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
   if(cloudA < mix(0.05, 0.20, storm)) return acc;
   for(int i=0;i<6;i++){
     float fi = float(i);
-    float per = 0.72 + fi*0.41;
+    float per = 0.55 + fi*0.28;
     float ph = uTime/per + fi*7.77;
     float cyc = floor(ph);
     float fr = fract(ph);
@@ -43,12 +43,15 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
     if(dot(fp, uSunDir) > -0.1) continue;      /* только ночная сторона */
     float ang = distance(dirW, fp);
     /* Трёхкомпонентное свечение: ядро + ветви + диффузия */
-    float core = min(exp(-ang*ang*2500.0), 0.4) * 5.0;
+    /* Радиусы расширены: прежнее ядро в 0.04 рад давало точку в десяток
+       пикселей, и вспышку можно было просто не заметить. Теперь засветка
+       охватывает область грозового очага целиком. */
+    float core = min(exp(-ang*ang*900.0), 0.4) * 5.0;
     float angAtan = atan(dirW.z - fp.z, dirW.x - fp.x);
-    float branch = exp(-ang*ang*400.0) * (1.0 + 0.3*sin(angAtan*7.0));
-    float diffuse = exp(-ang*ang*60.0) * 0.15;
+    float branch = exp(-ang*ang*160.0) * (1.0 + 0.3*sin(angAtan*7.0));
+    float diffuse = exp(-ang*ang*24.0) * 0.22;
     float g = core + branch * 0.6 + diffuse;
-    acc += vec3(0.72,0.80,1.0) * g * win * 4.6;
+    acc += vec3(0.72,0.80,1.0) * g * win * 6.5;
   }
   return acc;
 }

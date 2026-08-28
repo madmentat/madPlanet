@@ -25,7 +25,10 @@
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;overflow:hidden;overscroll-behavior:none}
   body{background:var(--void);color:var(--txt);font-family:var(--sans);font-size:13px;
-       -webkit-user-select:none;user-select:none;touch-action:none}
+       -webkit-user-select:none;user-select:none;touch-action:manipulation}
+  /* touch-action:none стоял на body и наследовался всем, включая ползунки:
+     браузер переставал обрабатывать их родной жест, и палец «срывался».
+     Полный запрет нужен только холсту, где мы сами крутим планету. */
   #gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
   #gl.grab{cursor:grabbing}
   #magOverlay{position:fixed;inset:0;width:100%;height:100%;display:block;pointer-events:none;z-index:3}
@@ -101,15 +104,18 @@
   .row{margin-bottom:10px}
   .row label{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
              color:var(--mut);margin-bottom:2px}
-  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;
+  /* Дорожка тонкая, но брать её нужно пальцем: высота области нажатия
+     поднята, ползунок увеличен, а собственный жест браузера разрешён явно. */
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:34px;
+    touch-action:pan-y;
     background:transparent;cursor:pointer;--fill:50%}
   input[type=range]::-webkit-slider-runnable-track{height:2px;border-radius:1px;
     background:linear-gradient(90deg,var(--acc) var(--fill),rgba(255,255,255,.13) var(--fill))}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;border-radius:50%;
     background:#dce8ff;margin-top:-4.5px;box-shadow:0 0 8px rgba(159,194,255,.55)}
   input[type=range]::-moz-range-track{height:2px;border-radius:1px;
     background:linear-gradient(90deg,var(--acc) var(--fill),rgba(255,255,255,.13) var(--fill))}
-  input[type=range]::-moz-range-thumb{width:11px;height:11px;border:none;border-radius:50%;
+  input[type=range]::-moz-range-thumb{width:17px;height:17px;border:none;border-radius:50%;
     background:#dce8ff;box-shadow:0 0 8px rgba(159,194,255,.55)}
   input[type=range]:focus-visible{outline:1px solid var(--acc);outline-offset:2px;border-radius:4px}
   .slval{font-size:11px;opacity:.7;min-width:5em;text-align:right;float:right;margin-top:-17px;
@@ -222,7 +228,7 @@
 
 <div class="mark">
   <h1>madPlanet</h1>
-  <div class="ver">v0.5.27</div>
+  <div class="ver">v0.5.28</div>
   <div class="sub">МИР <b id="seedLabel">№ —</b></div>
 </div>
 
@@ -267,7 +273,7 @@
 <script>
 'use strict';
 
-const APP_VERSION = '0.5.27';
+const APP_VERSION = '0.5.28';
 const VERT = `#version 300 es
 layout(location=0) in vec2 aPos;
 void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
@@ -880,7 +886,11 @@ vec4 weather(vec3 dir, vec3 sd){
   float fz=clamp(fr*(midl*1.8+subtr*0.35+0.08),0.0,1.0);
   float cu=clamp(itcz*1.8*ss(0.34,0.70,conv)+midl*0.7*ss(0.40,0.72,conv),0.0,1.0);
   float sc=clamp(subtr*1.45*ss(0.26,0.64,1.0-conv)+polar*0.85*ss(0.18,0.52,conv),0.0,1.0);
-  float iw=clamp(itcz*2.4*uConvection*ss(0.58,0.84,inst)+midl*1.1*ss(0.50,0.80,inst),0.0,1.0);
+  /* inst — это 0.5+0.5*fbm(...,2), он не выходит за ~0.35..0.65, так что
+     пороги 0.58..0.84 и 0.50..0.80 почти всегда давали ноль и гроз не было.
+     Плотная атмосфера и густая облачность усиливают неустойчивость. */
+  float stormy=mix(0.55,1.45,uAtmo)*mix(0.65,1.30,uCloudLow);
+  float iw=clamp((itcz*2.4*uConvection*ss(0.44,0.58,inst)+midl*1.1*ss(0.40,0.55,inst))*stormy,0.0,1.0);
   return vec4(cu,sc,fz,iw);
 }
 
@@ -1182,7 +1192,7 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
   if(cloudA < mix(0.05, 0.20, storm)) return acc;
   for(int i=0;i<6;i++){
     float fi = float(i);
-    float per = 0.72 + fi*0.41;
+    float per = 0.55 + fi*0.28;
     float ph = uTime/per + fi*7.77;
     float cyc = floor(ph);
     float fr = fract(ph);
@@ -1206,12 +1216,15 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
     if(dot(fp, uSunDir) > -0.1) continue;      /* только ночная сторона */
     float ang = distance(dirW, fp);
     /* Трёхкомпонентное свечение: ядро + ветви + диффузия */
-    float core = min(exp(-ang*ang*2500.0), 0.4) * 5.0;
+    /* Радиусы расширены: прежнее ядро в 0.04 рад давало точку в десяток
+       пикселей, и вспышку можно было просто не заметить. Теперь засветка
+       охватывает область грозового очага целиком. */
+    float core = min(exp(-ang*ang*900.0), 0.4) * 5.0;
     float angAtan = atan(dirW.z - fp.z, dirW.x - fp.x);
-    float branch = exp(-ang*ang*400.0) * (1.0 + 0.3*sin(angAtan*7.0));
-    float diffuse = exp(-ang*ang*60.0) * 0.15;
+    float branch = exp(-ang*ang*160.0) * (1.0 + 0.3*sin(angAtan*7.0));
+    float diffuse = exp(-ang*ang*24.0) * 0.22;
     float g = core + branch * 0.6 + diffuse;
-    acc += vec3(0.72,0.80,1.0) * g * win * 4.6;
+    acc += vec3(0.72,0.80,1.0) * g * win * 6.5;
   }
   return acc;
 }
@@ -1388,10 +1401,14 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
      отдельные пятна, а не сплошная полоса вдоль всего шва. */
   float volc = 0.0;
   if(uVolcano > 0.01){
+    /* Пороги подобраны по фактическому размаху шума: 0.5+0.5*fbm(...,3)
+       лежит в 0.308..0.694 и никогда не достигает 0.84. Прежние значения
+       0.60..0.88 и 0.84..0.97 стояли за верхней границей, поэтому жерла
+       почти не появлялись, а горячие точки не появлялись вообще ни разу. */
     float arc = 1.0 - ss(0.008, 0.075, gSeamNear);
-    float hotspot = ss(0.84, 0.97, 0.5+0.5*fbm(sN*3.3+uSeedS*4.1+vec3(521.0,19.0,67.0),3));
-    float vents = ss(0.60, 0.88, 0.5+0.5*fbm(sN*44.0+uSeedS*2.9+vec3(83.0,151.0,7.0),3));
-    volc = clamp((arc*0.90 + hotspot*0.60)*vents*uVolcano, 0.0, 1.0);
+    float hotspot = ss(0.575, 0.655, 0.5+0.5*fbm(sN*3.3+uSeedS*4.1+vec3(521.0,19.0,67.0),3));
+    float vents = ss(0.520, 0.600, 0.5+0.5*fbm(sN*44.0+uSeedS*2.9+vec3(83.0,151.0,7.0),3));
+    volc = clamp((arc*1.05 + hotspot*0.85)*vents*uVolcano*1.35, 0.0, 1.0);
     /* Базальт тёмный и почти не отражает: рядом с ним зелень кажется ярче. */
     alb = mix(alb, vec3(0.052,0.048,0.047), volc*0.88*land);
   }
@@ -1583,7 +1600,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   /* Лава видна прежде всего ночью, но у свежих потоков хватает жара, чтобы
      проступать и в сумерках. Пульсация медленная и несинхронная по очагам. */
   if(uLava > 0.01 && volc > 0.02){
-    float hotFlow = ss(0.45, 0.92, volc);
+    float hotFlow = ss(0.18, 0.70, volc);
     float pulse = 0.55 + 0.45*sin(uTime*0.7 + volc*37.0 + uSeedS.x*11.0);
     col += vec3(1.0,0.34,0.07)*hotFlow*uLava*(0.18 + 1.15*nightF)*pulse*land;
   }

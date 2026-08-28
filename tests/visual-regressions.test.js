@@ -12,8 +12,8 @@ const state = read('js/state.js');
 const versionText = read('VERSION.txt');
 const version = (versionText.match(/^VERSION\s+(\d+\.\d+\.\d+)\s*$/m) || [])[1];
 
-assert.equal(version, '0.5.27', 'visual regression test belongs to release 0.5.27');
-assert.match(shell, /<div class="ver">v0\.5\.27<\/div>/, 'visible app version must match');
+assert.equal(version, '0.5.28', 'visual regression test belongs to release 0.5.28');
+assert.match(shell, /<div class="ver">v0\.5\.28<\/div>/, 'visible app version must match');
 assert.match(shell, /\.mark h1\{[^}]*font-size:19px/s, 'desktop wordmark should remain larger');
 assert.match(shell, /\.mark h1\{font-size:16px/s, 'mobile wordmark should remain compact');
 
@@ -154,5 +154,16 @@ const glInitSrc = read('js/gl-init.js');
 assert.match(glInitSrc, /function showCompileProgress/, 'compile progress bar missing');
 assert.match(glInitSrc, /COMPILE_ESTIMATE_KEY/, 'progress must be estimated from the previous compile');
 assert.match(glInitSrc, /Math\.min\(95,/, 'progress must stop short of 100% instead of lying');
+
+/* 0.5.28: пороги должны лежать внутри реального размаха шума.
+   0.5+0.5*fbm(...,3) не выходит за 0.308..0.694, поэтому прежние 0.84..0.97
+   означали, что горячие точки не появлялись ни разу. */
+assert.ok(!/ss\(0\.84, 0\.97,/.test(surface), 'volcano hotspot threshold must stay inside the noise range');
+assert.ok(!/ss\(0\.60, 0\.88,/.test(surface), 'volcano vent threshold must stay inside the noise range');
+assert.ok(!/ss\(0\.58,0\.84,inst\)/.test(clouds), 'storm threshold must stay inside the noise range');
+assert.match(clouds, /float stormy=mix\(0\.55,1\.45,uAtmo\)/, 'storms must scale with atmosphere and cloud cover');
+/* Ползунки должны браться пальцем. */
+assert.ok(!/user-select:none;touch-action:none\}/.test(shell), 'touch-action:none on body blocks native slider dragging');
+assert.match(shell, /input\[type=range\]\{[^}]*height:34px/s, 'slider hit area must be finger sized');
 
 console.log('visual-regressions.test.js: OK');

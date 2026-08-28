@@ -25,7 +25,10 @@
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;overflow:hidden;overscroll-behavior:none}
   body{background:var(--void);color:var(--txt);font-family:var(--sans);font-size:13px;
-       -webkit-user-select:none;user-select:none;touch-action:none}
+       -webkit-user-select:none;user-select:none;touch-action:manipulation}
+  /* touch-action:none стоял на body и наследовался всем, включая ползунки:
+     браузер переставал обрабатывать их родной жест, и палец «срывался».
+     Полный запрет нужен только холсту, где мы сами крутим планету. */
   #gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
   #gl.grab{cursor:grabbing}
   #magOverlay{position:fixed;inset:0;width:100%;height:100%;display:block;pointer-events:none;z-index:3}
@@ -101,15 +104,18 @@
   .row{margin-bottom:10px}
   .row label{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
              color:var(--mut);margin-bottom:2px}
-  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;
+  /* Дорожка тонкая, но брать её нужно пальцем: высота области нажатия
+     поднята, ползунок увеличен, а собственный жест браузера разрешён явно. */
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:34px;
+    touch-action:pan-y;
     background:transparent;cursor:pointer;--fill:50%}
   input[type=range]::-webkit-slider-runnable-track{height:2px;border-radius:1px;
     background:linear-gradient(90deg,var(--acc) var(--fill),rgba(255,255,255,.13) var(--fill))}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;border-radius:50%;
     background:#dce8ff;margin-top:-4.5px;box-shadow:0 0 8px rgba(159,194,255,.55)}
   input[type=range]::-moz-range-track{height:2px;border-radius:1px;
     background:linear-gradient(90deg,var(--acc) var(--fill),rgba(255,255,255,.13) var(--fill))}
-  input[type=range]::-moz-range-thumb{width:11px;height:11px;border:none;border-radius:50%;
+  input[type=range]::-moz-range-thumb{width:17px;height:17px;border:none;border-radius:50%;
     background:#dce8ff;box-shadow:0 0 8px rgba(159,194,255,.55)}
   input[type=range]:focus-visible{outline:1px solid var(--acc);outline-offset:2px;border-radius:4px}
   .slval{font-size:11px;opacity:.7;min-width:5em;text-align:right;float:right;margin-top:-17px;
@@ -222,7 +228,7 @@
 
 <div class="mark">
   <h1>madPlanet</h1>
-  <div class="ver">v0.5.27</div>
+  <div class="ver">v0.5.28</div>
   <div class="sub">МИР <b id="seedLabel">№ —</b></div>
 </div>
 

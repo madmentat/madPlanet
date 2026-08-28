@@ -169,10 +169,14 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
      отдельные пятна, а не сплошная полоса вдоль всего шва. */
   float volc = 0.0;
   if(uVolcano > 0.01){
+    /* Пороги подобраны по фактическому размаху шума: 0.5+0.5*fbm(...,3)
+       лежит в 0.308..0.694 и никогда не достигает 0.84. Прежние значения
+       0.60..0.88 и 0.84..0.97 стояли за верхней границей, поэтому жерла
+       почти не появлялись, а горячие точки не появлялись вообще ни разу. */
     float arc = 1.0 - ss(0.008, 0.075, gSeamNear);
-    float hotspot = ss(0.84, 0.97, 0.5+0.5*fbm(sN*3.3+uSeedS*4.1+vec3(521.0,19.0,67.0),3));
-    float vents = ss(0.60, 0.88, 0.5+0.5*fbm(sN*44.0+uSeedS*2.9+vec3(83.0,151.0,7.0),3));
-    volc = clamp((arc*0.90 + hotspot*0.60)*vents*uVolcano, 0.0, 1.0);
+    float hotspot = ss(0.575, 0.655, 0.5+0.5*fbm(sN*3.3+uSeedS*4.1+vec3(521.0,19.0,67.0),3));
+    float vents = ss(0.520, 0.600, 0.5+0.5*fbm(sN*44.0+uSeedS*2.9+vec3(83.0,151.0,7.0),3));
+    volc = clamp((arc*1.05 + hotspot*0.85)*vents*uVolcano*1.35, 0.0, 1.0);
     /* Базальт тёмный и почти не отражает: рядом с ним зелень кажется ярче. */
     alb = mix(alb, vec3(0.052,0.048,0.047), volc*0.88*land);
   }
@@ -364,7 +368,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   /* Лава видна прежде всего ночью, но у свежих потоков хватает жара, чтобы
      проступать и в сумерках. Пульсация медленная и несинхронная по очагам. */
   if(uLava > 0.01 && volc > 0.02){
-    float hotFlow = ss(0.45, 0.92, volc);
+    float hotFlow = ss(0.18, 0.70, volc);
     float pulse = 0.55 + 0.45*sin(uTime*0.7 + volc*37.0 + uSeedS.x*11.0);
     col += vec3(1.0,0.34,0.07)*hotFlow*uLava*(0.18 + 1.15*nightF)*pulse*land;
   }
