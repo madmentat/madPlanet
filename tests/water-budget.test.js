@@ -9,10 +9,10 @@ const buildPs = fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh = fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'water budget test must see a semantic version');
-assert.ok(buildPs.includes("'js/atmosphere-inventory.js','js/volcanic-atmosphere-coupling.js','js/water-budget.js','js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/render.js'"),
-  'PowerShell build must load volcanic atmosphere bridge before water/climate/Weather Core/render');
-assert.ok(buildSh.includes('js/atmosphere-inventory.js js/volcanic-atmosphere-coupling.js js/water-budget.js js/climate-regimes.js js/stellar-weather-coupling.js js/weather-core.js js/render.js'),
-  'shell build must load volcanic atmosphere bridge before water/climate/Weather Core/render');
+function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
+const order=['js/atmosphere-inventory.js','js/volcanic-atmosphere-coupling.js','js/water-budget.js','js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/local-energy-balance.js','js/render.js'];
+assertOrdered(buildPs,order,'PowerShell water module order');
+assertOrdered(buildSh,order,'shell water module order');
 
 const gasKeys=['gasN2','gasO2','gasH2O','gasCO2','gasSO2','gasCH4','gasHHe'];
 const PARAMS=[
@@ -93,9 +93,9 @@ assert.equal(ctx.parameterRole('waterTotal'),'base','parameterRole must classify
 assert.equal(ctx.parameterRole('sea'),'derived','sea must be classified as derived');
 assert.equal(ctx.parameterRole('gasH2O'),'derived','gasH2O must be classified as derived');
 
-assert.ok(/const out=\['v6','s'\+state\.seed\]/.test(src),'new shared links must use v6 water-budget format');
+assert.ok(/const out=\['v6','s'\+state\.seed\]/.test(src),'water module must retain its v6 serializer before the later stellar v7 wrapper');
 assert.ok(/p\.k==='sea' \|\| p\.k==='gasH2O'/.test(src),
-  'v6 must not serialize calculated sea or atmospheric H2O reservoirs');
+  'water serializer must not persist calculated sea or atmospheric H2O reservoirs');
 assert.ok(src.includes('WATER_EOW_TO_ATM_INV'),'water-to-atmosphere mass conversion must be explicit');
 
 console.log('water-budget.test.js: OK');
