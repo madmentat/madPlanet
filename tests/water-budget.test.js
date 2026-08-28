@@ -9,10 +9,10 @@ const buildPs = fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh = fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'water budget test must see a semantic version');
-assert.ok(buildPs.includes("'js/atmosphere-inventory.js','js/water-budget.js','js/climate-regimes.js','js/stellar-weather-coupling.js','js/render.js'"),
-  'PowerShell build must load water before climate and the final stellar/render bridge');
-assert.ok(buildSh.includes('js/atmosphere-inventory.js js/water-budget.js js/climate-regimes.js js/stellar-weather-coupling.js js/render.js'),
-  'shell build must load water before climate and the final stellar/render bridge');
+assert.ok(buildPs.includes("'js/atmosphere-inventory.js','js/water-budget.js','js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/render.js'"),
+  'PowerShell build must load water before climate, Weather Core and render');
+assert.ok(buildSh.includes('js/atmosphere-inventory.js js/water-budget.js js/climate-regimes.js js/stellar-weather-coupling.js js/weather-core.js js/render.js'),
+  'shell build must load water before climate, Weather Core and render');
 
 const gasKeys=['gasN2','gasO2','gasH2O','gasCO2','gasSO2','gasCH4','gasHHe'];
 const PARAMS=[
