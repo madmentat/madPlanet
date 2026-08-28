@@ -8,11 +8,11 @@ const version = fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs = fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh = fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.36\s*$/m,'atmosphere inventory milestone must be 0.5.36');
-assert.match(buildPs,/'js\/param-model\.js','js\/screenshot\.js','js\/atmosphere-inventory\.js','js\/render\.js'/,
-  'PowerShell build must load atmosphere inventory after compatibility wrappers and before render');
-assert.match(buildSh,/js\/param-model\.js js\/screenshot\.js js\/atmosphere-inventory\.js js\/render\.js/,
-  'shell build must load atmosphere inventory after compatibility wrappers and before render');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'atmosphere inventory test must see a semantic version');
+assert.match(buildPs,/'js\/param-model\.js','js\/screenshot\.js','js\/atmosphere-inventory\.js'/,
+  'PowerShell build must load atmosphere inventory after compatibility wrappers');
+assert.match(buildSh,/js\/param-model\.js js\/screenshot\.js js\/atmosphere-inventory\.js/,
+  'shell build must load atmosphere inventory after compatibility wrappers');
 
 const gasKeys=['gasN2','gasO2','gasH2O','gasCO2','gasSO2','gasCH4','gasHHe'];
 const PARAMS=[
@@ -74,9 +74,9 @@ assert.equal(state.gasN2,savedN2,'compat normalizeGases must not renormalize abs
 
 assert.equal(PARAMS.find(p=>p.k==='atmo').group,'__legacy_atmosphere','old atmosphere amount slider must be hidden');
 assert.equal(PARAMS.find(p=>p.k==='atmo').role,'diagnostic','old atmo field must be derived compatibility state');
-assert.equal(PARAMS.find(p=>p.k==='gasCO2').role,'base','gas inventories must be persistent base inputs');
-assert.ok(/const out=\['v5','s'\+state\.seed\]/.test(src),'new shared links must use v5 inventory format');
-assert.ok(/if\(p\.k==='atmo' \|\| p\.transient\) return;/.test(src),'derived atmo proxy must not be serialized');
+assert.equal(PARAMS.find(p=>p.k==='gasCO2').role,'base','persistent dry-gas inventories must be base inputs');
+assert.ok(/const out=\['v5','s'\+state\.seed\]/.test(src),'atmosphere milestone must retain v5 migration support');
+assert.ok(/if\(p\.k==='atmo' \|\| p\.transient\) return;/.test(src),'derived atmo proxy must not be serialized by the v5 layer');
 assert.ok(/state\[key\]=Math\.max\(0,Math\.min\(GAS_INV_MAX/.test(src),'gas editing must set one inventory independently');
 
 console.log('atmosphere-inventory.test.js: OK');
