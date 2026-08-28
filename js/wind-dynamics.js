@@ -85,11 +85,10 @@ function windTangentBasis(dx,dy,dz,axis,out){
   let ez=axis[0]*dy-axis[1]*dx;
   let q=Math.hypot(ex,ey,ez);
   if(q<1e-7){
-    const rx=Math.abs(dx)<0.8?1:0, ry=Math.abs(dx)<0.8?0:0, rz=Math.abs(dx)<0.8?0:1;
+    const rx=Math.abs(dx)<0.8?1:0, ry=0, rz=Math.abs(dx)<0.8?0:1;
     ex=ry*dz-rz*dy;ey=rz*dx-rx*dz;ez=rx*dy-ry*dx;q=Math.hypot(ex,ey,ez)||1;
   }
   ex/=q;ey/=q;ez/=q;
-  /* north = radius x east */
   let nx=dy*ez-dz*ey,ny=dz*ex-dx*ez,nz=dx*ey-dy*ex;
   q=Math.hypot(nx,ny,nz)||1;nx/=q;ny/=q;nz/=q;
   out.ex=ex;out.ey=ey;out.ez=ez;out.nx=nx;out.ny=ny;out.nz=nz;
@@ -119,7 +118,6 @@ function windBuildPressureStencil(core,axis,radiusM){
       const dist=Math.max(1,radiusM*ang);
       const sx=core.dirX[j]-rx*dot,sy=core.dirY[j]-ry*dot,sz=core.dirZ[j]-rz*dot;
       const sn=Math.hypot(sx,sy,sz)||1;
-      /* Four directional differences sum to ~2*grad on a regular stencil. */
       const inv=0.5/(dist*sn);
       core.windGradE[k][i]=(sx*basis.ex+sy*basis.ey+sz*basis.ez)*inv;
       core.windGradN[k][i]=(sx*basis.nx+sy*basis.ny+sz*basis.nz)*inv;
@@ -191,7 +189,6 @@ function windSoundSpeed(T,molarMassKg){
   return Math.sqrt(1.4*WIND_GAS_R*windClamp(T,40,3000)/windClamp(molarMassKg,0.001,0.2));
 }
 
-/* Extend the shared snapshot with the planetary properties needed by momentum. */
 const weatherCoreClimateSnapshotBeforeWind=weatherCoreClimateSnapshot;
 weatherCoreClimateSnapshot=function(){
   const s=weatherCoreClimateSnapshotBeforeWind();
@@ -206,7 +203,9 @@ const weatherCoreCreateBeforeWind=weatherCoreCreate;
 weatherCoreCreate=function(seed,N,climate,axis){
   const core=weatherCoreCreateBeforeWind(seed,N,climate,axis);
   core.windModel=WIND_DYNAMICS_MODEL;
+  core.windStateU=new Float32Array(core.count);core.windStateV=new Float32Array(core.count);
   core.pgfEast=new Float32Array(core.count);core.pgfNorth=new Float32Array(core.count);
+  for(let i=0;i<core.count;i++){core.windStateU[i]=core.windU[i];core.windStateV[i]=core.windV[i];}
   const ax=weatherNorm3(axis[0],axis[1],axis[2]);
   windBuildPressureStencil(core,ax,windPlanetRadiusM(climate));
   windRefreshOrography(core,ax);
@@ -216,6 +215,8 @@ weatherCoreCreate=function(seed,N,climate,axis){
 const weatherCoreStepBeforeWind=weatherCoreStep;
 weatherCoreStep=function(core,dtSec,climate,axis){
   if(!core||!core.count) return core;
+  /* Older scaffolds still damp core.windU/V toward zero. Momentum lives in
+     windStateU/V, so those compatibility writes are discarded below. */
   weatherCoreStepBeforeWind(core,dtSec,climate,axis);
   const dt=weatherClamp(dtSec,0,WEATHER_CORE_FIXED_DT_SEC);
   if(!core.windNeighbor) windBuildPressureStencil(core,weatherNorm3(axis[0],axis[1],axis[2]),windPlanetRadiusM(climate));
@@ -233,7 +234,7 @@ weatherCoreStep=function(core,dtSec,climate,axis){
     const ae=windClamp(-grad.e/rho,-WIND_MAX_ACCEL_MS2,WIND_MAX_ACCEL_MS2);
     const an=windClamp(-grad.n/rho,-WIND_MAX_ACCEL_MS2,WIND_MAX_ACCEL_MS2);
     core.pgfEast[i]=ae;core.pgfNorth[i]=an;
-    let u=core.windU[i]+ae*dt,v=core.windV[i]+an*dt;
+    let u=core.windStateU[i]+ae*dt,v=core.windStateV[i]+an*dt;
 
     const sinLat=windClamp(core.dirX[i]*ax[0]+core.dirY[i]*ax[1]+core.dirZ[i]*ax[2],-1,1);
     const f=2*omega*sinLat;
@@ -250,7 +251,7 @@ weatherCoreStep=function(core,dtSec,climate,axis){
     const sound=windSoundSpeed(core.airTemp[i],M),cap=windClamp(WIND_MAX_MACH*sound,45,500);
     const speed=Math.hypot(u,v);
     if(speed>cap){const k=cap/speed;u*=k;v*=k;}
-    core.windU[i]=u;core.windV[i]=v;
+    core.windStateU[i]=u;core.windStateV[i]=v;core.windU[i]=u;core.windV[i]=v;
   }
   return core;
 };
@@ -258,7 +259,7 @@ weatherCoreStep=function(core,dtSec,climate,axis){
 const weatherCoreFiniteBeforeWind=weatherCoreFinite;
 weatherCoreFinite=function(core){
   if(!weatherCoreFiniteBeforeWind(core)) return false;
-  for(const k of ['pgfEast','pgfNorth','orographicRoughness','orographicBarrierE','orographicBarrierN']){
+  for(const k of ['windStateU','windStateV','pgfEast','pgfNorth','orographicRoughness','orographicBarrierE','orographicBarrierN']){
     const a=core?.[k];if(!a||a.length!==core.count)return false;
     for(let i=0;i<a.length;i++)if(!Number.isFinite(a[i]))return false;
   }
