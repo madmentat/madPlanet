@@ -1,4 +1,4 @@
-VERSION 0.5.33
-Base: 0.5.32
-Changes: parameter model v1 - explicit base/geo/derived/visual roles; calculated sliders become temporary forcings and relax after release; transient weather no longer persists in shared URLs; legacy permanent pins are retired.
+VERSION 0.5.34
+Base: 0.5.33
+Changes: star/orbit physics v1 - spectral temperature anchors, luminosity and orbital distance with Earth/Sun pivots, inverse-square stellar flux, Kopparapu spectral habitable-zone limits and live HZ diagnostics. Volcanism is treated as a base slow forcing until interior-age physics is implemented.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
