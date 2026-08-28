@@ -9,10 +9,10 @@ const buildPs = fs.readFileSync(path.join(root, 'build.ps1'),'utf8');
 const buildSh = fs.readFileSync(path.join(root, 'build.sh'),'utf8');
 
 assert.match(version, /^VERSION\s+\d+\.\d+\.\d+\s*$/m, 'parameter-model test must see a semantic version');
-assert.match(buildPs, /'js\/ui\.js','js\/star-orbit\.js','js\/param-model\.js','js\/screenshot\.js'/,
-  'PowerShell build must load star-orbit before param-model and render');
-assert.match(buildSh, /js\/ui\.js js\/star-orbit\.js js\/param-model\.js js\/screenshot\.js/,
-  'shell build must load star-orbit before param-model and render');
+assert.match(buildPs, /'js\/ui\.js','js\/planet-physics\.js','js\/star-orbit\.js','js\/param-model\.js','js\/screenshot\.js'/,
+  'PowerShell build must load planet/star scaffolds before param-model and render');
+assert.match(buildSh, /js\/ui\.js js\/planet-physics\.js js\/star-orbit\.js js\/param-model\.js js\/screenshot\.js/,
+  'shell build must load planet/star scaffolds before param-model and render');
 
 const keys = [
   'temp','sea','cont','tect','isle','lake','snowAlt','city','volcano','lava',
@@ -20,7 +20,8 @@ const keys = [
   'cloudLow','cloudMid','cloudHigh','wind','convection','storm','stormRate','stormGlow',
   'atmo','gasN2','gasO2','gasH2O','gasCO2','gasSO2','gasCH4','gasHHe',
   'magnet','magTilt','magAzimuth','aurora','skyStars','skyMilky','skyNebula','skyHue',
-  'star','luminosity','distance'
+  'star','luminosity','distance',
+  'planetAge','planetRadius','coreType','rotationPeriod','axialTilt'
 ];
 const PARAMS = keys.map(k => ({k, group:'x', def:0.5, gas:k.startsWith('gas')}));
 const state = Object.fromEntries(keys.map(k => [k,0.5]));
@@ -46,6 +47,11 @@ vm.runInContext(src,ctx,{filename:'param-model.js'});
 const byKey = k => PARAMS.find(p=>p.k===k);
 assert.equal(byKey('star').role,'base');
 assert.equal(byKey('volcano').role,'base','volcanism is a user-controlled slow forcing until interior physics exists');
+assert.equal(byKey('planetAge').role,'base','planet age is a first-class base cause');
+assert.equal(byKey('planetRadius').role,'base');
+assert.equal(byKey('coreType').role,'base');
+assert.equal(byKey('rotationPeriod').role,'base');
+assert.equal(byKey('axialTilt').role,'base');
 assert.equal(byKey('tect').role,'geo');
 assert.equal(byKey('wind').role,'derived');
 assert.equal(byKey('stormGlow').role,'visual');
