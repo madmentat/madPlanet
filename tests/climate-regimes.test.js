@@ -9,10 +9,10 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'climate test must see a semantic version');
-assert.ok(buildPs.includes("'js/atmosphere-inventory.js','js/volcanic-atmosphere-coupling.js','js/water-budget.js','js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/render.js'"),
-  'PowerShell build must load volcanic+water climate causes before stellar/weather/render bridge');
-assert.ok(buildSh.includes('js/atmosphere-inventory.js js/volcanic-atmosphere-coupling.js js/water-budget.js js/climate-regimes.js js/stellar-weather-coupling.js js/weather-core.js js/render.js'),
-  'shell build must load volcanic+water climate causes before stellar/weather/render bridge');
+function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
+const order=['js/atmosphere-inventory.js','js/volcanic-atmosphere-coupling.js','js/water-budget.js','js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/local-energy-balance.js','js/render.js'];
+assertOrdered(buildPs,order,'PowerShell climate module order');
+assertOrdered(buildSh,order,'shell climate module order');
 
 const state={
   star:0.38,luminosity:0.43,distance:0.51,atmo:0.60,temp:0.52,sea:0.58,waterTotal:0.50,
@@ -71,11 +71,8 @@ c=ctx.climateModel();
 assert.notEqual(c.regime,'runawayGreenhouse','hot but dry worlds must not be called wet runaway greenhouses');
 assert.ok(c.runawayIndex<0.1,'dry world should suppress runaway-water feedback');
 
-/* Cool-star ice is darker in near-IR, so otherwise identical snowballs must
-   absorb more stellar energy than around a G/F-like spectrum. */
 assert.ok(ctx.climateIceAlbedoForStar(3000)<ctx.climateIceAlbedoForStar(5772),
   'M-star ice albedo must be lower than Sun-like ice albedo');
-
 assert.ok(src.includes('CLIMATE_MOIST_OLR_LIMIT = 282.0'),
   'runaway proxy must expose its moist OLR-limit assumption');
 assert.ok(src.includes('gasPartialPressureBar'),
