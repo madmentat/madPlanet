@@ -56,18 +56,14 @@ function cityPartialBar(key){
 }
 
 function cityRandomizePlanet(r){
-  /* Pick in physical units, then convert to existing slider coordinates. */
   state.planetAge=cityRandClamp((cityRandBetween(r,2.0,8.5)-0.05)/11.95,0,1);
   const radiusEarth=cityRandBetween(r,0.82,1.22);
   state.planetRadius=cityPivotLogInverse(radiusEarth,0.50,0.25,1.0,3.0);
-  state.coreType=cityRandBetween(r,0.14,0.52); /* rocky Fe/silicate family */
+  state.coreType=cityRandBetween(r,0.14,0.52);
   const rotationHours=cityRandBetween(r,14,42);
   state.rotationPeriod=cityPivotLogInverse(rotationHours,0.32,4.0,24.0,2400.0);
   state.axialTilt=cityRandBetween(r,5,35)/90;
 
-  /* Very rare edge combinations of radius/density can still push g outside
-     the settlement-friendly envelope. Pull only the radius toward Earth; do
-     not touch the chosen composition. */
   if(typeof planetPhysics==='function'){
     for(let n=0;n<5;n++){
       const p=planetPhysics();
@@ -97,7 +93,7 @@ function cityRandomizeAtmosphere(r){
   citySetGasPartialBar('gasCO2',co2);
   citySetGasPartialBar('gasSO2',so2);
   citySetGasPartialBar('gasHHe',hhe);
-  state.gasCH4=0; /* explicit product requirement: no methane random worlds */
+  state.gasCH4=0;
   if(typeof sanitizeGasInventories==='function') sanitizeGasInventories();
   if(typeof updateLegacyAtmoProxy==='function') updateLegacyAtmoProxy();
 }
@@ -115,8 +111,6 @@ function cityRandomizeWaterAndSurface(r){
 }
 
 function cityRandomizeStar(r){
-  /* Prefer long-lived K/G stars, allow ordinary F stars, avoid A/B/O by
-     default. Extreme stellar systems remain available through the sliders. */
   const band=cityRandChoice(r,[['K',0.34],['G',0.52],['F',0.14]]);
   if(band==='K') state.star=cityRandBetween(r,0.16,0.38);
   else if(band==='F') state.star=cityRandBetween(r,0.50,0.60);
@@ -138,7 +132,9 @@ function cityEvaluateOrbit(au,targetC){
 
 function citySolveTemperateOrbit(targetC){
   const st=starPhysics(state.star,state.luminosity);
-  const hz=st.hz||habitableZoneForStar(st.T,st.L);
+  const hz=(typeof habitableZoneForStar==='function')
+    ? habitableZoneForStar(st.T,st.L)
+    : {conservativeInner:Math.sqrt(st.L)*0.90,conservativeOuter:Math.sqrt(st.L)*1.55};
   let near=Math.max(0.01,(hz.conservativeInner||Math.sqrt(st.L)*0.90)*0.92);
   let far=Math.max(near*1.05,(hz.conservativeOuter||Math.sqrt(st.L)*1.55)*1.04);
   let best=null,bestAu=Math.sqrt(near*far),bestErr=Infinity;
@@ -149,7 +145,6 @@ function citySolveTemperateOrbit(targetC){
     if(!c||!Number.isFinite(c.C)) break;
     const err=Math.abs(c.C-targetC);
     if(err<bestErr){bestErr=err;best=c;bestAu=au;}
-    /* Closer = hotter; farther = colder. */
     if(c.C>targetC) near=au; else far=au;
   }
   const final=cityEvaluateOrbit(bestAu,targetC);
@@ -199,7 +194,7 @@ function cityRandomizeVisuals(r){
 }
 
 function generateCityReadyRandomWorld(randomSource=Math.random){
-  let best=null,bestPenalty=Infinity;
+  let targetFallback=18;
   for(let attempt=0;attempt<CITY_MAX_ATTEMPTS;attempt++){
     const seed=(Math.floor(randomSource()*0x7fffffff)^Math.floor(randomSource()*0x7fffffff))>>>0;
     const r=(typeof mulberry32==='function')?mulberry32(seed):randomSource;
@@ -210,25 +205,14 @@ function generateCityReadyRandomWorld(randomSource=Math.random){
     cityRandomizeStar(r);
     cityRandomizeVisuals(r);
     state.pinTemp=false;state.pinCO2=false;state.pinSO2=false;state.pinH2O=false;
-
-    /* Keep the starting cloud controls neutral while orbit solving. The final
-       values are replaced with climate-derived targets after acceptance. */
     state.cloudLow=0.48;state.cloudMid=0.36;state.cloudHigh=0.24;
     const targetC=cityRandBetween(r,CITY_TEMP_TARGET_MIN_C,CITY_TEMP_TARGET_MAX_C);
+    targetFallback=targetC;
     const c=citySolveTemperateOrbit(targetC);
     const p=(typeof planetPhysics==='function')?planetPhysics():{gravityEarth:1};
-    const penalty=cityRandomCandidatePenalty(c,p);
-    if(penalty<bestPenalty){
-      bestPenalty=penalty;
-      best={seed:state.seed,targetC};
-    }
     if(cityRandomCandidateAccepted(c,p)) break;
   }
 
-  /* Orbit solving normally finds an accepted candidate on the first few
-     attempts. If an exotic combination defeats the proxy, keep the best one
-     but clamp the main settlement hazards rather than falling back to an
-     identical canned Earth every time. */
   if((typeof planetPhysics==='function') && (typeof climateModel==='function')){
     let c=climateModel(),p=planetPhysics();
     if(!cityRandomCandidateAccepted(c,p)){
@@ -242,8 +226,7 @@ function generateCityReadyRandomWorld(randomSource=Math.random){
       citySetGasPartialBar('gasN2',0.79);
       state.gasCH4=0;
       if(typeof sanitizeGasInventories==='function') sanitizeGasInventories();
-      citySolveTemperateOrbit(best?.targetC||18);
-      c=climateModel();p=planetPhysics();
+      citySolveTemperateOrbit(targetFallback);
     }
   }
 
