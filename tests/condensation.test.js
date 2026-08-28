@@ -10,10 +10,10 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'condensation test must see a semantic version');
-assert.ok(buildPs.includes("'js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/precipitation.js','js/render.js'"),
-  'PowerShell build must load condensation before precipitation and render');
-assert.ok(buildSh.includes('js/wind-dynamics.js js/h2o-advection.js js/condensation.js js/precipitation.js js/render.js'),
-  'shell build must load condensation before precipitation and render');
+function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
+const buildOrder=['js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/precipitation.js','js/render.js'];
+assertOrdered(buildPs,buildOrder,'PowerShell condensation order');
+assertOrdered(buildSh,buildOrder,'shell condensation order');
 
 const state={seed:123,draft:true,sea:0.58,cont:0.45,tect:0.65,star:0.43,luminosity:0.43};
 const world={
