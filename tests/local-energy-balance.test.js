@@ -9,11 +9,11 @@ const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.40\s*$/m,'local energy milestone must be 0.5.40');
-assert.ok(buildPs.includes("'js/weather-core.js','js/local-energy-balance.js','js/render.js'"),
-  'PowerShell build must load local energy after Weather Core and before render');
-assert.ok(buildSh.includes('js/weather-core.js js/local-energy-balance.js js/render.js'),
-  'shell build must load local energy after Weather Core and before render');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'local energy test must see a semantic version');
+assert.ok(buildPs.includes("'js/weather-core.js','js/local-energy-balance.js','js/baric-field.js','js/render.js'"),
+  'PowerShell build must load local energy before baric field and render');
+assert.ok(buildSh.includes('js/weather-core.js js/local-energy-balance.js js/baric-field.js js/render.js'),
+  'shell build must load local energy before baric field and render');
 
 const state={seed:8127344,draft:true,sea:0.58,star:0.43,luminosity:0.43};
 const ctx={console,Math,Number,Date,Float32Array,state};
@@ -44,7 +44,6 @@ for(let i=0;i<core.count;i++){
 assert.ok(core.insolation[equator]>core.insolation[polar]*8,
   'daily-mean equatorial insolation must greatly exceed near-polar insolation');
 
-/* Cubed-sphere area weighting should recover S0/4 globally at equinox. */
 let wi=0,ws=0;
 for(let i=0;i<core.count;i++){wi+=core.areaWeight[i]*core.insolation[i];ws+=core.areaWeight[i];}
 const meanInsolation=wi/ws;
@@ -58,7 +57,6 @@ const f={insolation:0,albedo:0,absorbed:0,olr:0,net:0};
 ctx.localEnergyFluxes(288,0.2,core.dirX[equator],core.dirY[equator],core.dirZ[equator],axis,climate,f);
 assert.ok(f.absorbed>0&&f.olr>0&&Number.isFinite(f.net),'cell radiative terms must be explicit and finite');
 
-/* Same initial state, different stellar flux: the hotter case must gain more energy. */
 const low={...climate,S:0.65};
 const high={...climate,S:1.35};
 const a=ctx.weatherCoreCreate(77,16,low,axis);
