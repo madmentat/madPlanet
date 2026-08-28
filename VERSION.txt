@@ -1,4 +1,4 @@
-VERSION 0.5.38
-Base: 0.5.37
-Changes: global climate regimes v1 - stellar flux, absolute gas partial pressures, total atmospheric pressure, water inventory, cloud/aerosol albedo and spectral ice-albedo feedback now feed one global radiative balance; Earth-like defaults stay near 288 K; snowball, frozen, temperate, warm, moist-greenhouse and runaway-greenhouse proxy regimes are diagnosed; hot moist atmospheres use a soft ~282 W/m2 outgoing-longwave radiation ceiling and the spectral Kopparapu inner edge as a second runaway warning.
+VERSION 0.5.39
+Base: 0.5.38
+Changes: stellar-climate-weather coupling v1 - spectral class now sets a main-sequence mass/luminosity baseline while the luminosity slider acts as an independent multiplier; orbital distance spans 0.01..1000 AU around the preserved 1 AU pivot; calculated temperature is no longer clamped to the legacy +97 C visual ceiling, fixing snow and sea-ice survival in extreme greenhouse climates; derived cloud, wind, convection, storm and snow-line controls now relax toward climate-dependent targets; steam-dominated atmospheres gain a pale greenhouse haze adapter.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
