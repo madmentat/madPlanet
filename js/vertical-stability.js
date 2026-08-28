@@ -3,8 +3,8 @@
    Weather Core v10 derives a compact vertical-column diagnosis from the
    resolved near-surface state. This is intentionally not a full 3-D model.
    Surface/air temperature, humidity, pressure, scale height and resolved
-   orographic ascent are used to estimate bulk stability, lifting-condensation
-   level (LCL), and a plausible cloud-column top.
+   orographic/frontal ascent are used to estimate bulk stability,
+   lifting-condensation level (LCL), and a plausible cloud-column top.
 
    The authoritative condensate remains cloudWaterState (kg/m2). This module
    only partitions that existing mass into low/mid/high layers by geometric
@@ -97,8 +97,10 @@ function verticalCellState(core,i,climate,out){
   const excess=envGamma-parcelGamma; /* >0: environment cools faster than parcel => unstable */
   const stability=verticalClamp(0.5-excess/0.012,0,1); /* 1 stable, 0 unstable */
   const oroW=Math.max(0,Number(core.orographicVerticalVelocity?.[i])||0);
+  const frontW=Math.max(0,Number(core.frontVerticalVelocity?.[i])||0);
+  const resolvedW=oroW+frontW;
   const buoyant=verticalSmooth(-0.0015,0.0060,excess);
-  const lift=verticalSmooth(0.05,1.5,oroW);
+  const lift=verticalSmooth(0.05,1.5,resolvedW);
   const convective=verticalClamp(buoyant*(0.45+0.55*verticalClamp(rh,0,1))+0.22*lift,0,1);
   const lcl=verticalLclHeightM(Ta,rh,H);
   const maxTop=VERTICAL_MAX_TOP_SCALE*H;
@@ -106,7 +108,7 @@ function verticalCellState(core,i,climate,out){
   const cloud=Math.max(0,Number(core.cloudWaterState?.[i])||0);
   const cloudBoost=verticalSmooth(0.01,0.60,cloud);
   let depth=H*(0.07+0.18*(1-stability)+0.92*convective+0.10*cloudBoost);
-  depth+=Math.min(0.25*H,oroW*420);
+  depth+=Math.min(0.35*H,oroW*420+frontW*650);
   depth=verticalClamp(depth,0.04*H,1.55*H);
   const top=verticalClamp(base+depth,base,maxTop);
   const p0=Math.max(1,Number(core.pressure?.[i])||Math.max(1,Number(climate?.pressureBar)||0)*1e5);
@@ -167,8 +169,9 @@ const weatherCoreStepBeforeVerticalStability=weatherCoreStep;
 weatherCoreStep=function(core,dtSec,climate,axis){
   if(!core||!core.count) return core;
   weatherCoreStepBeforeVerticalStability(core,dtSec,climate,axis);
-  /* Diagnostic/partition-only pass after condensation, precipitation and soil
-     hydrology. It never changes temperature, vapor or bulk condensate. */
+  /* Diagnostic/partition-only pass after condensation, precipitation, soil
+     hydrology and (when loaded) frontal diagnosis. It never changes
+     temperature, vapor or bulk condensate. */
   verticalRefresh(core,climate);
   return core;
 };
