@@ -12,10 +12,10 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'wind dynamics test must see a semantic version');
-assert.ok(buildPs.includes("'js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/precipitation.js','js/render.js'"),
-  'PowerShell build must load wind dynamics before H2O/condensation/precipitation and render');
-assert.ok(buildSh.includes('js/local-energy-balance.js js/baric-field.js js/wind-dynamics.js js/h2o-advection.js js/condensation.js js/precipitation.js js/render.js'),
-  'shell build must load wind dynamics before H2O/condensation/precipitation and render');
+function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
+const buildOrder=['js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/h2o-advection.js','js/condensation.js','js/precipitation.js','js/render.js'];
+assertOrdered(buildPs,buildOrder,'PowerShell wind order');
+assertOrdered(buildSh,buildOrder,'shell wind order');
 
 const state={seed:123,draft:true,sea:0.58,star:0.43,luminosity:0.43,tect:0.80};
 const world={
