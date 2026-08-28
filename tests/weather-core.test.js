@@ -9,10 +9,10 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'Weather Core test must see a semantic version');
-assert.ok(buildPs.includes("'js/stellar-weather-coupling.js','js/weather-core.js','js/local-energy-balance.js','js/render.js'"),
-  'PowerShell build must load Weather Core before local energy and render');
-assert.ok(buildSh.includes('js/stellar-weather-coupling.js js/weather-core.js js/local-energy-balance.js js/render.js'),
-  'shell build must load Weather Core before local energy and render');
+assert.ok(buildPs.includes("'js/stellar-weather-coupling.js','js/weather-core.js','js/local-energy-balance.js','js/baric-field.js','js/render.js'"),
+  'PowerShell build must load Weather Core before local energy, baric field and render');
+assert.ok(buildSh.includes('js/stellar-weather-coupling.js js/weather-core.js js/local-energy-balance.js js/baric-field.js js/render.js'),
+  'shell build must load Weather Core before local energy, baric field and render');
 
 const state={seed:8127344,draft:true};
 const ctx={console,Math,Number,Date,Float32Array,state};
@@ -40,7 +40,6 @@ for(const i of [0,31,1024,4095,6143]){
   assert.ok(a.humidity[i]>=0&&a.humidity[i]<=1,'humidity must stay bounded');
 }
 
-/* Fixed-step determinism: rendering cadence is absent from the API. */
 const s1=ctx.weatherCoreCreate(99,16,climate,axis);
 const s2=ctx.weatherCoreCreate(99,16,climate,axis);
 ctx.weatherCoreStep(s1,300,climate,axis);
