@@ -9,11 +9,11 @@ const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.39\s*$/m);
-assert.ok(buildPs.includes("'js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/render.js'"),
-  'PowerShell build must apply stellar/weather bridge before Weather Core and render');
-assert.ok(buildSh.includes('js/climate-regimes.js js/stellar-weather-coupling.js js/weather-core.js js/render.js'),
-  'shell build must apply stellar/weather bridge before Weather Core and render');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m);
+assert.ok(buildPs.includes("'js/climate-regimes.js','js/stellar-weather-coupling.js','js/weather-core.js','js/local-energy-balance.js','js/render.js'"),
+  'PowerShell build must apply stellar/weather bridge before Weather Core, local energy and render');
+assert.ok(buildSh.includes('js/climate-regimes.js js/stellar-weather-coupling.js js/weather-core.js js/local-energy-balance.js js/render.js'),
+  'shell build must apply stellar/weather bridge before Weather Core, local energy and render');
 
 function clamp01(x){return Math.max(0,Math.min(1,Number(x)||0));}
 function pivotLogSlider(v,pivot,lo,hi){
@@ -51,7 +51,6 @@ const ctx={
 vm.createContext(ctx);
 vm.runInContext(src,ctx,{filename:'stellar-weather-coupling.js'});
 
-/* Blank-world solar pivot. */
 assert.equal(state.star,0.43,'new blank worlds must start on the G/Sun anchor');
 assert.equal(PARAMS[0].def,0.43,'star parameter default must advertise the solar anchor');
 let s=ctx.starPhysics(0.43,0.43);
@@ -77,7 +76,6 @@ assert.ok(ctx.orbitDistanceAU(0)<0.011&&ctx.orbitDistanceAU(1)>999,'distance ran
 assert.ok(ctx.orbitalFluxEarth(o.L,1)>ctx.orbitalFluxEarth(m.L,1)*1e6,
   'class change at fixed orbit must strongly change stellar forcing');
 
-/* The old +97 C clamp was the direct cause of +460 C snow. */
 assert.ok(ctx.tempToSlider(460)>3,'calculated climate channel must extrapolate beyond old +97 C slider ceiling');
 assert.ok(surface.includes('mix(-0.55, 1.55, uTemp)'),
   'surface shader must consume extrapolating uTemp channel');
