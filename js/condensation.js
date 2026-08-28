@@ -153,6 +153,20 @@ function condRefreshDiagnosticsFields(core,climate){
   h2oRefreshRelativeHumidity(core,climate);
   condMirrorCloudWater(core);
 }
+function condCaptureVaporBefore(core){
+  if(!core.phaseVaporBefore||core.phaseVaporBefore.length!==core.count)
+    core.phaseVaporBefore=new Float32Array(core.count);
+  for(let i=0;i<core.count;i++) core.phaseVaporBefore[i]=core.vaporColumn[i];
+  return core.phaseVaporBefore;
+}
+function condRefreshRates(core,beforeVapor,dt){
+  const invDt=1/Math.max(1,dt);
+  for(let i=0;i<core.count;i++){
+    const dv=beforeVapor[i]-core.vaporColumn[i];
+    core.condensationRate[i]=Math.max(0,dv)*invDt;
+    core.cloudEvaporationRate[i]=Math.max(0,-dv)*invDt;
+  }
+}
 
 const weatherCoreCreateBeforeCondensation=weatherCoreCreate;
 weatherCoreCreate=function(seed,N,climate,axis){
@@ -161,14 +175,10 @@ weatherCoreCreate=function(seed,N,climate,axis){
   core.cloudWaterState=new Float32Array(core.count);
   core.condensationRate=new Float32Array(core.count);
   core.cloudEvaporationRate=new Float32Array(core.count);
-  const beforeVapor=new Float32Array(core.vaporColumn);
+  core.phaseVaporBefore=new Float32Array(core.count);
+  const beforeVapor=condCaptureVaporBefore(core);
   const phase=condPhaseChange(core,WEATHER_CORE_FIXED_DT_SEC,climate);
-  const invDt=1/Math.max(1,WEATHER_CORE_FIXED_DT_SEC);
-  for(let i=0;i<core.count;i++){
-    const dv=beforeVapor[i]-core.vaporColumn[i];
-    core.condensationRate[i]=Math.max(0,dv)*invDt;
-    core.cloudEvaporationRate[i]=Math.max(0,-dv)*invDt;
-  }
+  condRefreshRates(core,beforeVapor,WEATHER_CORE_FIXED_DT_SEC);
   core.cloudAdvectedMass=0;
   core.condensedMass=phase.condensed;
   core.cloudEvaporatedMass=phase.evaporated;
@@ -184,14 +194,9 @@ weatherCoreStep=function(core,dtSec,climate,axis){
   weatherCoreStepBeforeCondensation(core,dtSec,climate,axis);
   const dt=weatherClamp(dtSec,0,WEATHER_CORE_FIXED_DT_SEC);
   core.cloudAdvectedMass=condAdvectCloud(core,dt);
-  const beforeVapor=new Float32Array(core.vaporColumn);
+  const beforeVapor=condCaptureVaporBefore(core);
   const phase=condPhaseChange(core,dt,climate);
-  const invDt=1/Math.max(1,dt);
-  for(let i=0;i<core.count;i++){
-    const dv=beforeVapor[i]-core.vaporColumn[i];
-    core.condensationRate[i]=Math.max(0,dv)*invDt;
-    core.cloudEvaporationRate[i]=Math.max(0,-dv)*invDt;
-  }
+  condRefreshRates(core,beforeVapor,dt);
   core.condensedMass=phase.condensed;
   core.cloudEvaporatedMass=phase.evaporated;
   /* Phase exchange and cloud advection conserve atmospheric H2O exactly.
@@ -205,7 +210,7 @@ weatherCoreStep=function(core,dtSec,climate,axis){
 const weatherCoreFiniteBeforeCondensation=weatherCoreFinite;
 weatherCoreFinite=function(core){
   if(!weatherCoreFiniteBeforeCondensation(core)) return false;
-  for(const k of ['cloudWaterState','condensationRate','cloudEvaporationRate']){
+  for(const k of ['cloudWaterState','condensationRate','cloudEvaporationRate','phaseVaporBefore']){
     const a=core?.[k];if(!a||a.length!==core.count) return false;
     for(let i=0;i<a.length;i++) if(!Number.isFinite(a[i])||a[i]<0) return false;
   }
