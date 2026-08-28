@@ -19,14 +19,39 @@ layout(location=0) in vec2 aPos;
 void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }
 '@
 $fragFiles = @('shaders/header.glsl','shaders/noise.glsl','shaders/terrain.glsl','shaders/clouds.glsl','shaders/atmosphere.glsl','shaders/rings.glsl','shaders/fog.glsl','shaders/lightning.glsl','shaders/surface.glsl','shaders/sphere.glsl','shaders/main.glsl')
+# An empty source module concatenates in silence: the program still links,
+# const FRAG is still there, every existing check passes - and the planet
+# comes out with no clouds and no surface at all. That is exactly how a
+# 0-byte clouds.glsl and surface.glsl reached the develop branch and built
+# with "Build OK". The smallest real module is sphere.glsl at 237 bytes.
+function Assert-NotEmpty([string]$Path, [string]$Text) {
+  if($Text.Trim().Length -lt 120) {
+    throw "source module looks empty or truncated: $Path ($($Text.Length) bytes)"
+  }
+}
 $parts = New-Object System.Collections.Generic.List[string]
 $parts.Add('#version 300 es')
-foreach($rel in $fragFiles){ $parts.Add((Read-Utf8Strict (Join-Path $DIR $rel))) }
+foreach($rel in $fragFiles){
+  $text = Read-Utf8Strict (Join-Path $DIR $rel)
+  Assert-NotEmpty $rel $text
+  $parts.Add($text)
+}
 $FRAG = $parts -join "`n"
+foreach($rel in @('shaders/compat.glsl','shaders/aurora-pass.glsl','shaders/sky-pass.glsl')){
+  Assert-NotEmpty $rel (Read-Utf8Strict (Join-Path $DIR $rel))
+}
 $COMPAT = "#version 300 es`n" + (Read-Utf8Strict (Join-Path $DIR 'shaders/compat.glsl'))
 $AURORA = "#version 300 es`n" + (Read-Utf8Strict (Join-Path $DIR 'shaders/aurora-pass.glsl'))
 $SKY = "#version 300 es`n" + (Read-Utf8Strict (Join-Path $DIR 'shaders/sky-pass.glsl'))
 $shell = Read-Utf8Strict (Join-Path $DIR 'index.src.html')
+
+# The version number lives in VERSION.txt and nowhere else. It used to be
+# duplicated in index.src.html as well, and bumping only one of the two took
+# about a minute: the build reported OK and the deploy then died on
+# "stale build: visible version is not X.Y.Z", pointing at the validator
+# rather than at the file that was actually out of date.
+if($shell -notmatch '<div class="ver">[^<]*</div>') { throw 'index.src.html has no version div to fill in' }
+$shell = [regex]::Replace($shell, '<div class="ver">[^<]*</div>', ('<div class="ver">v' + $version + '</div>'))
 $jsFiles = @('js/gl-init.js','js/math.js','js/hydrology.js','js/state.js','js/camera.js','js/magnetosphere.js','js/ui.js','js/screenshot.js','js/render.js')
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine($shell.TrimEnd())
@@ -37,7 +62,11 @@ $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine('const COMPAT_FRAG = `'+$COMPAT+'`;')
 [void]$sb.AppendLine('const AURORA_FRAG = `'+$AURORA+'`;')
 [void]$sb.AppendLine('const SKY_FRAG = `'+$SKY+'`;')
-foreach($rel in $jsFiles){ [void]$sb.AppendLine((Read-Utf8Strict (Join-Path $DIR $rel)).TrimEnd()); [void]$sb.AppendLine() }
+foreach($rel in $jsFiles){
+  $text = Read-Utf8Strict (Join-Path $DIR $rel)
+  Assert-NotEmpty $rel $text
+  [void]$sb.AppendLine($text.TrimEnd()); [void]$sb.AppendLine()
+}
 [void]$sb.AppendLine('</script>')
 [void]$sb.AppendLine('</body>')
 [void]$sb.AppendLine('</html>')

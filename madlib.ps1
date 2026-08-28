@@ -88,6 +88,16 @@ function Test-MadBuild([string]$Path, [string]$Version) {
   $closeScripts = ([regex]::Matches($html, '(?i)</script>')).Count
   if($openScripts -ne 1 -or $closeScripts -ne 1) { throw "script tag mismatch: open=$openScripts close=$closeScripts" }
   if($html -notmatch 'const\s+FRAG\s*=' -or $html -notmatch 'const\s+COMPAT_FRAG\s*=' -or $html -notmatch 'const\s+AURORA_FRAG\s*=') { throw 'embedded shaders missing' }
+  # Present is not the same as complete. An empty shader module concatenates
+  # silently, so const FRAG exists and the file looks fine while the planet
+  # has lost its clouds or its surface. build.ps1 guards its own inputs, but
+  # deploy-from-github runs the build.ps1 of whatever branch it cloned, so the
+  # assembled result is checked here as well.
+  foreach($sym in @('shadeSurface','cumulusRegion','terrain','lightningGlow','atmoColor','iSphere','ringPattern','fogLayer','fbm')) {
+    if($html -notmatch ('[^A-Za-z0-9_]' + [regex]::Escape($sym) + '\s*\(')) {
+      throw "assembled shader has no $sym(): a source module is empty or truncated"
+    }
+  }
   $versionStamp = "const APP_VERSION = '$Version';"
   if(-not $html.Contains($versionStamp)) { throw "stale build: APP_VERSION is not $Version" }
   if(-not $html.Contains("<div class=`"ver`">v$Version</div>")) { throw "stale build: visible version is not $Version" }

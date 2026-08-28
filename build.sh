@@ -5,6 +5,20 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 OUT="${1:-$DIR/index.html}"
 VERSION="$(sed -nE 's/^VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+)[[:space:]]*$/\1/p' "$DIR/VERSION.txt" | head -1)"
 [ -n "$VERSION" ] || { echo 'VERSION.txt invalid' >&2; exit 1; }
+
+# An empty source module concatenates in silence: the program still links and
+# every existing check passes, but the planet comes out with no clouds and no
+# surface. That is how a 0-byte clouds.glsl reached develop and built "OK".
+# The smallest real module is sphere.glsl at 237 bytes.
+assert_not_empty() {
+  local f="$1" n
+  n=$(wc -c < "$DIR/$f" | tr -d ' ')
+  if [ "$n" -lt 120 ]; then
+    echo "source module looks empty or truncated: $f ($n bytes)" >&2
+    exit 1
+  fi
+}
+for f in shaders/*.glsl js/*.js; do assert_not_empty "$f"; done
 VERT='#version 300 es
 layout(location=0) in vec2 aPos;
 void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }'
@@ -26,8 +40,10 @@ AURORA_FRAG="#version 300 es
 $(cat "$DIR/shaders/aurora-pass.glsl")"
 SKY_FRAG="#version 300 es
 $(cat "$DIR/shaders/sky-pass.glsl")"
+# The version number lives in VERSION.txt and nowhere else; the visible
+# stamp is filled in here rather than duplicated in the source shell.
 {
-  cat "$DIR/index.src.html"
+  sed -E "s#<div class=\"ver\">[^<]*</div>#<div class=\"ver\">v${VERSION}</div>#" "$DIR/index.src.html"
   printf '\nconst APP_VERSION = %q;\n' "$VERSION" | sed "s/^const APP_VERSION = /const APP_VERSION = '/; s/;$/';/"
   printf '\nconst VERT = `%s`;\n' "$VERT"
   printf '\nconst FRAG = `%s`;\n' "$FRAG"

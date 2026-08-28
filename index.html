@@ -245,7 +245,9 @@
 
 <div class="mark">
   <h1>madPlanet</h1>
-  <div class="ver">v0.5.31</div>
+  <!-- Номер подставляет сборка из VERSION.txt: держать его здесь вторым
+       экземпляром значит однажды поднять только один из двух. -->
+  <div class="ver">v0.5.32</div>
   <div class="sub">МИР <b id="seedLabel">№ —</b></div>
 </div>
 
@@ -290,7 +292,7 @@
 <script>
 'use strict';
 
-const APP_VERSION = '0.5.31';
+const APP_VERSION = '0.5.32';
 const VERT = `#version 300 es
 layout(location=0) in vec2 aPos;
 void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
