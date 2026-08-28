@@ -9,23 +9,26 @@
        w ~= U dot grad(h)
 
    Positive w means air is climbing the resolved mountain belt; negative w is
-   leeward descent. Column temperature receives a bounded adiabatic tendency.
-   The 0.5.44 saturation/condensation layer then decides whether that cooling
-   actually forms cloud water, and 0.5.45 precipitation removes mature
-   condensate. Descending air warms and increases its saturation deficit, so
-   rain shadow emerges without deleting atmospheric water by fiat.
+   leeward descent. Column temperature receives a bounded dry-adiabatic
+   tendency. The 0.5.44 saturation/condensation layer then decides whether
+   that cooling forms cloud water and applies latent heat exactly once; 0.5.45
+   precipitation removes mature condensate. Descending air warms and raises
+   its saturation deficit, so rain shadow emerges without deleting water.
+
+   Orographic temperature tendencies are area-mean neutral each tick: relief
+   redistributes heat locally but cannot become a global heat source/sink just
+   because the coarse grid resolves more ascent than descent at one moment.
 
    This module is loaded immediately after weather-core.js. Later physics
    wrappers (energy, baric, wind, H2O, condensation, precipitation) therefore
    operate on its temperature tendency in the same fixed weather tick. The
-   explicit operator split uses the wind momentum present at the start of the
+   explicit operator split uses wind momentum present at the start of the
    tick; the momentum equation advances that wind later in the chain.
 */
 
 const OROGRAPHIC_LIFT_MODEL = 1;
 const ORO_EFFECTIVE_RELIEF_M = 5200.0;
 const ORO_DRY_LAPSE_K_M = 0.0098;
-const ORO_MOIST_LAPSE_K_M = 0.0055;
 const ORO_COLUMN_COUPLING = 0.55;
 const ORO_MAX_VERTICAL_MS = 4.0;
 const ORO_MAX_TEMP_TICK_K = 3.0;
@@ -100,32 +103,45 @@ function orographicApplyThermodynamics(core,dtSec,climate){
   const dt=oroClamp(dtSec,0,(typeof WEATHER_CORE_FIXED_DT_SEC==='number'?WEATHER_CORE_FIXED_DT_SEC:300));
   const wu=core.windStateU||core.windU,wv=core.windStateV||core.windV;
   if(!wu||!wv) return core;
+
+  let sw=0,meanRaw=0;
   for(let i=0;i<core.count;i++){
     const rawW=wu[i]*core.orographicSlopeE[i]+wv[i]*core.orographicSlopeN[i];
     const w=oroClamp(rawW,-ORO_MAX_VERTICAL_MS,ORO_MAX_VERTICAL_MS);
-    const rh=oroRelativeHumidity(core,i,climate);
-    const moist=oroSmooth(0.55,1.05,rh);
-    const lapse=ORO_DRY_LAPSE_K_M+(ORO_MOIST_LAPSE_K_M-ORO_DRY_LAPSE_K_M)*moist;
-    const dT=oroClamp(-w*lapse*dt*ORO_COLUMN_COUPLING,-ORO_MAX_TEMP_TICK_K,ORO_MAX_TEMP_TICK_K);
-    core.airTemp[i]=oroClamp(core.airTemp[i]+dT,80,1400);
+    const rawDT=oroClamp(-w*ORO_DRY_LAPSE_K_M*dt*ORO_COLUMN_COUPLING,-ORO_MAX_TEMP_TICK_K,ORO_MAX_TEMP_TICK_K);
     core.orographicVerticalVelocity[i]=w;
-    core.orographicDeltaT[i]=dT;
+    core.orographicDeltaT[i]=rawDT;
 
+    const rh=oroRelativeHumidity(core,i,climate);
     const up=Math.max(0,w),down=Math.max(0,-w);
     const wet=0.25+0.75*oroSmooth(0.35,1.05,rh);
     core.windwardLiftIndex[i]=oroClamp(oroSmooth(0.03,0.75,up)*wet,0,1);
     /* Rain shadow is a diagnostic of active descending flow. The actual
-       drying is thermodynamic: descent warms the air while windward
-       condensation/precipitation has already removed part of its H2O. */
+       drying is thermodynamic: descent warms the air while prior windward
+       condensation/precipitation has removed part of its H2O. */
     core.rainShadowIndex[i]=oroClamp(oroSmooth(0.03,0.75,down),0,1);
+
+    const a=Math.max(1e-12,core.areaWeight?.[i]||1);
+    sw+=a;meanRaw+=a*rawDT;
   }
+
+  /* Dry adiabatic ascent/descent redistributes sensible heat. Remove the
+     unresolved area-mean component so relief cannot drift global T. Latent
+     heating/cooling remains exclusively in condensation.js. */
+  meanRaw/=Math.max(1e-12,sw);
+  for(let i=0;i<core.count;i++){
+    const dT=oroClamp(core.orographicDeltaT[i]-meanRaw,-ORO_MAX_TEMP_TICK_K,ORO_MAX_TEMP_TICK_K);
+    core.orographicDeltaT[i]=dT;
+    core.airTemp[i]=oroClamp(core.airTemp[i]+dT,80,1400);
+  }
+  core.orographicMeanCorrectionK=meanRaw;
   return core;
 }
 
 const weatherCoreCreateBeforeOrographicLift=weatherCoreCreate;
 weatherCoreCreate=function(seed,N,climate,axis){
   const core=weatherCoreCreateBeforeOrographicLift(seed,N,climate,axis);
-  oroEnsureFields(core);
+  oroEnsureFields(core);core.orographicMeanCorrectionK=0;
   return core;
 };
 
@@ -144,6 +160,7 @@ weatherCoreFinite=function(core){
     const a=core?.[k];if(!a||a.length!==core.count)return false;
     for(let i=0;i<a.length;i++) if(!Number.isFinite(a[i])) return false;
   }
+  if(!Number.isFinite(core.orographicMeanCorrectionK)) return false;
   for(let i=0;i<core.count;i++){
     if(core.windwardLiftIndex[i]<0||core.windwardLiftIndex[i]>1.000001) return false;
     if(core.rainShadowIndex[i]<0||core.rainShadowIndex[i]>1.000001) return false;
