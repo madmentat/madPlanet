@@ -1,4 +1,4 @@
 VERSION 0.5.36
 Base: 0.5.35
-Changes: atmosphere inventories v1 - gases are independent absolute column inventories; adding one gas no longer removes the others; surface pressure, composition, molecular weight, density and scale height are derived from inventories and gravity. Legacy atmo is now a hidden compatibility proxy and old links migrate into v5 inventory state.
+Changes: atmosphere inventories v1 - gases are independent absolute column inventories; adding one gas no longer removes the others; surface pressure, composition, molecular weight, density and scale height are derived from inventories and gravity. Legacy atmo is now a hidden compatibility proxy and old links migrate into v5 inventory state. Pre-release touch UX fixes: open parameter panels scroll from a vertical swipe anywhere on the touch screen without accidentally moving sliders; scrollbars are hidden; a planet/star drag-mode button makes light-source rotation available without a mouse.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
