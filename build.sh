@@ -50,7 +50,7 @@ $(cat "$DIR/shaders/sky-pass.glsl")"
   printf '\nconst COMPAT_FRAG = `%s`;\n' "$COMPAT_FRAG"
   printf '\nconst AURORA_FRAG = `%s`;\n' "$AURORA_FRAG"
   printf '\nconst SKY_FRAG = `%s`;\n' "$SKY_FRAG"
-  for f in js/gl-init.js js/math.js js/hydrology.js js/state.js js/camera.js js/magnetosphere.js js/touch-ux.js js/ui.js js/planet-physics.js js/star-orbit.js js/param-model.js js/screenshot.js js/atmosphere-inventory.js js/volcanic-atmosphere-coupling.js js/water-budget.js js/climate-regimes.js js/stellar-weather-coupling.js js/weather-core.js js/local-energy-balance.js js/baric-field.js js/render.js; do cat "$DIR/$f"; printf '\n'; done
+  for f in js/gl-init.js js/math.js js/hydrology.js js/state.js js/camera.js js/magnetosphere.js js/touch-ux.js js/ui.js js/planet-physics.js js/star-orbit.js js/param-model.js js/screenshot.js js/atmosphere-inventory.js js/volcanic-atmosphere-coupling.js js/water-budget.js js/climate-regimes.js js/stellar-weather-coupling.js js/weather-core.js js/local-energy-balance.js js/baric-field.js js/wind-dynamics.js js/render.js; do cat "$DIR/$f"; printf '\n'; done
   printf '</script>\n</body>\n</html>\n'
 } > "$OUT"
 node -e "const fs=require('fs');const s=fs.readFileSync(process.argv[1],'utf8');if((s.match(/<script(?:\\s|>)/gi)||[]).length!==1||(s.match(/<\\/script>/gi)||[]).length!==1)process.exit(2);if(!s.includes(\"const APP_VERSION = '$VERSION'\"))process.exit(3);" "$OUT"
