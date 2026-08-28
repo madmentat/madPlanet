@@ -188,3 +188,19 @@ if(typeof atmoCompFromGases==='function'){
     return Math.max(base,0.48*steam);
   };
 }
+
+/* The old renderer proxy was capped at 1 even if a steam atmosphere became
+   tens or hundreds of Earth columns. Keep the Earth-like 0..1 mapping exactly
+   where it matters for compatibility, then continue logarithmically up to 3.
+   This makes a real high-pressure greenhouse visibly thicker/brighter without
+   feeding a fake pressure back into climateModel(), which uses inventories. */
+if(typeof updateLegacyAtmoProxy==='function' &&
+   typeof gasInventoryTotal==='function' && typeof atmosphereGravityEarth==='function'){
+  updateLegacyAtmoProxy=function(){
+    const column=Math.max(0,gasInventoryTotal()*atmosphereGravityEarth());
+    const raw=Math.max(0,(column-0.10)/1.55);
+    state.atmo=raw<=1 ? raw : Math.min(3.0,1+0.58*Math.log1p(raw-1));
+    return state.atmo;
+  };
+  updateLegacyAtmoProxy();
+}
