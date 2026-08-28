@@ -10,6 +10,8 @@ const PARAMS = [
   {k:'ringInner',  label:'Радиус колец',           def:0.40, group:'Кольца'},
   {k:'ringWidth',  label:'Ширина колец',           def:0.62, group:'Кольца'},
   {k:'ringDens',   label:'Плотность колец',        def:0.60, group:'Кольца'},
+  {k:'ringCount',  label:'Число колец',            def:0.45, group:'Кольца'},
+  {k:'ringMat',    label:'Материал колец',         def:0.35, group:'Кольца'},
   {k:'cloudLow',   label:'Нижний слой',            def:0.48, group:'Климат'},
   {k:'cloudMid',   label:'Средний слой',            def:0.44, group:'Климат'},
   {k:'cloudHigh',  label:'Верхний слой',             def:0.30, group:'Климат'},
@@ -67,6 +69,14 @@ function distanceInfo(v){
   const hz = starPhysics(state?.star ?? 0.43, state?.luminosity ?? 0.52).hz;
   const q = au/hz;
   return {au, hz, q, label:au.toFixed(2)+' AU · '+(q<0.78?'холодная зона':q>1.45?'горячая зона':'зона Златовласки')};
+}
+/* Подпись материала колец: лёд - камень - пыль. */
+function ringMatLabel(t){
+  if(t < 0.28) return 'лёд';
+  if(t < 0.45) return 'лёд/камень';
+  if(t < 0.62) return 'камень';
+  if(t < 0.80) return 'камень/пыль';
+  return 'пыль';
 }
 function atmoLabel(t){
   if(t < 0.12) return 'N₂/O₂';

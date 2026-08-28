@@ -76,6 +76,7 @@ function createPanel(group){
       if(p.k==='magAzimuth') text = (state.magAzimuth*360).toFixed(0)+'°';
       if(p.k==='aurora') text = auroraKpLabel(state.aurora);
       if(p.k==='atmoComp') text = atmoLabel(state.atmoComp);
+      if(p.k==='ringMat') text = ringMatLabel(state.ringMat);
       if(p.k==='luminosity') text = luminosityLabel(state.luminosity);
       if(p.k==='distance'){ const q=distanceInfo(state.distance); text=q.label; }
       valSpan.textContent = text;
@@ -172,6 +173,20 @@ function openPanel(group){
   /* Позиционирование */
   positionPanel(el);
 }
+/* Три способа закрыть панель вместо одного: крестик, Escape и щелчок мимо.
+   Если по какой-то причине не срабатывает один, остаются другие. */
+addEventListener('keydown', e => {
+  if(e.key === 'Escape' && openPanelGroup) closePanel(openPanelGroup);
+});
+addEventListener('pointerdown', e => {
+  if(!openPanelGroup) return;
+  const el = panels[openPanelGroup];
+  if(!el) return;
+  if(el.contains(e.target)) return;
+  if(rubricEl.contains(e.target)) return;      /* по кнопке рубрикатора работает toggle */
+  closePanel(openPanelGroup);
+}, true);
+
 function closePanel(group){
   const el = panels[group];
   if(el) el.classList.remove('open');
@@ -267,6 +282,7 @@ function syncDynamicLabels(){
     else if(p.k==='magAzimuth') el.textContent = (state.magAzimuth*360).toFixed(0)+'°';
     else if(p.k==='aurora') el.textContent = auroraKpLabel(state.aurora);
     else if(p.k==='atmoComp') el.textContent = atmoLabel(state.atmoComp);
+    else if(p.k==='ringMat') el.textContent = ringMatLabel(state.ringMat);
     else if(p.k==='luminosity') el.textContent = luminosityLabel(state.luminosity);
     else if(p.k==='distance') el.textContent = distanceInfo(state.distance).label;
   });
@@ -334,6 +350,8 @@ document.getElementById('rand').addEventListener('click', () => {
   state.ringInner = 0.2 + r()*0.6;
   state.ringWidth = 0.25 + r()*0.7;
   state.ringDens = 0.3 + r()*0.65;
+  state.ringCount = r();
+  state.ringMat = r();
   deriveWorld(); markRenderUniformsDirty(); syncUI(); saveHash();
 });
 
@@ -342,7 +360,12 @@ let hashT = 0;
 function saveHash(){
   clearTimeout(hashT);
   hashT = setTimeout(() => {
-    const v = ['v2', state.seed, ...PARAMS.map(p => (+state[p.k]).toFixed(3)),
+    /* В хэш пишется число параметров. Формат позиционный, и без счётчика
+       добавление любого ползунка сдвигало все флаги: старая ссылка читалась
+       как новая, «средний ярус» попадал на место «пустого космоса», и у мира
+       молча пропадали звёзды. Со счётчиком читатель знает, где кончаются
+       параметры, и старые ссылки продолжают работать. */
+    const v = ['v3', PARAMS.length, state.seed, ...PARAMS.map(p => (+state[p.k]).toFixed(3)),
                state.rings?1:0, state.draft?1:0, state.voidbg?1:0,
                state.texShow?1:0, state.lowOn?1:0, state.midOn?1:0, state.highOn?1:0,
                state.auroraOn?1:0, state.fieldLinesOn?1:0, state.auroraFootpoints?1:0].join(',');
@@ -354,15 +377,52 @@ function loadHash(){
   if(!h) return;
   const parts = h.split(',');
 
-  if(parts[0] === 'v2'){
-    if(parts.length < PARAMS.length + 3) return;
-    const seed = parseInt(parts[1],10);
+  /* Порядок ползунков в v2. Нужен, чтобы старые ссылки читались по именам,
+     а не по позициям: с тех пор список пополнился кольцами, а «Горы» стали
+     «Тектоникой». */
+  const V2_KEYS = ['temp','sea','cont','tect','isle','lake','city',
+                   'cloudLow','cloudMid','cloudHigh','wind','convection',
+                   'atmo','atmoComp','magnet','magTilt','magAzimuth','aurora',
+                   'star','luminosity','distance'];
+
+  function readFlags(off){
+    state.rings   = parts[off+1] === '1';
+    state.draft   = parts[off+2] === '1';
+    state.voidbg  = parts[off+3] === '1';
+    state.texShow = parts[off+4] === '1';
+    state.lowOn   = parts[off+5] !== '0';
+    state.midOn   = parts[off+6] !== '0';
+    state.highOn  = parts[off+7] !== '0';
+    if(parts.length > off+8) state.auroraOn = parts[off+8] !== '0';
+    if(parts.length > off+9) state.fieldLinesOn = parts[off+9] === '1';
+    if(parts.length > off+10) state.auroraFootpoints = parts[off+10] === '1';
+  }
+
+  if(parts[0] === 'v3'){
+    const n = parseInt(parts[1],10);
+    if(!Number.isFinite(n) || n < 1 || parts.length < n + 3) return;
+    const seed = parseInt(parts[2],10);
     if(Number.isFinite(seed)) state.seed = seed;
-    for(let i=0;i<PARAMS.length;i++){
-      const v=parseFloat(parts[i+2]);
+    /* Читаем столько, сколько записано и сколько знаем: ссылка из более
+       старой сборки просто не задаёт новые ползунки, они остаются по
+       умолчанию, а флаги всё равно находятся по счётчику. */
+    for(let i=0;i<Math.min(n, PARAMS.length);i++){
+      const v=parseFloat(parts[i+3]);
       if(Number.isFinite(v)) state[PARAMS[i].k]=Math.max(0,Math.min(1,v));
     }
-    const off=1+PARAMS.length;
+    readFlags(2+n);
+    return;
+  }
+
+  if(parts[0] === 'v2'){
+    if(parts.length < V2_KEYS.length + 3) return;
+    const seed = parseInt(parts[1],10);
+    if(Number.isFinite(seed)) state.seed = seed;
+    for(let i=0;i<V2_KEYS.length;i++){
+      const v=parseFloat(parts[i+2]);
+      if(Number.isFinite(v) && (V2_KEYS[i] in state)) state[V2_KEYS[i]]=Math.max(0,Math.min(1,v));
+    }
+    const off=1+V2_KEYS.length;
     state.rings   = parts[off+1] === '1';
     state.draft   = parts[off+2] === '1';
     state.voidbg  = parts[off+3] === '1';

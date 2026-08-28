@@ -12,8 +12,8 @@ const state = read('js/state.js');
 const versionText = read('VERSION.txt');
 const version = (versionText.match(/^VERSION\s+(\d+\.\d+\.\d+)\s*$/m) || [])[1];
 
-assert.equal(version, '0.5.22', 'visual regression test belongs to release 0.5.22');
-assert.match(shell, /<div class="ver">v0\.5\.22<\/div>/, 'visible app version must match');
+assert.equal(version, '0.5.23', 'visual regression test belongs to release 0.5.23');
+assert.match(shell, /<div class="ver">v0\.5\.23<\/div>/, 'visible app version must match');
 assert.match(shell, /\.mark h1\{[^}]*font-size:19px/s, 'desktop wordmark should remain larger');
 assert.match(shell, /\.mark h1\{font-size:16px/s, 'mobile wordmark should remain compact');
 
@@ -96,5 +96,22 @@ assert.ok(!/vec3 SLOPE = vec3\(0\.420,0\.340,0\.180\)/.test(surface), 'the sandy
 assert.match(state, /k:'ringInner'/, 'ring radius control missing');
 assert.match(state, /k:'ringWidth'/, 'ring width control missing');
 assert.match(state, /k:'ringDens'/, 'ring density control missing');
+
+/* 0.5.23: хэш обязан нести версию и число параметров. Формат позиционный,
+   и без счётчика добавление ползунка сдвигало флаги — у старой ссылки молча
+   пропадали звёзды, потому что «средний ярус» читался как «пустой космос». */
+const ui = read('js/ui.js');
+assert.match(ui, /'v3', PARAMS\.length, state\.seed/, 'hash must carry a version and the parameter count');
+assert.match(ui, /const V2_KEYS = /, 'old v2 links must be migrated by name, not by position');
+/* Закрыть панель должно быть чем угодно, а не только крестиком 18x18. */
+assert.match(shell, /\.param-panel \.p-close\{[^}]*width:36px;height:36px/s, 'close button needs a finger-sized target');
+assert.match(ui, /e\.key === 'Escape'/, 'Escape must close the open panel');
+/* Кольца: количество и материал. */
+assert.match(state, /k:'ringCount'/, 'ring count control missing');
+assert.match(state, /k:'ringMat'/, 'ring material control missing');
+assert.match(state, /function ringMatLabel/, 'ring material label missing');
+/* Шапка не круглая, снег на хребтах не сплошной. */
+assert.match(surface, /float capEdge = /, 'polar cap edge must be perturbed at continental scale');
+assert.match(surface, /float steepBare = /, 'ridges must lose snow on steep faces');
 
 console.log('visual-regressions.test.js: OK');

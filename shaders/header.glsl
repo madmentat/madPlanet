@@ -20,6 +20,8 @@ uniform float uRingsOn;
 uniform float uRingInner;  /* внутренний радиус */
 uniform float uRingWidth;  /* ширина системы */
 uniform float uRingDens;   /* плотность вещества */
+uniform float uRingCount;  /* дробность на отдельные кольца */
+uniform float uRingMaterial; /* материал: лёд - камень - пыль */
 uniform vec3  uStarCol;     /* спектральный цвет */
 uniform float uStarRadius;  /* относительный видимый диск */
 uniform float uStarFlux;    /* поток излучения */

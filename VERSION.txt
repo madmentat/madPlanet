@@ -1,4 +1,4 @@
-VERSION 0.5.22
-Base: 0.5.21
-Changes: ring radius/width/density controls; crookeder and regionally varied mountain belts; rock-coloured slopes instead of ochre foothills; sharper slope shadows; irreversible cloud evaporation over arid zones; cloud cover no longer outlines coastlines.
+VERSION 0.5.23
+Base: 0.5.22
+Changes: fixed URL hash losing stars/sun after new sliders were added; larger panel close target plus Esc and click-outside; ring count and material; irregular polar cap outline; broken snow cover on ridges.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
