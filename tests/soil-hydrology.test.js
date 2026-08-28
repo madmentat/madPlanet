@@ -79,9 +79,18 @@ for(let n=0;n<core.count;n++){
 }
 assert.ok(coast>=0,'test grid needs a land-to-ocean runoff edge');
 core.runoffWater.fill(0);core.runoffWater[coast]=20;
+const coast0=ctx.h2oAreaMean(core,core.runoffWater);
 const ocean=ctx.soilRouteRunoff(core,3600);
+const coast1=ctx.h2oAreaMean(core,core.runoffWater);
 assert.ok(ocean.ocean>0&&core.runoffOceanReturnRate[coast]>0,'coastal runoff must explicitly return water to the ocean reservoir');
-assert.ok(ctx.h2oAreaMean(core,core.runoffWater)<20,'ocean return must remove local runoff storage');
+assert.ok(coast1<coast0,'ocean return must remove area-weighted local runoff storage');
+
+/* If a sea-level/capacity change floods a formerly wet soil cell, stale soil
+   water cannot survive above the new zero capacity. */
+core.soilMoisture[i]=5;core.surfaceWaterFraction[i]=1;core.soilHydrologySignature='';
+ctx.soilRefreshCapacity(core);
+assert.equal(core.soilMoisture[i],0,'flooded soil must be clipped to its new capacity');
+assert.ok(core.soilCapacityOceanReturnMass>0,'flooded soil water must be recorded as a bulk-ocean return');
 
 /* Bare soil evaporation transfers mass back to vapor. */
 core.surfaceWaterFraction[i]=0;core.surfaceLiquidWater[i]=0;core.soilCapacity[i]=100;core.soilMoisture[i]=40;
