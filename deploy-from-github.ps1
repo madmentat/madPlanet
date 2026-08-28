@@ -51,19 +51,22 @@ try {
   Write-Host "[madPlanet] validation OK: version=$version UTF-8 script=1/1 ${sizeKB}KB SHA256=$hash"
 
   # The sources on the branch must reproduce the index.html committed beside
-  # them. A mismatch means someone edited one without the other, and it is
-  # worth saying so out loud - but the sources win, because they are what the
-  # build is made of.
+  # them. A mismatch means someone edited one without the other; the sources
+  # win, because they are what the build is made of, but it is worth saying so
+  # out loud.
+  # The comparison is on text, not bytes: .gitattributes keeps the repository
+  # in LF while build.ps1 writes CRLF on Windows, so a byte comparison would
+  # fire on every single deploy and be ignored within a week.
   $committed = Join-Path $work 'index.html'
   if(Test-Path -LiteralPath $committed) {
-    $committedHash = (Get-FileHash -LiteralPath $committed -Algorithm SHA256).Hash.ToLowerInvariant()
-    if($committedHash -ne $hash) {
+    $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
+    $a = ([System.IO.File]::ReadAllText($committed, $utf8)) -replace "`r`n", "`n"
+    $b = ([System.IO.File]::ReadAllText($built, $utf8)) -replace "`r`n", "`n"
+    if($a -ne $b) {
       Write-Warning 'committed index.html does not match a fresh build of its own sources'
-      Write-Warning "  committed $committedHash"
-      Write-Warning "  rebuilt   $hash"
       Write-Warning 'Publishing the fresh build.'
     } else {
-      Write-Host '[madPlanet] committed index.html reproduces byte for byte.'
+      Write-Host '[madPlanet] committed index.html reproduces from its sources.'
     }
   }
 

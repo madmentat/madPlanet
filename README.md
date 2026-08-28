@@ -35,13 +35,32 @@ bash tests/run-all.sh
 - `shaders/` — GLSL по модулям: шум, рельеф, облака, поверхность, атмосфера, кольца, сияния.
 - `js/` — инициализация WebGL, состояние и URL-хэш, камера, интерфейс, цикл рендера, гидрология.
 - `tests/` — проверки целостности сборки, защиты от известных регрессий, юнит-тесты гидрологии и магнитосферы.
-- `deploy.ps1` / `deploy.sh` — публикация собранного `index.html` (специфичны для сервера автора).
+- `deploy.ps1` / `deploy.sh` — публикация собранного `index.html` из рабочего каталога (специфичны для сервера автора).
+- `push.ps1` / `deploy-from-github.ps1` — пара «наверх и вниз»: первый отправляет рабочее дерево на ветку, второй берёт ветку оттуда и публикует.
+- `madlib.ps1` — общие для всех трёх проверки сборки и загрузка на сервер.
 
 
 ## Обновление без ручной возни
 1. Полностью распакуйте содержимое архива поверх старой папки `madPlanet_opencode`, согласившись на замену файлов.
 2. Ничего вручную по подпапкам переносить не нужно.
 3. Для публикации запустите `deploy.ps1` — он сам пересоберёт `index.html`, загрузит его и проверит SHA-256 на сервере.
+
+## Через GitHub
+
+Две дороги к серверу. Короткая — `deploy.ps1` — публикует то, что лежит на столе прямо сейчас, вместе со всеми недоделанными опытами. Длинная идёт через репозиторий:
+
+```powershell
+.\push.ps1                          # собрать, проверить, закоммитить и отправить на develop
+.\deploy-from-github.ps1            # склонировать develop во временный каталог, собрать там и опубликовать
+```
+
+`deploy-from-github.ps1` не читает и не пишет рабочий каталог вовсе, поэтому на сервер попадает ровно то, что получит любой другой, забрав эту ветку. Откат делается тем же скриптом:
+
+```powershell
+.\deploy-from-github.ps1 -Branch snapshot/0.5.30
+```
+
+Проверки сборки у обеих дорог общие и лежат в `madlib.ps1`: пока они жили внутри `deploy.ps1`, вторая дорога могла бы опубликовать то, что первая отвергла бы.
 
 `index.html` — сгенерированный deployable-файл; правки вносятся в `index.src.html`, `js/` и `shaders/`.
 
@@ -85,7 +104,9 @@ Starting with 0.5.1, every packaged madPlanet archive gets a unique semantic ver
 
 A release archive must not be produced if the build-integrity tests fail. In particular, `index.html` must be strict UTF-8, must contain exactly one opening `<script>` and one closing `</script>`, and the assembled JavaScript must pass syntax checking.
 
-For Windows PowerShell 5.1 compatibility, `deploy.ps1` and `build.ps1` must remain ASCII-only source files. Cyrillic validation sentinels in `deploy.ps1` are constructed from Unicode code points rather than embedded as literal text.
+For Windows PowerShell 5.1 compatibility, every `.ps1` in the project must remain an ASCII-only source file. Cyrillic validation sentinels in `madlib.ps1` are constructed from Unicode code points rather than embedded as literal text.
+
+PowerShell 5.1 also raises a terminating error for anything a native program writes to stderr while `$ErrorActionPreference` is `Stop`, and git writes ordinary notices there. Every git, scp and ssh call therefore runs with the preference relaxed, and success is decided by the exit code alone.
 
 
 ## 0.5.3
