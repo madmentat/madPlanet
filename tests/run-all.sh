@@ -22,6 +22,7 @@ node tests/atmosphere-inventory.test.js
 node tests/water-budget.test.js
 node tests/climate-regimes.test.js
 node tests/stellar-weather-coupling.test.js
+node tests/weather-core.test.js
 node tests/touch-ux.test.js
 node tests/chromium-compat.test.js
 node tests/hydrology.test.js
