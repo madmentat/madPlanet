@@ -1,4 +1,4 @@
-VERSION 0.5.40
-Base: 0.5.39
-Changes: local Weather Core energy balance v1 - every cubed-sphere cell now tracks area weight, daily-mean equinox insolation, local albedo with ice feedback, absorbed shortwave flux, outgoing longwave radiation and net radiative balance; surface temperature changes from net W/m2 through explicit effective heat capacity while local air temperature follows with finite thermal inertia. Cubed-sphere diagnostics use area weighting so the global mean insolation remains near S0/4. User-controlled light rotation remains visual only and cannot rewrite physical climate; diurnal illumination, seasons and horizontal heat transport remain later milestones. Includes the 0.5.39 volcanic-atmosphere hotfix as the new baseline.
+VERSION 0.5.41
+Base: 0.5.40
+Changes: local Weather Core baric field v1 - each cell now owns a persistent mass-conserving pressure state, pressure target/anomaly, local air density and hydrostatic scale height. Thermal contrasts diagnose redistribution tendencies so warm regions relax toward relative lows and cold regions toward highs, while the cubed-sphere area-weighted mean pressure remains exactly tied to the real atmospheric gas column and gravity; temperature never creates or destroys global surface pressure. Baric anomalies relax on a multi-hour timescale and are ready to drive pressure-gradient winds in 0.5.42.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
