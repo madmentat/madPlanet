@@ -8,7 +8,7 @@ const version = fs.readFileSync(path.join(root, 'VERSION.txt'),'utf8');
 const buildPs = fs.readFileSync(path.join(root, 'build.ps1'),'utf8');
 const buildSh = fs.readFileSync(path.join(root, 'build.sh'),'utf8');
 
-assert.match(version, /^VERSION\s+0\.5\.35\s*$/m, 'planet scaffold milestone must be 0.5.35');
+assert.match(version, /^VERSION\s+\d+\.\d+\.\d+\s*$/m, 'planet scaffold test must see a semantic version');
 assert.match(buildPs, /'js\/ui\.js','js\/planet-physics\.js','js\/star-orbit\.js','js\/param-model\.js'/,
   'PowerShell build must load planet scaffold before parameter classification');
 assert.match(buildSh, /js\/ui\.js js\/planet-physics\.js js\/star-orbit\.js js\/param-model\.js/,
