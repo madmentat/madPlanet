@@ -12,8 +12,8 @@ const state = read('js/state.js');
 const versionText = read('VERSION.txt');
 const version = (versionText.match(/^VERSION\s+(\d+\.\d+\.\d+)\s*$/m) || [])[1];
 
-assert.equal(version, '0.5.24', 'visual regression test belongs to release 0.5.24');
-assert.match(shell, /<div class="ver">v0\.5\.24<\/div>/, 'visible app version must match');
+assert.equal(version, '0.5.25', 'visual regression test belongs to release 0.5.25');
+assert.match(shell, /<div class="ver">v0\.5\.25<\/div>/, 'visible app version must match');
 assert.match(shell, /\.mark h1\{[^}]*font-size:19px/s, 'desktop wordmark should remain larger');
 assert.match(shell, /\.mark h1\{font-size:16px/s, 'mobile wordmark should remain compact');
 
@@ -75,7 +75,7 @@ assert.match(terrainSrc, /sN = normalize\(sN \+ wv\*/, 'plate seams must be warp
 /* Поле должно быть непрерывным: выбор «ближайший + второй сосед» рвал его у
    тройных стыков, и по рельефу шли прямые борозды. Сумма по всем парам от
    выбора не зависит. */
-assert.match(terrainSrc, /for\(int j=0;j<12;j\+\+\)/, 'belt must sum over plate pairs, not a selected pair');
+assert.match(terrainSrc, /for\(int j=i\+1;j<uPlateN;j\+\+\)/, 'belt must sum over plate pairs, not a selected pair');
 assert.ok(!/else if\(d < d2\)/.test(terrainSrc), 'second-neighbour selection must not return');
 assert.match(surface, /temp -= 2\.0\*mount;/, 'snow line must follow orogenic height, not total elevation');
 assert.match(surface, /float arid = /, 'desertification missing');
@@ -124,5 +124,11 @@ assert.match(state, /k:'volcano'/, 'volcanism slider missing');
 assert.match(state, /k:'lava'/, 'lava glow slider missing');
 assert.match(shell, /id="platesOn"/, 'plate schematic toggle missing');
 assert.ok(!/if\(storm < 0\.16\)/.test(lightning), 'the old strict lightning threshold must not return');
+
+/* 0.5.25: иерархия размеров плит и несимметричное схождение. */
+assert.match(state, /const bigPlates = /, 'plate size hierarchy missing: equal cells look artificial');
+assert.match(terrainSrc, /float over = \(uPlateP\[i\]\.w >= uPlateP\[j\]\.w\)/, 'subduction polarity must come from plate weight');
+assert.match(terrainSrc, /float trench = /, 'convergent margin needs a trench on the subducting side');
+assert.ok(!/for\(int i=0;i<12;i\+\+\)/.test(terrainSrc), 'plate loops must be bounded by the uniform, not by the array size');
 
 console.log('visual-regressions.test.js: OK');

@@ -423,10 +423,12 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
      расходятся и проседает рифт. Толщина линии держится около пикселя, иначе
      вблизи она разрастается в полосу. */
   if(uPlatesOn > 0.5){
-    float w = max(tHit*uPixA*2.2, 0.0030);
-    float line = 1.0 - ss(w*0.8, w*2.6, gSeamNear);
+    float w = max(tHit*uPixA*1.4, 0.0022);
+    float line = 1.0 - ss(w*0.7, w*2.2, gSeamNear);
     vec3 lc = (gSeamConv > 0.0) ? vec3(1.00,0.36,0.18) : vec3(0.28,0.72,1.00);
-    col = mix(col, gPlateTint*0.6 + 0.10, 0.18);
+    /* Заливка должна подсказывать ячейки, а не закрывать планету. */
+    vec3 tint = mix(vec3(dot(gPlateTint, vec3(0.33))), gPlateTint, 0.75);
+    col = mix(col, tint*0.62 + 0.12, 0.13);
     col = mix(col, lc, line*0.92);
   }
   return col;

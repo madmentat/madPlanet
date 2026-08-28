@@ -1,4 +1,4 @@
-VERSION 0.5.24
-Base: 0.5.23
-Changes: lithosphere plate schematic overlay; plates of varying size so junctions stop forming regular stars; volcanism and lava glow sliders; lightning made noticeably more frequent.
+VERSION 0.5.25
+Base: 0.5.24
+Changes: Earth-like plate size hierarchy; asymmetric convergent margins with a trench on the subducting side and an arc on the overriding one; toned-down plate schematic.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

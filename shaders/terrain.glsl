@@ -77,8 +77,7 @@ vec3 tectonicBelt(vec3 sN){
      складывались в правильные звёзды и треугольники. */
   float dmin = 1e9;
   vec3 nearSite = uPlateP[0].xyz;
-  for(int i=0;i<12;i++){
-    if(i >= uPlateN) break;
+  for(int i=0;i<uPlateN;i++){
     float d = -dot(sN, uPlateP[i].xyz) - uPlateP[i].w;
     if(d < dmin){ dmin = d; nearSite = uPlateP[i].xyz; }
   }
@@ -90,14 +89,14 @@ vec3 tectonicBelt(vec3 sN){
      пиксель становится в разы меньше. */
   const float REACH = 0.62;
   float num = 0.0, den = 1e-6, leeNum = 0.0, seamNum = 0.0;
-  for(int i=0;i<12;i++){
-    if(i >= uPlateN) break;
+  /* Границы циклов берутся из юниформы. Пар всего 144, и при константной
+     границе компилятор разворачивает тело каждой: именно это раздувает
+     программу и съедает память при линковке. */
+  for(int i=0;i<uPlateN;i++){
     vec3 pi = uPlateP[i].xyz;
     float di = -dot(sN, pi) - uPlateP[i].w - dmin;
     if(di > REACH) continue;
-    for(int j=0;j<12;j++){
-      if(j >= uPlateN) break;
-      if(j <= i) continue;
+    for(int j=i+1;j<uPlateN;j++){
       vec3 pj = uPlateP[j].xyz;
       float dj = -dot(sN, pj) - uPlateP[j].w - dmin;
       float sum2 = di + dj;
@@ -118,8 +117,20 @@ vec3 tectonicBelt(vec3 sN){
       /* Быстрое столкновение расплющивает пояс вширь — так получаются
          нагромождения вроде Тибета, а вялое оставляет одиночную гряду. */
       float convC = clamp(conv*2.4, -1.0, 1.0);
-      float sb = seam/(bw*(0.62 + 1.05*abs(convC)));
+      float bwEff = bw*(0.62 + 1.05*abs(convC));
+      float sb = seam/bwEff;
       float band = exp(-sb*sb);
+      /* Схождение несимметрично. Одна плита уходит под другую, и в разрезе
+         это жёлоб на уходящей стороне, а за ним — вулканическая дуга и
+         хребет на надвигающейся. Кто кого передавит, решает вес: более
+         крупная и толстая плита остаётся сверху. Расхождение, наоборот,
+         симметрично — рифт раскрывается в обе стороны одинаково. */
+      float over = (uPlateP[i].w >= uPlateP[j].w) ? 1.0 : -1.0;
+      float sS = seamS*over;
+      float su = (sS - 0.40*bwEff)/bwEff;
+      float st = (sS + 0.80*bwEff)/(bwEff*0.5);
+      float arc = exp(-su*su);
+      float trench = exp(-st*st);
 
       /* Сторона шва — плавная: у самого гребня она обнуляется, поэтому
          смена знака не создаёт разрыва. */
@@ -134,7 +145,8 @@ vec3 tectonicBelt(vec3 sN){
          давит вес (вклад падает раз в пятнадцать), а схема рисовала бы её
          наравне с настоящими — отсюда и мнимые «звёзды» из пяти лучей. */
       if(wgt > 0.30 && seam < gSeamNear){ gSeamNear = seam; gSeamConv = convC; }
-      num    += wgt*band*convC;
+      float contrib = (convC > 0.0) ? convC*(arc - 0.62*trench) : convC*band;
+      num    += wgt*contrib;
       leeNum += wgt*lee;
       seamNum+= wgt*seam;
       den    += wgt;
