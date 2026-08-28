@@ -22,7 +22,7 @@ $fragFiles = @('shaders/header.glsl','shaders/noise.glsl','shaders/terrain.glsl'
 # An empty source module concatenates in silence: the program still links,
 # const FRAG is still there, every existing check passes - and the planet
 # comes out with no clouds and no surface at all. That is exactly how a
-# 0-byte clouds.glsl and surface.glsl reached the develop branch and built
+# 0-byte clouds.glsl and surface.glsl reached develop and built
 # with "Build OK". The smallest real module is sphere.glsl at 237 bytes.
 function Assert-NotEmpty([string]$Path, [string]$Text) {
   if($Text.Trim().Length -lt 120) {
@@ -52,7 +52,7 @@ $shell = Read-Utf8Strict (Join-Path $DIR 'index.src.html')
 # rather than at the file that was actually out of date.
 if($shell -notmatch '<div class="ver">[^<]*</div>') { throw 'index.src.html has no version div to fill in' }
 $shell = [regex]::Replace($shell, '<div class="ver">[^<]*</div>', ('<div class="ver">v' + $version + '</div>'))
-$jsFiles = @('js/gl-init.js','js/math.js','js/hydrology.js','js/state.js','js/camera.js','js/magnetosphere.js','js/touch-ux.js','js/ui.js','js/planet-physics.js','js/star-orbit.js','js/param-model.js','js/screenshot.js','js/atmosphere-inventory.js','js/water-budget.js','js/climate-regimes.js','js/render.js')
+$jsFiles = @('js/gl-init.js','js/math.js','js/hydrology.js','js/state.js','js/camera.js','js/magnetosphere.js','js/touch-ux.js','js/ui.js','js/planet-physics.js','js/star-orbit.js','js/param-model.js','js/screenshot.js','js/atmosphere-inventory.js','js/water-budget.js','js/climate-regimes.js','js/stellar-weather-coupling.js','js/render.js')
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine($shell.TrimEnd())
 [void]$sb.AppendLine()
