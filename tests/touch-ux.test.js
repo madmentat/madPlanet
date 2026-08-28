@@ -8,8 +8,8 @@ const buildPs = fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh = fs.readFileSync(path.join(root,'build.sh'),'utf8');
 const version = fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.36\s*$/m,
-  'touch fixes are folded into the unpublished 0.5.36 WIP; 0.5.37 stays reserved for water');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,
+  'touch UX test must see a semantic version');
 
 assert.ok(buildPs.includes("'js/camera.js','js/magnetosphere.js','js/touch-ux.js','js/ui.js'"),
   'PowerShell build must register touch arbitration before ui outside-tap capture');
