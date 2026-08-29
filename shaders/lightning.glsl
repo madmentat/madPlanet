@@ -39,10 +39,10 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
   vec3 acc = vec3(0.0);
   if(uLowOn < 0.5 || uCloudLow < 0.05) return acc;
 
-  /* Видимое нижнее облако теперь лишь слегка усиливает уже физически
-     существующий разряд. Нулевая alpha не запрещает ветви рядом с телом
-     кучево-дождевого облака: это устраняет старое обрезание по cloud mask. */
-  float gate = 0.62 + 0.38*ss(0.02,0.16,cloudA);
+  /* Видимое нижнее облако лишь усиливает уже физически существующий разряд.
+     Нулевая alpha не запрещает ветви рядом с телом кучево-дождевого облака:
+     это устраняет старое обрезание по cloud mask в main.glsl. */
+  float gate = 0.55 + 0.45*ss(0.02,0.16,cloudA);
   float lt = mod(uTime, 900.0);
   float rateScale = 0.55 + 2.10*uStormRate*uStormRate;
   float activityScale = 0.75 + 0.90*uStorm*uStorm;
