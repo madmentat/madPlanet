@@ -1,20 +1,18 @@
-/* ---------- молнии ---------- */
-/* cloudA — фактическая непрозрачность нижнего яруса в этом пикселе, уже
-   посчитанная в main(). Раньше каждая из шести грозовых ячеек проверялась
-   по weather() и lowCover() в её собственном центре. Эти величины не
-   зависят от пикселя, но цикл разворачивался, и в шейдер попадало шесть
-   копий погоды и шесть полных копий рельефа — самый дорогой фрагмент всей
-   программы при линковке и на каждый кадр. Гроза оценивается по обстановке
-   в самой точке кадра: свечение всё равно локально (радиус ~0.1 рад), а
-   main() и без того вызывает разряд только там, где есть облачная масса. */
+/* ---------- молнии 0.5.52: только из Weather Core ---------- */
+/*
+   Пять бывших uCycA/uCycB slots временно используются как компактный мост
+   CPU Weather Core -> GLSL. uCycA.w всегда 0, поэтому старые procedural
+   synoptic()/vortexWarp() полностью игнорируют эти записи. Центр грозы теперь
+   приходит из реальной deep-convection ячейки; hash используется только для
+   положения конкретной жилы ВНУТРИ этого физического очага.
 
-/* Ломаная жила разряда. Форму набирают три синуса со случайными фазами:
-   этого хватает на узнаваемый зигзаг с изломами, а стоит он втрое дешевле
-   шумовой выборки — за размер этой программы мы платим временем линковки.
-   Отклонение растёт вниз по каналу: у вершины жила почти прямая, к земле
-   разброс шире — так и ведёт себя ступенчатый лидер.
-   w — половинная ширина канала в радианах, привязанная к размеру пикселя,
-   иначе на отдалении жила тоньше пикселя и рассыпается в пунктир. */
+   A.xyz = центр очага в body/surface coordinates, A.w = 0
+   B.x   = угловой радиус очага
+   B.y   = физическая частота вспышек, Hz
+   B.z   = электрическая интенсивность 0..1
+   B.w   = детерминированная фаза/seed
+*/
+
 float boltChannel(vec2 uv, float len, float wob, vec3 h, float w){
   float t = clamp(uv.y/len, 0.0, 1.0);
   float x = wob*(0.55*sin(uv.y*37.0  + h.x*39.0)
@@ -22,95 +20,91 @@ float boltChannel(vec2 uv, float len, float wob, vec3 h, float w){
                + 0.15*sin(uv.y*197.0 + h.z*97.0))*(0.25 + 0.75*t);
   float d = abs(uv.x - x);
   float live = ss(-0.006, 0.006, uv.y)*(1.0 - ss(len*0.78, len, uv.y));
-  /* Профиль гауссов, а не лоренцев. Лоренциан 1/(1+d²/w²) спадает как 1/d²,
-     и при усилении в два десятка раз даже сотая его доля остаётся хорошо
-     видимой: вместо жилы получалась светящаяся плита во весь очаг, ровно
-     обрезанная сверху и снизу границами канала. Ядро плюс широкий чехол
-     дают резкую нить с ореолом и ничего за его пределами. */
   float k = d/w;
   return live*(exp(-k*k) + 0.14*exp(-k*k*0.06));
+}
+
+/* uRotS is world -> body/surface. Avoid GLSL transpose() so the full shader
+   remains friendly to the existing WebGL1 source transformer. */
+vec3 lightningBodyToWorld(vec3 p){
+  return normalize(vec3(dot(uRotS[0],p),dot(uRotS[1],p),dot(uRotS[2],p)));
 }
 
 vec3 lightningGlow(vec3 dirW, float cloudA){
   vec3 acc = vec3(0.0);
   if(uLowOn < 0.5 || uCloudLow < 0.05) return acc;
-  /* Ворота плавные, а не ступенькой. Раньше это были ранние выходы: стоило
-     грозовому полю или облачной массе чуть просесть, как разряды пропадали
-     разом по всему кадру — отсюда «фигачили, и вдруг перестали». Теперь
-     свечение гаснет постепенно. */
-  float storm = gWx.w * mix(0.45, 1.55, uStorm);
-  float gate = ss(0.03, 0.18, storm) * ss(0.02, 0.16, cloudA);
-  if(gate < 0.002) return acc;
-  /* Время для грозовой модели заворачивается. hash33 нормирует аргумент
-     через fract(p*0.1031), и когда номер цикла дорастает до сотен тысяч, на
-     этом шаге остаётся пара сотен различимых значений — очаги вырождаются.
-     Пятнадцатиминутный оборот держит аргумент в разумных пределах. */
-  float lt = mod(uTime, 900.0);
 
-  /* Первый проход дешёвый: он ищет, какая из шести ячеек сейчас светит в
-     эту точку ярче прочих, и попутно набирает засветку облачной массы.
-     Подсветка облака — вещь широкая и размытая, ей хватает гауссианы;
-     подробный рисунок жилы нужен ровно один, иначе шесть его копий снова
-     раздуют программу. */
+  /* The visual low-cloud alpha remains only a soft visibility gate until
+     0.5.53 maps Weather Core cloud mass directly into the cloud shader. It no
+     longer decides whether a storm physically exists. main() still avoids the
+     expensive call on completely empty low-cloud pixels. */
+  float gate = 0.55 + 0.45*ss(0.02,0.16,cloudA);
+  float lt = mod(uTime, 900.0);
+  float rateScale = mix(0.55,1.65,uStormRate);
+  float activityScale = mix(0.72,1.28,uStorm);
+
   float halo = 0.0;
-  float bestScore = 0.0, bestWin = 0.0;
-  vec3 bestF = vec3(0.0, 0.0, 1.0), bestH = vec3(0.0);
-  for(int i=0;i<6;i++){
-    float fi = float(i);
-    float per = mix(1.15, 0.32, uStormRate) + fi*0.28;
-    float ph = lt/per + fi*7.77;
-    float cyc = floor(ph);
-    float fr = fract(ph);
-    /* Модель конденсатора: быстрый разряд → медленная перезарядка.
-       Первый удар — яркий, второй — 70% интенсивности. */
-    float capPhase = fract(lt*per*0.7 + fi*3.14);
-    float capFlick = exp(-capPhase * 8.0) * (1.0 - exp(-capPhase * 2.0));
-    float capPhase2 = fract(lt*per*0.73 + fi*3.14 + 0.4);
-    float capFlick2 = exp(-capPhase2 * 12.0) * (1.0 - exp(-capPhase2 * 3.0));
-    float win = max(capFlick, capFlick2 * 0.7);
-    float winLegacy = ss(0.0,0.012,fr)*(1.0-ss(0.025,0.08,fr))
-              + 0.7*(ss(0.10,0.112,fr)*(1.0-ss(0.125,0.17,fr)));
-    win = max(win, winLegacy * 0.5);
-    if(win < 0.002) continue;
-    vec3 hh = hash33(vec3(cyc*13.1+fi*71.7, cyc*7.7+3.3, fi*29.3) + uSeedC);
-    vec3 fpC = normalize(hh*2.0-1.0);
-    vec3 fp = uRotCInv * fpC;
-    /* Гроза идёт и днём, и разряд бьёт одинаково на обеих сторонах. */
-    float ang = distance(dirW, fp);
-    halo += exp(-ang*ang*26.0) * win;
-    float score = win * exp(-ang*ang*40.0);
-    if(score > bestScore){ bestScore = score; bestWin = win; bestF = fp; bestH = hh; }
+  float bestScore = 0.0, bestWin = 0.0, bestIntensity = 0.0;
+  vec3 bestF = vec3(0.0,0.0,1.0), bestH = vec3(0.0);
+
+  for(int i=0;i<5;i++){
+    vec4 A=uCycA[i];
+    vec4 B=uCycB[i];
+    float radius=clamp(B.x,0.02,0.22);
+    float rate=max(0.0,B.y)*rateScale;
+    float intensity=clamp(B.z*activityScale,0.0,1.4);
+    if(rate<0.005 || intensity<0.006) continue;
+
+    float fi=float(i);
+    float ph=lt*rate + B.w*37.0 + fi*5.17;
+    float cyc=floor(ph);
+    float fr=fract(ph);
+    /* Короткий первый удар и более слабый повторный: при высокой физической
+       rate соседние очаги действительно могут дать тот самый «пулемёт». */
+    float first=exp(-fr*42.0);
+    float second=0.70*exp(-abs(fr-0.105)*58.0);
+    float win=max(first,second);
+    if(win<0.002) continue;
+
+    vec3 hh=hash33(vec3(cyc*13.1+B.w*91.7,cyc*7.7+fi*23.3,B.w*137.0+fi*29.3)+uSeedC);
+    vec3 c=normalize(A.xyz);
+    vec3 upC=(abs(c.y)<0.94)?vec3(0.0,1.0,0.0):vec3(1.0,0.0,0.0);
+    vec3 txC=normalize(cross(c,upC));
+    vec3 tyC=cross(c,txC);
+    /* Randomness is now sub-storm jitter only, never global storm placement. */
+    vec2 j=(hh.xy-0.5)*2.0;
+    vec3 fpC=normalize(c + txC*j.x*radius*0.58 + tyC*j.y*radius*0.58);
+    vec3 fp=lightningBodyToWorld(fpC);
+
+    float ang=distance(dirW,fp);
+    float invR2=1.0/max(1e-5,radius*radius);
+    float local=exp(-ang*ang*invR2*1.7);
+    halo += local*win*intensity;
+    float score=local*win*intensity;
+    if(score>bestScore){bestScore=score;bestWin=win;bestIntensity=intensity;bestF=fp;bestH=hh;}
   }
 
-  vec3 tint = vec3(0.72, 0.80, 1.0);
-  float amp = mix(2.5, 13.0, uStormGlow);
-  acc += tint * halo * 0.30 * amp;
+  vec3 tint=vec3(0.72,0.80,1.0);
+  float amp=mix(2.5,13.0,uStormGlow);
+  acc += tint*halo*0.30*amp;
 
-  /* Второй проход — сама жила. Раньше очаг рисовался тремя гауссианами по
-     угловому расстоянию, то есть кружком: издали это читалось как round
-     пятно света, а не как разряд. Теперь канал строится в касательной
-     плоскости у очага и ветвится. Отводов ровно два: с тремя и больше
-     вместо молнии выходит куст. */
-  if(bestScore > 0.0004){
-    vec3 up = (abs(bestF.y) < 0.94) ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0);
-    vec3 tx = normalize(cross(bestF, up));
-    vec3 ty = cross(bestF, tx);
-    vec3 dp = dirW - bestF*dot(dirW, bestF);
-    vec2 uv = vec2(dot(dp, tx), dot(dp, ty));
-    /* Канал вытянут: при прежней длине в 0.09 рад и разбросе ±0.03 жила
-       выходила почти такой же широкой, как длинной, и читалась кляксой, а
-       не разрядом. */
-    float len = 0.17 + 0.10*bestH.x;
-    uv.y += len*0.5;                     /* очаг — середина канала, а не его верх */
-    float w = max(0.0030, uPixA*1.8);
-    float g = boltChannel(uv, len, 0.028, bestH, w);
-    vec2 b1 = uv - vec2(0.0, len*0.42);
-    b1 = vec2(b1.x*0.87 - b1.y*0.50, b1.x*0.50 + b1.y*0.87);
-    g += 0.45*boltChannel(b1, len*0.42, 0.022, bestH.yzx, w*0.72);
-    vec2 b2 = uv - vec2(0.0, len*0.66);
-    b2 = vec2(b2.x*0.80 + b2.y*0.60, -b2.x*0.60 + b2.y*0.80);
-    g += 0.35*boltChannel(b2, len*0.32, 0.018, bestH.zxy, w*0.66);
-    acc += tint * g * bestWin * amp * 2.2;
+  if(bestScore>0.0004){
+    vec3 up=(abs(bestF.y)<0.94)?vec3(0.0,1.0,0.0):vec3(1.0,0.0,0.0);
+    vec3 tx=normalize(cross(bestF,up));
+    vec3 ty=cross(bestF,tx);
+    vec3 dp=dirW-bestF*dot(dirW,bestF);
+    vec2 uv=vec2(dot(dp,tx),dot(dp,ty));
+    float len=0.17+0.10*bestH.x;
+    uv.y+=len*0.5;
+    float w=max(0.0030,uPixA*1.8);
+    float g=boltChannel(uv,len,0.028,bestH,w);
+    vec2 b1=uv-vec2(0.0,len*0.42);
+    b1=vec2(b1.x*0.87-b1.y*0.50,b1.x*0.50+b1.y*0.87);
+    g+=0.45*boltChannel(b1,len*0.42,0.022,bestH.yzx,w*0.72);
+    vec2 b2=uv-vec2(0.0,len*0.66);
+    b2=vec2(b2.x*0.80+b2.y*0.60,-b2.x*0.60+b2.y*0.80);
+    g+=0.35*boltChannel(b2,len*0.32,0.018,bestH.zxy,w*0.66);
+    acc += tint*g*bestWin*amp*(1.45+1.15*bestIntensity);
   }
   return acc*gate;
 }
