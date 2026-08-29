@@ -53,6 +53,12 @@ uniform vec3  uSeedS, uSeedC;
 uniform samplerCube uWeatherCloudTex;
 uniform samplerCube uWeatherCloudTexPrev;
 uniform float uWeatherCloudBlend;
+/* 0.5.56 physical near-surface fog. R is optical depth, G normalized depth,
+   B/A formation/dissipation diagnostics. The pair is double-buffered for the
+   same fixed-tick -> render-time interpolation used by physical cloud forcing. */
+uniform samplerCube uFogTex;
+uniform samplerCube uFogTexPrev;
+uniform float uFogBlend;
 uniform vec4  uCycA[5];   /* 0.5.52 bridge: xyz lightning centre, w stays 0 */
 uniform vec4  uCycB[5];   /* x radius, y flash rate, z electrical strength, w phase */
 uniform int   uPlateN;    /* число тектонических плит */
