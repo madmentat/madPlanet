@@ -9,7 +9,8 @@ const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.47\s*$/m,'soil hydrology milestone must be 0.5.47');
+const m=version.match(/^VERSION\s+(\d+)\.(\d+)\.(\d+)\s*$/m);assert.ok(m,'soil hydrology test must see a semantic version');
+assert.ok(+m[1]>0||+m[2]>5||(+m[2]===5&&+m[3]>=47),'soil hydrology requires 0.5.47+');
 function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
 const order=['js/h2o-advection.js','js/condensation.js','js/precipitation.js','js/soil-hydrology.js','js/render.js'];
 assertOrdered(buildPs,order,'PowerShell soil order');
