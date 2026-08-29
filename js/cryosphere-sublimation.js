@@ -8,7 +8,7 @@
        snow/land ice -> vaporColumn
    It is allowed only when the near-surface air is undersaturated relative to
    a cold surface, is rate-limited, wind-assisted, and consumes latent heat
-   from the land skin.  No water is created and sea ice is deliberately not
+   from the land skin. No water is created and sea ice is deliberately not
    included because its bulk mass belongs to the unresolved ocean reservoir.
 */
 
@@ -49,6 +49,7 @@ function cryoSublimationStep(core,dtSec,climate){
   for(let i=0;i<core.count;i++){
     const water=cryoSubClamp(core.surfaceWaterFraction?.[i]||0,0,1);
     const land=1-water;if(land<1e-4)continue;
+    const aw=Math.max(1e-12,core.areaWeight?.[i]||1);ws+=aw;
     let T=Number(core.landSurfaceTemp?.[i]??core.surfaceTemp?.[i]??273.15)||273.15;
     /* Above freezing, the latent-heat melt path owns phase removal. */
     if(T>274.5)continue;
@@ -60,7 +61,9 @@ function cryoSublimationStep(core,dtSec,climate){
 
     const wind=cryoSubWind(core,i);
     const windBoost=0.45+0.95*cryoSubClamp(wind/12,0,1.5);
-    const coldGate=1-cryoSubSmooth(150,205,T); /* suppress only pathological ultra-cold cells */
+    /* Normal polar temperatures must allow sublimation. Only pathological
+       ultra-cold cells are suppressed as vapour pressure approaches zero. */
+    const coldGate=cryoSubSmooth(185,225,T);
     const dryGate=cryoSubSmooth(0,Math.max(0.05,0.35*sat),deficit);
     const support=land*windBoost*coldGate*dryGate;
     if(!(support>0))continue;
@@ -73,7 +76,7 @@ function cryoSublimationStep(core,dtSec,climate){
         core.surfaceSnowWater[i]=snow-dm;core.vaporColumn[i]+=dm;deficit=Math.max(0,deficit-dm);
         core.snowSublimationRate[i]=rate;
         T-=dm*CRYO_SUBLIMATION_LATENT_J_KG/CRYO_SUBLIMATION_LAND_CAP_J_M2_K;
-        meanMass+=dm*Math.max(1e-12,core.areaWeight?.[i]||1);
+        meanMass+=dm*aw;
       }
     }
 
@@ -85,12 +88,11 @@ function cryoSublimationStep(core,dtSec,climate){
         core.landIceWater[i]=ice-dm;core.vaporColumn[i]+=dm;
         core.iceSublimationRate[i]=rate;
         T-=dm*CRYO_SUBLIMATION_LATENT_J_KG/CRYO_SUBLIMATION_LAND_CAP_J_M2_K;
-        meanMass+=dm*Math.max(1e-12,core.areaWeight?.[i]||1);
+        meanMass+=dm*aw;
       }
     }
     if(core.landSurfaceTemp)core.landSurfaceTemp[i]=cryoSubClamp(T,80,1600);
     if(core.surfaceTemp&&water<0.01)core.surfaceTemp[i]=core.landSurfaceTemp?core.landSurfaceTemp[i]:cryoSubClamp(T,80,1600);
-    ws+=Math.max(1e-12,core.areaWeight?.[i]||1);
   }
   if(typeof h2oRefreshRelativeHumidity==='function')h2oRefreshRelativeHumidity(core,climate);
   core.cryoSublimatedKgM2Mean=meanMass/Math.max(1e-12,ws);
