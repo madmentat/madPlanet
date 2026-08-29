@@ -8,6 +8,12 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec4 cryoTex = texture(uCryosphereTex, normalize(sN));
   float landCryoPhys = mix(cryoTex.r, cryoTex.b, uCryosphereBlend);
   float seaIcePhys = mix(cryoTex.g, cryoTex.a, uCryosphereBlend);
+  /* 0.5.66: B/A of the existing double-buffered fog/weather texture are now
+     dynamic soil wetness and Weather Core surface temperature. This costs no
+     extra sampler and keeps drought colour changes on the fixed weather clock. */
+  vec4 surfaceWx = physicalFogSample(n0);
+  float soilMoistPhys = clamp(surfaceWx.b,0.0,1.0);
+  float surfaceK = mix(180.0,380.0,clamp(surfaceWx.a,0.0,1.0));
 
   /* нормали по конечным разностям (только у суши/мелководья) */
   vec3 nS = n0;
@@ -55,18 +61,41 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float coastal = 1.0 - contin;
   float arid = ss(0.46, 1.00, temp) * contin * (0.30 + 0.70*ss(0.06, 0.55, lee));
   moist = clamp(moist*(1.0 - 0.78*arid) + 0.22*coastal*coastal, 0.0, 1.0);
-  moist = clamp(moist + 0.20*ss(0.0004, 0.040, uCO2)*(1.0 - arid), 0.0, 1.0);
+
+  /* Static climate says what biome can exist here; physical soil water says
+     what that biome looks like NOW. A cool dry tundra must not turn into sand,
+     so heat stress amplifies drought rather than defining it alone. */
+  float soilGreen = ss(0.08,0.72,soilMoistPhys);
+  float soilDry = 1.0-ss(0.16,0.58,soilMoistPhys);
+  float heatStress = ss(289.0,315.0,surfaceK);
+  float drought = clamp(soilDry*(0.30+0.70*heatStress)*land,0.0,1.0);
+  moist = clamp(mix(moist,soilGreen,0.58)*(1.0-0.46*drought),0.0,1.0);
+  moist = clamp(moist + 0.20*ss(0.0004, 0.040, uCO2)*(1.0-max(arid,drought)), 0.0, 1.0);
 
   /* биомы */
   vec3 SAND=vec3(0.42,0.36,0.25), REDR=vec3(0.31,0.19,0.12), STEP=vec3(0.25,0.23,0.13),
        GRAS=vec3(0.15,0.22,0.09), FORS=vec3(0.070,0.125,0.060), JUNG=vec3(0.050,0.115,0.050),
-       TUND=vec3(0.26,0.245,0.20), ROCK=vec3(0.25,0.22,0.19), SNOW=vec3(0.78,0.81,0.86);
+       TUND=vec3(0.26,0.245,0.20), ROCK=vec3(0.25,0.22,0.19), SNOW=vec3(0.78,0.81,0.86),
+       STRAW=vec3(0.30,0.265,0.135), DRYSOIL=vec3(0.285,0.225,0.155);
   float rocky = 0.5+0.5*fbm(sN*3.7+uSeedS+vec3(27.0),3);
   vec3 hot  = mix(mix(SAND,REDR,ss(0.35,0.75,rocky)), JUNG, ss(0.48,0.75,moist));
   vec3 midc = mix(STEP, mix(GRAS,FORS,ss(0.35,0.7,moist)), ss(0.15,0.48,moist));
   vec3 cold = mix(TUND, FORS*0.8+vec3(0.02), ss(0.5,0.8,moist));
   vec3 alb = mix(cold, midc, ss(0.02,0.3,temp));
   alb = mix(alb, hot, ss(0.55,0.95,temp));
+
+  /* Drought progression is not one brown overlay. Mild stress yellows living
+     cover, stronger stress exposes dull soil, and only hot prolonged extreme
+     dryness approaches sand/red-rock colours. Low-frequency modulation keeps
+     dieback patchy rather than drawing a climate contour. */
+  float dryPatch=0.58+0.42*(0.5+0.5*fbm(sN*4.6+uSeedS*2.8+vec3(313.0,71.0,19.0),3));
+  float droughtMild=ss(0.10,0.45,drought);
+  float droughtHard=ss(0.42,0.78,drought);
+  float droughtExtreme=ss(0.74,0.96,drought)*heatStress;
+  vec3 wither=mix(STRAW,DRYSOIL,0.22+0.42*rocky);
+  alb=mix(alb,wither,droughtMild*(1.0-0.70*droughtHard)*0.72*dryPatch);
+  vec3 severe=mix(DRYSOIL,mix(SAND,REDR,ss(0.42,0.78,rocky)),droughtExtreme);
+  alb=mix(alb,severe,droughtHard*(0.68+0.32*dryPatch));
 
   /* 0.5.60: снег/ледник больше не рождаются из temp+latitude threshold.
      Weather Core передаёт только физическую долю покрытия; непрерывный noise
@@ -105,31 +134,23 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     float cr = ridged(sN*110.0 + uSeedS*1.4, 3);
     snowC *= 1.0 - cdet*0.30*ss(0.52,1.0,cr);
   }
-  alb = mix(alb, snowC, snowM);
+
   float beach = ss(0.0,0.0014,h)*(1.0-ss(0.002,0.0055,h));
   beach *= 0.35+0.65*(0.5+0.5*fbm(sN*21.0+uSeedS+vec3(43.0),2));
   beach *= ss(0.22,0.65,temp)*(1.0-0.75*ss(0.55,0.85,moist));
   alb = mix(alb, SAND*1.02, beach*0.55*(1.0-snowM));
   float veg = fbm(sN*7.5 + uSeedS*4.0, 3);
-  alb *= 1.0 + 0.18*veg;
+  /* Vegetation texture belongs below the cryosphere. It may vary the living
+     biome, but it must never repaint physical snow green afterwards. */
+  alb *= 1.0 + 0.18*veg*(1.0-0.72*drought);
   vec3 bareC  = mix(vec3(0.20,0.165,0.115), REDR, ss(0.40,0.92,temp));
   vec3 denseC = FORS*0.82;
   float mo1 = 0.5+0.5*fbm(sN*9.0  + uSeedS*2.1 + vec3(101.0), 3);
   float mo2 = 0.5+0.5*fbm(sN*19.0 + uSeedS*3.3 + vec3(202.0), 3);
   float mo3 = 0.5+0.5*fbm(sN*38.0 + uSeedS*1.5 + vec3(303.0), 2);
   alb = mix(alb, bareC,  ss(0.46,0.63,mo1)*0.80*(1.0-0.75*ss(0.52,0.70,moist)));
-  alb = mix(alb, denseC, ss(0.45,0.62,mo2)*0.70*ss(0.34,0.55,moist));
+  alb = mix(alb, denseC, ss(0.45,0.62,mo2)*0.70*ss(0.34,0.55,moist)*(1.0-droughtHard));
   alb *= 0.80 + 0.42*mo3;
-
-  /* ---- вулканизм ---- */
-  float volc = 0.0;
-  if(uVolcano > 0.01){
-    float arc = 1.0 - ss(0.008, 0.075, gSeamNear);
-    float hotspot = ss(0.575, 0.655, 0.5+0.5*fbm(sN*3.3+uSeedS*4.1+vec3(521.0,19.0,67.0),3));
-    float vents = ss(0.520, 0.600, 0.5+0.5*fbm(sN*44.0+uSeedS*2.9+vec3(83.0,151.0,7.0),3));
-    volc = clamp((arc*1.05 + hotspot*0.85)*vents*uVolcano*1.35, 0.0, 1.0);
-    alb = mix(alb, vec3(0.052,0.048,0.047), volc*0.88*land);
-  }
 
   /* реки и озёра */
   float rv = 0.0;
@@ -148,6 +169,23 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     lake *= ss(0.02,0.10,uLake);
     rv = clamp(riv + lake, 0.0, 1.0) * (1.0 - snowM*0.9);
     alb = mix(alb, mix(vec3(0.022,0.062,0.090), vec3(0.045,0.135,0.155), ss(0.30,0.85,temp)), rv*0.90);
+  }
+
+  /* 0.5.66: the cryosphere is a surface state, not a biome. Apply it after
+     vegetation, drought, beaches and hydrology so a frozen forest/grassland
+     really becomes white instead of later biome detail painting through it. */
+  alb = mix(alb, snowC, snowM);
+
+  /* ---- вулканизм ----
+     Active vents are allowed to break through snow after the final cryosphere
+     layer; emissive lava is added later in lighting space as before. */
+  float volc = 0.0;
+  if(uVolcano > 0.01){
+    float arc = 1.0 - ss(0.008, 0.075, gSeamNear);
+    float hotspot = ss(0.575, 0.655, 0.5+0.5*fbm(sN*3.3+uSeedS*4.1+vec3(521.0,19.0,67.0),3));
+    float vents = ss(0.520, 0.600, 0.5+0.5*fbm(sN*44.0+uSeedS*2.9+vec3(83.0,151.0,7.0),3));
+    volc = clamp((arc*1.05 + hotspot*0.85)*vents*uVolcano*1.35, 0.0, 1.0);
+    alb = mix(alb, vec3(0.052,0.048,0.047), volc*0.88*land);
   }
 
   /* океан */
