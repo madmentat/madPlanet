@@ -35,6 +35,7 @@ node tests/orographic-lift.test.js
 node tests/soil-hydrology.test.js
 node tests/weather-fronts.test.js
 node tests/pressure-systems.test.js
+node tests/deep-convection.test.js
 node tests/vertical-stability.test.js
 node tests/procedural-synoptic-retirement.test.js
 node tests/touch-ux.test.js
