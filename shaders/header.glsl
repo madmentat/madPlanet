@@ -38,7 +38,7 @@ uniform float uCO2;         /* доля углекислого газа - удо
 uniform float uSnowAlt;     /* высота снеговой линии на хребтах */
 uniform float uWind;
 uniform float uConvection;
-uniform float uLowOn, uMidOn, uHighOn;  /* включение/выключение ярусов облаков */
+uniform float uLowOn, uMidOn, uHighOn;  /* визуальная видимость ярусов; Weather Core не выключается */
 uniform mat3  uRotC2;     /* средний ярус облаков */
 uniform mat3  uRotC3;     /* верхний ярус облаков */
 uniform float uDraft;     /* 1 — черновик: дорогие слои выключены */
@@ -53,9 +53,10 @@ uniform vec3  uSeedS, uSeedC;
 uniform samplerCube uWeatherCloudTex;
 uniform samplerCube uWeatherCloudTexPrev;
 uniform float uWeatherCloudBlend;
-/* 0.5.56 physical near-surface fog. R is optical depth, G normalized depth,
-   B/A formation/dissipation diagnostics. The pair is double-buffered for the
-   same fixed-tick -> render-time interpolation used by physical cloud forcing. */
+/* 0.5.56 / 0.5.66 shared fog + surface-state bridge. R is fog optical depth,
+   G normalized fog depth, B physical soil wetness and A Weather Core surface
+   temperature mapped to 180..380 K. The pair is double-buffered so both fog
+   and drought/biome colour evolve smoothly between fixed weather ticks. */
 uniform samplerCube uFogTex;
 uniform samplerCube uFogTexPrev;
 uniform float uFogBlend;
