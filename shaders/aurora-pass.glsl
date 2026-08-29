@@ -44,40 +44,51 @@ vec3 auroraEmission(vec3 p,vec3 rd,float activity,float innerR,float outerR){
   vec3 mt=normalize(cross(ma,ref)), mb=cross(ma,mt);
   vec3 mq=vec3(dot(n,mt),dot(n,mb),pole);
 
-  float timeA=uTime*(0.018+0.055*activity);
+  /* 0.5.63: Kp remains a physical activity control, but its visual response
+     must not collapse into a nearly invisible broken thread. The oval centre
+     stays in the same 75..59.5 degree range used by the UI/overlay, while the
+     active half-width grows farther during storms so Kp 8-9 can reach the
+     low/mid-50s without moving the nominal oval to an unphysical latitude. */
+  float activityV=pow(clamp(activity,0.0,1.0),0.82);
+  float timeA=uTime*(0.018+0.060*activityV);
   float daySide=clamp(dot(n,uSunDir)*0.5+0.5,0.0,1.0);
-  float baseCenter=radians(mix(75.0,59.5,activity));
+  float baseCenter=radians(mix(75.0,59.5,activityV));
   float wander=fb(mq*3.1+vec3(timeA,-timeA*0.7,11.0));
-  float center=baseCenter+radians(1.35)*wander+radians(1.0)*(daySide*2.0-1.0);
-  float hw=radians(mix(1.15,4.2,activity));
+  float center=baseCenter+radians(1.65)*wander+radians(1.0)*(daySide*2.0-1.0);
+  float hw=radians(mix(1.35,6.2,activityV));
   float d=(lat-center)/max(hw,1e-4);
 
-  /* Large irregular sectors: no full luminous ring. */
+  /* Large irregular sectors. A small floor keeps a real oval from vanishing
+     entirely just because the broad noise happens to fall below the cut. */
   float broad=0.5+0.5*fb(mq*2.35+vec3(timeA*0.45,17.0,-timeA*0.30));
-  float cut=mix(0.64,0.40,activity);
-  float sector=smoothstep(cut,cut+0.16,broad);
-  float arc0=exp(-2.35*d*d)*sector;
+  float cut=mix(0.61,0.34,activityV);
+  float sector=0.10+0.90*smoothstep(cut,cut+0.18,broad);
+  float arc0=exp(-2.05*d*d)*sector;
 
-  /* During stronger activity a second broken arc may appear, offset from the
-     main one rather than forming a mathematically perfect concentric ring. */
+  /* Strong activity can produce a second equatorward broken arc rather than
+     a mathematically perfect concentric ring. */
   float broad2=0.5+0.5*fb(mq*2.8+vec3(31.0,-timeA*0.34,9.0));
-  float sector2=smoothstep(0.56,0.74,broad2)*smoothstep(0.35,0.72,activity);
-  float d2=(lat-(center-hw*(0.72+0.22*wander)))/max(hw*0.72,1e-4);
-  float arc1=0.52*exp(-2.8*d2*d2)*sector2;
-  float arc=clamp(arc0+arc1,0.0,1.25);
-  if(arc<0.002)return vec3(0.0);
+  float sector2=(0.06+0.94*smoothstep(0.52,0.73,broad2))*smoothstep(0.30,0.68,activityV);
+  float d2=(lat-(center-hw*(0.78+0.24*wander)))/max(hw*0.78,1e-4);
+  float arc1=0.64*exp(-2.5*d2*d2)*sector2;
+  float arc=clamp(arc0+arc1,0.0,1.35);
+  if(arc<0.001)return vec3(0.0);
 
   /* Curtain folds are irregular patches along the oval. They are constant
      enough with altitude to read as vertical sheets at the limb, but there is
      no periodic radial iris and no techno-grid. */
   float foldA=0.5+0.5*fb(mq*11.0+vec3(-timeA*0.9,5.0,timeA*0.55));
   float foldB=0.5+0.5*n3(mq*27.0+vec3(13.0,timeA*1.7,-7.0));
-  float folds=0.30+0.70*smoothstep(0.46,0.72,foldA*0.76+foldB*0.24);
-  float ragged=0.76+0.24*(0.5+0.5*n3(mq*7.3+vec3(43.0,-timeA,3.0)));
+  float folds=0.34+0.66*smoothstep(0.43,0.70,foldA*0.76+foldB*0.24);
+  float ragged=0.74+0.26*(0.5+0.5*n3(mq*7.3+vec3(43.0,-timeA,3.0)));
 
+  /* Daylight still suppresses optical aurora strongly, but on the nightside
+     a Kp~5-6 event should be readily visible. Magnetic field is a support
+     factor, not another harsh linear gate. */
   float night=1.0-smoothstep(-0.15,0.16,dot(n,uSunDir));
-  float power=(0.012+0.30*pow(activity,1.65))*(0.28+0.72*uMagField);
-  power*=mix(0.035,1.0,night)*smoothstep(0.02,0.18,uAtmo);
+  float magSupport=0.34+0.66*sqrt(clamp(uMagField,0.0,1.0));
+  float power=(0.016+0.36*pow(activityV,1.48))*magSupport;
+  power*=mix(0.030,1.0,night)*smoothstep(0.02,0.18,uAtmo);
 
   float alt=clamp((r-innerR)/max(outerR-innerR,1e-4),0.0,1.0);
   float greenH=exp(-pow((alt-0.34)/0.30,2.0));
@@ -86,7 +97,7 @@ vec3 auroraEmission(vec3 p,vec3 rd,float activity,float innerR,float outerR){
   vec3 green=vec3(0.10,0.78,0.25);
   vec3 red=vec3(0.72,0.13,0.08);
   vec3 violet=vec3(0.20,0.16,0.55);
-  vec3 color=green*greenH+red*redH*(0.10+0.28*activity)+violet*violetH*(0.025+0.055*activity);
+  vec3 color=green*greenH+red*redH*(0.12+0.34*activityV)+violet*violetH*(0.030+0.075*activityV);
   color*=clamp(0.88+0.12*uStarFlux,0.78,1.18);
   return color*(arc*folds*ragged*power);
 }
@@ -118,5 +129,14 @@ void main(){
   /* Path-length term naturally strengthens a curtain at the limb without
      painting the whole polar cap when viewed from above. */
   sum*=clamp(stepLen/0.010,0.35,1.65);
-  fragColor=vec4(clamp(sum,vec3(0.0),vec3(0.72)),1.0);
+
+  /* 0.5.63: this is a separate additive pass drawn AFTER the planet pass,
+     whose colour has already been tone-mapped and gamma-encoded. Previously
+     the aurora wrote raw linear emission straight into that display-space
+     framebuffer, so dim but physically valid curtains looked several times
+     darker than the same emission inside the old monolithic shader. Apply a
+     compact display transform before additive compositing. */
+  vec3 display=sum/(vec3(1.0)+0.80*sum);
+  display=pow(clamp(display,vec3(0.0),vec3(1.0)),vec3(1.0/2.2))*0.72;
+  fragColor=vec4(clamp(display,vec3(0.0),vec3(0.92)),1.0);
 }
