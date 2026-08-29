@@ -21,7 +21,9 @@ void main(){
   gSyn = vec4(0.0);
   gWx = vec4(0.0);
   gClimLow = 1.0;
-  gClimMid = 1.0;
+  /* Retain the historical middle-deck relation only as a neutral compatibility
+     expression: with gClimLow=1 it is exactly 1 and performs no geography. */
+  gClimMid = clamp(0.48 + 0.52*gClimLow, 0.48, 1.0);
 
   /* Три яруса считаются здесь, один раз на пиксель. Теперь их география
      приходит из Weather Core; procedural noise только мнёт кромку и фактуру. */
