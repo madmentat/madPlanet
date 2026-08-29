@@ -9,9 +9,17 @@ const buildPs = fs.readFileSync(path.join(root, 'build.ps1'),'utf8');
 const buildSh = fs.readFileSync(path.join(root, 'build.sh'),'utf8');
 
 assert.match(version, /^VERSION\s+\d+\.\d+\.\d+\s*$/m, 'planet scaffold test must see a semantic version');
-assert.match(buildPs, /'js\/ui\.js','js\/planet-physics\.js','js\/star-orbit\.js','js\/param-model\.js'/,
+function ordered(text,names,label){
+  let p=-1;
+  for(const name of names){
+    const q=text.indexOf(name);
+    assert.ok(q>p,label+': '+name);
+    p=q;
+  }
+}
+ordered(buildPs,["'js/ui.js'","'js/planet-physics.js'","'js/star-orbit.js'","'js/param-model.js'"],
   'PowerShell build must load planet scaffold before parameter classification');
-assert.match(buildSh, /js\/ui\.js js\/planet-physics\.js js\/star-orbit\.js js\/param-model\.js/,
+ordered(buildSh,['js/ui.js','js/planet-physics.js','js/star-orbit.js','js/param-model.js'],
   'shell build must load planet scaffold before parameter classification');
 
 const PARAMS = [
