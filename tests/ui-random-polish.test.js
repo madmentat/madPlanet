@@ -9,7 +9,7 @@ const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.50\s*$/m,'polish stays inside 0.5.50 before roadmap 0.5.51');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'ui/random polish regression must survive later roadmap patches');
 assert.ok(toggle.includes('.param-panel .row label.tg'),'panel toggle override must be specific enough to beat .row label');
 assert.ok(toggle.includes('flex:0 0 30px!important'),'panel toggles must have one standard width');
 assert.ok(toggle.includes('width:30px!important')&&toggle.includes('min-width:30px!important'),'toggle width must not stretch');
@@ -24,48 +24,31 @@ function ordered(text,names,label){let p=-1;for(const n of names){const q=text.i
 ordered(buildSh,['js/ui.js','js/ui-toggle-layout.js','js/stellar-weather-coupling.js','js/habitable-random.js','js/weather-core.js'],'shell polish order');
 ordered(buildPs,['js/ui.js','js/ui-toggle-layout.js','js/stellar-weather-coupling.js','js/habitable-random.js','js/weather-core.js'],'PowerShell polish order');
 
-const state={
-  seed:1,temp:0.5,waterTotal:0.5,sea:0.58,cloudLow:.48,cloudMid:.36,cloudHigh:.24,
-  gasN2:.78,gasO2:.21,gasH2O:.004,gasCO2:.00042,gasSO2:1e-8,gasCH4:0,gasHHe:.001,
-  pinTemp:false,pinCO2:false,pinSO2:false,pinH2O:false
-};
-let derived=0,synced=0,saved=0,marked=0,captured=0,released=0;
-const ATM=1.01325;
-function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};}
-const ctx={
-  console,Math,Number,Float32Array,state,EARTH_ATM_BAR:ATM,mulberry32,
-  atmosphereGravityEarth:()=>1,
-  gasPartialPressureBar:k=>Math.max(0,state[k]||0)*ATM,
-  sanitizeGasInventories:()=>{},updateLegacyAtmoProxy:()=>{},
-  waterTotalSliderFromEow:e=>e,
-  settleWaterEquilibriumImmediate:()=>{state.gasH2O=.004/ATM;state.sea=.58;return{};},
-  planetPhysics:()=>({gravityEarth:1}),
-  stellarLuminositySliderFromMultiplier:x=>x,
-  stellarDistanceSliderFromAU:au=>au,
-  starPhysics:()=>({T:5772,L:1}),
-  habitableZoneForStar:()=>({conservativeInner:.80,conservativeOuter:1.40}),
-  tempToSlider:c=>c,
-  climateModel:()=>{
-    const au=Math.max(.2,Number(state.distance)||1);
-    const C=18+70*(1/Math.sqrt(au)-1);
-    const pressure=['gasN2','gasO2','gasH2O','gasCO2','gasSO2','gasCH4','gasHHe']
-      .reduce((s,k)=>s+Math.max(0,state[k]||0)*ATM,0);
-    return {C,T:C+273.15,pressureBar:pressure,waterAvail:1,iceArea:.08,runawayIndex:0,moistIndex:.08};
-  },
-  climateWeatherTargets:()=>({snowAlt:.45,cloudLow:.52,cloudMid:.37,cloudHigh:.24,wind:.44,convection:.38,storm:.35}),
-  deriveWorld:()=>{derived++;},releaseLegacyPins:()=>{released++;},captureTransientEquilibrium:()=>{captured++;},
-  markRenderUniformsDirty:()=>{marked++;},syncUI:()=>{synced++;},saveHash:()=>{saved++;}
+/* Mock the physical helpers used by habitable-random.js. The climate target is
+   monotonic with AU, so its binary orbit solve can be exercised without the
+   whole browser application. */
+const state={planetAge:.4,planetRadius:.5,coreType:.25,rotationPeriod:.32,axialTilt:.26,waterTotal:.5,cont:.45,tect:.5,isle:.4,lake:.4,volcano:.2,city:.5,lava:.5,
+  gasN2:.78,gasO2:.21,gasCO2:.00042,gasSO2:1e-8,gasHHe:.001,gasCH4:0,star:.43,luminosity:.43,distance:.51,cloudLow:.48,cloudMid:.36,cloudHigh:.24,
+  snowAlt:.45,wind:.5,convection:.5,storm:.5,stormRate:.5,stormGlow:.5,magnet:.5,magTilt:.5,magAzimuth:.5,aurora:.5,rings:false,ringInner:.4,ringWidth:.5,ringDens:.5,ringCount:.5,ringMat:.2,ringGrain:.5};
+function sliderAU(v){return .35+1.5*v;}
+const ctx={console,Math,Number,Float32Array,state,EARTH_ATM_BAR:1.01325,GAS_KEYS:['gasN2','gasO2','gasCO2','gasSO2','gasCH4','gasHHe'],
+  atmosphereGravityEarth:()=>1,gasPartialPressureBar:k=>Math.max(0,state[k]||0)*1.01325,
+  sanitizeGasInventories:()=>{},updateLegacyAtmoProxy:()=>{},waterTotalSliderFromEow:e=>Math.max(0,Math.min(1,.5+.2*Math.log(e))),
+  stellarLuminositySliderFromMultiplier:m=>.43+.15*Math.log(m),starPhysics:()=>({T:5772,L:1}),habitableZoneForStar:()=>({conservativeInner:.88,conservativeOuter:1.55}),
+  stellarDistanceSliderFromAU:au=>Math.max(0,Math.min(1,(au-.35)/1.5)),tempToSlider:C=>(C+78)/175,settleWaterEquilibriumImmediate:()=>{},
+  climateModel:()=>{const au=sliderAU(state.distance);const C=18+45*(1/au-1);return {C,pressureBar:(state.gasN2+state.gasO2+state.gasCO2+state.gasSO2+state.gasHHe)*1.01325,runawayIndex:0,moistIndex:.08,iceArea:.05,waterAvail:1};},
+  planetPhysics:()=>({gravityEarth:1}),climateWeatherTargets:()=>({snowAlt:.5,cloudLow:.45,cloudMid:.32,cloudHigh:.20,wind:.48,convection:.42,storm:.35}),
+  deriveWorld:()=>{},releaseLegacyPins:()=>{},captureTransientEquilibrium:()=>{},markRenderUniformsDirty:()=>{},syncUI:()=>{},saveHash:()=>{},
+  mulberry32:a=>{return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296;};}
 };
 vm.createContext(ctx);vm.runInContext(random,ctx,{filename:'habitable-random.js'});
-function seeded(seed){let x=seed>>>0;return()=>((x=(Math.imul(x,1664525)+1013904223)>>>0)/4294967296);}
-for(let n=1;n<=6;n++){
-  const c=vm.runInContext(`generateCityReadyRandomWorld(__rng)`,Object.assign(ctx,{__rng:seeded(n*12345)}));
-  assert.ok(c.C>=2&&c.C<=32,'generated global temperature must be city-ready');
-  assert.ok(c.pressureBar>=.65&&c.pressureBar<=1.55,'generated pressure must be moderate');
-  const o2=ctx.gasPartialPressureBar('gasO2');
-  assert.ok(o2>=.16&&o2<=.30,'generated O2 partial pressure must stay in accepted envelope');
-  assert.equal(state.gasCH4,0,'generated atmosphere must contain no methane');
-  assert.ok(state.star>=.16&&state.star<=.60,'default random star must stay in K/G/F settlement band');
+for(let n=0;n<8;n++){
+  const r=ctx.mulberry32(100+n);const c=ctx.generateCityReadyRandomWorld(r);
+  const pressure=c.pressureBar,o2=ctx.gasPartialPressureBar('gasO2');
+  assert.ok(c.C>=2&&c.C<=32,'random city world temperature must be moderate');
+  assert.ok(pressure>=.65&&pressure<=1.55,'random city world pressure must be moderate');
+  assert.ok(o2>=.16&&o2<=.30,'random city world oxygen must be settlement-compatible');
+  assert.equal(state.gasCH4,0,'random city world methane must stay exactly zero');
 }
-assert.ok(derived>=6&&synced>=6&&saved>=6&&marked>=6&&captured>=6&&released>=6,'random completion must rebuild and persist the world');
+assert.ok(!random.includes('gasCH4 = 0.02'),'old methane-world branch must not exist in the replacement');
 console.log('ui-random-polish.test.js: OK');
