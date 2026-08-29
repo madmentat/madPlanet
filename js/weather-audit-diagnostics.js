@@ -1,11 +1,40 @@
-/* ============ 0.5.60 hotfix: weather audit diagnostics ============ */
+/* ============ 0.5.60/0.5.61 hotfix: weather audit diagnostics ============ */
 /*
    Temporary-but-useful diagnostics for the current stabilization pass.  The
-   values are computed only when the Weather panel refreshes, never in the
-   render hot path.  They make the suspected H2O cold-trap visible without a
-   profiler: warm-band RH, vapor/saturation columns, landed cryosphere and
+   panel values are computed only when the Weather panel refreshes, never in
+   the render hot path.  They make the suspected H2O cold-trap visible without
+   a profiler: warm-band RH, vapor/saturation columns, landed cryosphere and
    resolved wind can be watched over tens/hundreds of fixed ticks.
+
+   0.5.61 also instruments the legacy global H2O normalizer without changing
+   its result.  Per-call atmospheric correction (delta), signed cumulative
+   correction and absolute cumulative correction tell us whether the exact
+   closure step is persistently injecting/removing atmospheric water or merely
+   cleaning up small symmetric numerical errors.
 */
+
+/* Observe the existing normalizer from the outside.  The wrapper deliberately
+   does not inspect its target formula and does not alter its return value: the
+   measured correction is simply the atmosphere+cloud column after minus before
+   the call.  This keeps the diagnostic valid if the normalizer is replaced. */
+if(typeof h2oNormalizeGlobalVapor==='function'){
+  const h2oNormalizeGlobalVaporBeforeWeatherAudit=h2oNormalizeGlobalVapor;
+  h2oNormalizeGlobalVapor=function(core,climate){
+    const canMeasure=core&&typeof condAreaMeanTotal==='function';
+    const before=canMeasure?Number(condAreaMeanTotal(core)):NaN;
+    const scale=h2oNormalizeGlobalVaporBeforeWeatherAudit(core,climate);
+    const after=canMeasure?Number(condAreaMeanTotal(core)):NaN;
+    if(core&&Number.isFinite(before)&&Number.isFinite(after)){
+      const correction=after-before;
+      core.h2oNormalizationScale=Number.isFinite(Number(scale))?Number(scale):NaN;
+      core.h2oNormalizationCorrectionKgM2=correction;
+      core.h2oNormalizationCumulativeKgM2=(Number(core.h2oNormalizationCumulativeKgM2)||0)+correction;
+      core.h2oNormalizationAbsCumulativeKgM2=(Number(core.h2oNormalizationAbsCumulativeKgM2)||0)+Math.abs(correction);
+      core.h2oNormalizationSamples=(Number(core.h2oNormalizationSamples)||0)+1;
+    }
+    return scale;
+  };
+}
 
 function weatherAuditStats(core,climate){
   if(!core?.count)return null;
@@ -36,7 +65,12 @@ function weatherAuditStats(core,climate){
     vapor:vap/q,saturation:sat/q,rh:rh/q,cloud:cloud/q,fog:fog/q,
     warmRH:warmRH/Math.max(1e-12,warmW),wind:wind/q,windMax,
     landStore:landStore/q,polarStore:polarStore/Math.max(1e-12,polarW),
-    atmosphericTarget:Number(core.precipAtmosphericTarget??core.h2oTargetColumn??NaN)
+    atmosphericTarget:Number(core.precipAtmosphericTarget??core.h2oTargetColumn??NaN),
+    normDelta:Number(core.h2oNormalizationCorrectionKgM2??NaN),
+    normSum:Number(core.h2oNormalizationCumulativeKgM2??NaN),
+    normAbs:Number(core.h2oNormalizationAbsCumulativeKgM2??NaN),
+    normScale:Number(core.h2oNormalizationScale??NaN),
+    normSamples:Number(core.h2oNormalizationSamples||0)
   };
 }
 
@@ -57,6 +91,7 @@ if(typeof createPanel==='function'){
         add('Cloud / fog state','cloudfog');
         add('Snow+land ice mean / poles','cryo');
         add('Wind mean / max','wind');
+        add('H₂O norm Δ / Σ','norm');
       }
     }
     return el;
@@ -78,5 +113,9 @@ if(typeof refreshWeatherCoreDiagnostics==='function'){
     set('cloudfog',d.cloud.toFixed(3)+' / '+d.fog.toFixed(2));
     set('cryo',d.landStore.toFixed(1)+' / '+d.polarStore.toFixed(1)+' кг/м²');
     set('wind',d.wind.toFixed(1)+' / '+d.windMax.toFixed(1)+' м/с');
+    if(Number.isFinite(d.normDelta)&&Number.isFinite(d.normSum)){
+      const signed=x=>(x>=0?'+':'')+x.toFixed(3);
+      set('norm',signed(d.normDelta)+' / '+signed(d.normSum)+' кг/м² · |Σ| '+d.normAbs.toFixed(2));
+    }else set('norm','—');
   };
 }
