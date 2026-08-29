@@ -40,7 +40,7 @@ function diurnalSeedPhase(seed){
 function diurnalBasis(axis,out){
   const a=[0,0,0];diurnalNorm3(axis[0],axis[1],axis[2],a);
   const rx=Math.abs(a[1])<0.92?0:1,ry=Math.abs(a[1])<0.92?1:0,rz=0;
-  let x=ry*a[2]-rz*a[1],y=rz*a[0]-rx*a[2],z=rx*a[1]-ry*a[0];
+  const x=ry*a[2]-rz*a[1],y=rz*a[0]-rx*a[2],z=rx*a[1]-ry*a[0];
   const e1=[0,0,0];diurnalNorm3(x,y,z,e1);
   const e2=[a[1]*e1[2]-a[2]*e1[1],a[2]*e1[0]-a[0]*e1[2],a[0]*e1[1]-a[1]*e1[0]];
   out.axis=a;out.e1=e1;out.e2=e2;return out;
@@ -89,20 +89,21 @@ function diurnalRefreshFields(core,climate,axis){
   if(!core?.count)return core;
   diurnalEnsureFields(core);
   const sun=[0,0,0];diurnalSunDirection(axis,core.seed|0,core.simSeconds,climate,sun);
-  core.diurnalSunDir=sun.slice();
+  core.diurnalSunDir=[sun[0],sun[1],sun[2]];
   core.rotationPeriodSec=diurnalRotationPeriodSec(climate);
+  /* Build the spin-axis/equatorial basis once per fixed tick. Never allocate
+     helper vectors inside the cell loop. */
+  const ax=[0,0,0];diurnalNorm3(axis[0],axis[1],axis[2],ax);
+  const ex=sun[0],ey=sun[1],ez=sun[2];
+  const qx=ax[1]*ez-ax[2]*ey,qy=ax[2]*ex-ax[0]*ez,qz=ax[0]*ey-ax[1]*ex;
   for(let i=0;i<core.count;i++){
-    const mu=core.dirX[i]*sun[0]+core.dirY[i]*sun[1]+core.dirZ[i]*sun[2];
+    const dx=core.dirX[i],dy=core.dirY[i],dz=core.dirZ[i];
+    const mu=dx*ex+dy*ey+dz*ez;
     core.solarZenithCos[i]=mu;
     core.daylightFactor[i]=diurnalClamp((mu+0.035)/0.105,0,1);
-    /* Approximate local solar time from hour angle. Build an equatorial basis
-       around the current sun; noon=12, midnight=0/24. */
-    const a=weatherNorm3(axis[0],axis[1],axis[2]);
-    const ex=sun[0],ey=sun[1],ez=sun[2];
-    const qx=a[1]*ez-a[2]*ey,qy=a[2]*ex-a[0]*ez,qz=a[0]*ey-a[1]*ex;
-    const east=core.dirX[i]*qx+core.dirY[i]*qy+core.dirZ[i]*qz;
-    const toward=core.dirX[i]*ex+core.dirY[i]*ey+core.dirZ[i]*ez;
-    let h=Math.atan2(east,toward); /* 0 at local noon */
+    const east=dx*qx+dy*qy+dz*qz;
+    const toward=mu;
+    const h=Math.atan2(east,toward); /* 0 at local noon */
     let lst=12+h*12/Math.PI;if(lst<0)lst+=24;if(lst>=24)lst-=24;
     core.localSolarTimeHours[i]=lst;
   }
