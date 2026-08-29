@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = p => fs.readFileSync(path.join(root, p), 'utf8');
+const stripComments = t => t.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\n)\s*\/\/[^\n]*/g,'$1');
 const render = read('js/render.js');
 const clouds = read('shaders/clouds.glsl');
 const surface = read('shaders/surface.glsl');
@@ -22,11 +23,9 @@ assert.match(ui, /markRenderUniformsDirty\(\)/, 'UI must invalidate cached unifo
 assert.match(clouds, /int N=\(uDraft>0\.5\)\?1:3;/, 'legacy low-cloud volume body should remain bounded while replacement is staged');
 assert.match(clouds, /cumulusDensityFromShape\(p,shape,foot,climate\)/, 'legacy cloud morphology helper integrity expected');
 assert.match(clouds, /0\.68\);/, 'low-cloud optical-depth compensation missing');
-// Explicit regression guard: the screen-derivative terrain-normal experiment caused compatibility trouble.
 assert.ok(!/dFdx\(|dFdy\(|fwidth\(h\)/.test(surface), 'unsafe derivative terrain-normal optimization must stay disabled until separately validated on target GPUs');
 assert.match(surface, /terrain\(normalize\(n0 \+ tg\*eps\)/, 'known-good finite-difference terrain normals expected');
 
-/* Launch must not block the main thread on the full shader link. */
 assert.match(glInit, /KHR_parallel_shader_compile/, 'async shader link must use the parallel compile extension');
 assert.match(glInit, /COMPLETION_STATUS_KHR/, 'link readiness must be polled, not waited on');
 assert.match(glInit, /function pollShaderCompile\(/, 'per-frame link poll expected');
@@ -35,14 +34,11 @@ const adoptIdx = glInit.indexOf("adoptProgram(p, 'balanced-compat')");
 const kickIdx = glInit.lastIndexOf('startNextVariant();');
 assert.ok(adoptIdx > 0 && kickIdx > adoptIdx, 'compact renderer must be adopted before the full program is queued');
 
-/* Lightning must not evaluate weather/cloud maps per bolt cell. */
-assert.ok(!/\bweather\s*\(/.test(lightning), 'lightning must not evaluate the weather field per bolt cell');
-assert.ok(!/\blowCover\s*\(/.test(lightning), 'lightning must not evaluate cloud cover per bolt cell');
-assert.equal((main.match(/lightningGlow\s*\(/g) || []).length, 1, 'lightningGlow must be inlined once, not per compositing branch');
+/* Count executable calls, not explanatory comments that mention lightningGlow(). */
+assert.ok(!/\bweather\s*\(/.test(stripComments(lightning)), 'lightning must not evaluate the weather field per bolt cell');
+assert.ok(!/\blowCover\s*\(/.test(stripComments(lightning)), 'lightning must not evaluate cloud cover per bolt cell');
+assert.equal((stripComments(main).match(/lightningGlow\s*\(/g) || []).length, 1, 'lightningGlow must be called once, not per compositing branch');
 
-/* 0.5.54: cloud geography is a cheap cubemap lookup. The expensive historical
-   terrain/moisture/synoptic cloud diagnosis must not execute from main(), and
-   the CPU texture upload must stay on the fixed Weather Core clock. */
 assert.ok(!/gSyn\s*=\s*synoptic\s*\(|gWx\s*=\s*weather\s*\(|lowCloudClimate\s*\(wd\)/.test(main),
   'main shader must not execute legacy procedural cloud geography');
 assert.match(cloudVisual,/uWeatherCloudTex/,'physical cloud bridge must sample the Weather Core cubemap');
