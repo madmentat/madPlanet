@@ -75,8 +75,10 @@ assert.ok(core.surfaceSnowWater[0]<20,'warm land must melt snow');
 assert.ok(core.surfaceLiquidWater[0]>0,'snow melt must return water to landed liquid store');
 assert.ok(core.landSurfaceTemp[0]<=278,'latent melt must consume sensible heat');
 
-/* Persistent cold + a deep snowpack compacts slowly into land ice. */
-core.surfaceSnowWater[0]=120;core.landSurfaceTemp[0]=260;core.landIceWater[0]=0;
+/* Persistent cold + a deep snowpack compacts slowly into land ice. This is a
+   separate scenario: remove meltwater from the previous warm-snow check so a
+   legitimate liquid->ice freeze is not mistaken for snow compaction. */
+core.surfaceSnowWater[0]=120;core.surfaceLiquidWater[0]=0;core.landSurfaceTemp[0]=260;core.landIceWater[0]=0;
 ctx.cryoStepLand(core,300);
 assert.ok(core.landIceWater[0]>0&&core.landIceWater[0]<1,'one tick may compact a little snow but never create an instant glacier');
 
