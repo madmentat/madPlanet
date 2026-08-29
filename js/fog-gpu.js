@@ -1,17 +1,28 @@
-/* ============ 0.5.56: physical fog -> GPU cubemaps ============ */
+/* ============ 0.5.56 / 0.5.66: physical fog + surface state -> GPU cubemaps ============ */
 /*
-   Double-buffered RGBA8 cubemaps mirror the low-resolution Weather Core fog
-   state. R = fog optical depth, G = normalized fog depth, B/A = formation /
-   dissipation diagnostics. Fixed ticks publish targets; render interpolates
-   previous -> current continuously so fog cannot jump at weather cadence.
+   Double-buffered RGBA8 cubemaps mirror low-resolution Weather Core state.
+   R = fog optical depth, G = normalized fog depth.
+
+   0.5.66 repurposes the previously renderer-unused B/A diagnostic channels:
+   B = physical soil wetness (soilMoisture / soilCapacity, ocean=1),
+   A = Weather Core surface temperature mapped from 180..380 K to 0..1.
+   CPU fog formation/dissipation diagnostics remain available in their arrays;
+   they simply no longer consume scarce WebGL1 texture channels. This gives the
+   surface shader dynamic drought/freeze context without allocating a ninth
+   fragment texture unit on implementations that expose only the WebGL1 minimum.
+
+   Fixed ticks publish targets; render interpolates previous -> current
+   continuously so fog and biome-state colours cannot jump at weather cadence.
 */
 
-const FOG_GPU_MODEL=1;
+const FOG_GPU_MODEL=2;
 const FOG_TEX_UNIT=5;
 const FOG_TEX_PREV_UNIT=6;
 const FOG_BLEND_DEFAULT_MS=900;
 const FOG_BLEND_MIN_MS=250;
 const FOG_BLEND_MAX_MS=1200;
+const SURFACE_TEMP_GPU_MIN_K=180;
+const SURFACE_TEMP_GPU_MAX_K=380;
 
 if(typeof UNIFORM_NAMES!=='undefined'){
   for(const n of ['uFogTex','uFogTexPrev','uFogBlend'])if(!UNIFORM_NAMES.includes(n))UNIFORM_NAMES.push(n);
@@ -53,6 +64,18 @@ function fogGpuEnsure(N){
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);
   fogGpuHasFrame=false;fogGpuLastSeed=NaN;fogGpuLastUploadMs=NaN;
 }
+function fogGpuSoilWetness(core,i){
+  const water=Math.max(0,Math.min(1,Number(core.surfaceWaterFraction?.[i])||0));
+  if(water>0.5)return 1;
+  const cap=Math.max(0,Number(core.soilCapacity?.[i])||0);
+  if(!(cap>1e-6))return 0;
+  return Math.max(0,Math.min(1,(Number(core.soilMoisture?.[i])||0)/cap));
+}
+function fogGpuSurfaceTemp01(core,i){
+  const T=Number(core.surfaceTemp?.[i]);
+  const k=Number.isFinite(T)?T:273.15;
+  return Math.max(0,Math.min(1,(k-SURFACE_TEMP_GPU_MIN_K)/(SURFACE_TEMP_GPU_MAX_K-SURFACE_TEMP_GPU_MIN_K)));
+}
 function fogGpuPackFace(core,face){
   const N=core.N,pix=fogGpuFaces[face],base=face*N*N;
   for(let y=0;y<N;y++){
@@ -61,8 +84,8 @@ function fogGpuPackFace(core,face){
       const src=base+y*N+x,dst=(dstY*N+x)*4;
       pix[dst]=fogGpuByte01(core.fogOpticalDepth?.[src]);
       pix[dst+1]=fogGpuByte01((Number(core.fogDepthM?.[src])||0)/900);
-      pix[dst+2]=fogGpuByte01(core.fogFormationWeight?.[src]);
-      pix[dst+3]=fogGpuByte01(core.fogDissipationWeight?.[src]);
+      pix[dst+2]=fogGpuByte01(fogGpuSoilWetness(core,src));
+      pix[dst+3]=fogGpuByte01(fogGpuSurfaceTemp01(core,src));
     }
   }
   return pix;
