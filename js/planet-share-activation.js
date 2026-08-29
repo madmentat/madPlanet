@@ -31,4 +31,9 @@ function planetShareActivatedClick(e){
 (function planetInstallShareActivationBridge(){
   const btn=document.getElementById('planetShareBtn');
   if(btn)btn.addEventListener('click',planetShareActivatedClick,true);
+  const rand=document.getElementById('rand');
+  if(rand)rand.addEventListener('click',()=>{
+    state.planetName='';
+    if(typeof planetRefreshNameChip==='function')planetRefreshNameChip();
+  },true);
 })();
