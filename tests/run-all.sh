@@ -37,6 +37,7 @@ node tests/weather-fronts.test.js
 node tests/pressure-systems.test.js
 node tests/deep-convection.test.js
 node tests/vertical-stability.test.js
+node tests/cloud-radiative-feedback.test.js
 node tests/lightning-weather.test.js
 node tests/cloud-visual-response.test.js
 node tests/weather-cloud-visual.test.js
