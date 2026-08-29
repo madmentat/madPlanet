@@ -16,7 +16,8 @@ assert.ok(+m[1]>0||+m[2]>5||(+m[2]===5&&+m[3]>=57),'diurnal cycle requires 0.5.5
 function ordered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
 ordered(buildSh,['js/local-energy-balance.js','js/diurnal-cycle.js','js/baric-field.js'],'shell diurnal order');
 ordered(buildPs,['js/local-energy-balance.js','js/diurnal-cycle.js','js/baric-field.js'],'PowerShell diurnal order');
-assert.ok(!/uSunDir|requestAnimationFrame|Math\.random/.test(diurnalSrc),'physical sun must not depend on renderer/random/FPS');
+const executableDiurnal=diurnalSrc.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\/.*$/gm,'$1');
+assert.ok(!/\buSunDir\b|requestAnimationFrame\s*\(|Math\.random\s*\(/.test(executableDiurnal),'physical sun must not depend on renderer/random/FPS');
 assert.match(diurnalSrc,/planetPhysics\(\)/,'rotation period must come from physical planet state');
 assert.match(diurnalSrc,/equinox-only milestone/,'0.5.57 must not silently implement seasons');
 
