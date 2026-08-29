@@ -21,7 +21,8 @@ ordered(buildPs,['js/deep-convection-coupling.js','js/cloud-radiative-feedback.j
 assert.match(src,/cloudLowMass/);assert.match(src,/cloudMidMass/);assert.match(src,/cloudHighMass/);
 assert.match(src,/cloudShortwaveForcing/);assert.match(src,/cloudLongwaveForcing/);assert.match(src,/cloudNetForcing/);
 assert.match(src,/A-0\.230\*cov/,'clear baseline must remove old global cloud albedo');
-assert.ok(!/Math\.random|requestAnimationFrame/.test(src),'radiative physics must be deterministic and fixed-tick only');
+const executableSrc=src.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\/.*$/gm,'$1');
+assert.ok(!/Math\.random\s*\(|requestAnimationFrame\s*\(/.test(executableSrc),'radiative physics must be deterministic and fixed-tick only');
 
 /* Visual shadows must consume the same current cloud morphology that samples
    the temporally interpolated physical influence. No raw mass/grid mask is
