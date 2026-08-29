@@ -38,6 +38,7 @@ node tests/pressure-systems.test.js
 node tests/deep-convection.test.js
 node tests/vertical-stability.test.js
 node tests/lightning-weather.test.js
+node tests/cloud-visual-response.test.js
 node tests/weather-cloud-visual.test.js
 node tests/planet-export.test.js
 node tests/procedural-synoptic-retirement.test.js
