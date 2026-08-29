@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$DIR"
-bash build.sh index.html
-python3 - <<'PY'
+
+# A broken build or invalid generated JavaScript makes every downstream test
+# meaningless, so these two gates intentionally remain fail-fast.
+bash build.sh index.html || exit $?
+python3 - <<'PY' || exit $?
 from pathlib import Path
 s=Path('index.html').read_text(encoding='utf-8')
 a=s.index('<script>')+len('<script>')
@@ -11,45 +14,68 @@ b=s.rindex('</script>')
 Path('.built-script.js').write_text(s[a:b], encoding='utf-8')
 PY
 node --check .built-script.js
+syntax_status=$?
 rm -f .built-script.js
-node tests/build-integrity.test.js
-node tests/performance-guards.test.js
-node tests/visual-regressions.test.js
-node tests/param-model.test.js
-node tests/star-orbit.test.js
-node tests/planet-physics.test.js
-node tests/atmosphere-inventory.test.js
-node tests/volcanic-atmosphere-coupling.test.js
-node tests/water-budget.test.js
-node tests/climate-regimes.test.js
-node tests/stellar-weather-coupling.test.js
-node tests/ui-random-polish.test.js
-node tests/weather-core.test.js
-node tests/local-energy-balance.test.js
-node tests/diurnal-cycle.test.js
-node tests/seasons.test.js
-node tests/baric-field.test.js
-node tests/wind-dynamics.test.js
-node tests/h2o-advection.test.js
-node tests/condensation.test.js
-node tests/precipitation.test.js
-node tests/orographic-lift.test.js
-node tests/soil-hydrology.test.js
-node tests/weather-fronts.test.js
-node tests/pressure-systems.test.js
-node tests/deep-convection.test.js
-node tests/vertical-stability.test.js
-node tests/cloud-radiative-feedback.test.js
-node tests/ocean-thermal.test.js
-node tests/cryosphere.test.js
-node tests/physical-fog.test.js
-node tests/weather-stabilization.test.js
-node tests/lightning-weather.test.js
-node tests/cloud-visual-response.test.js
-node tests/weather-cloud-visual.test.js
-node tests/planet-export.test.js
-node tests/procedural-synoptic-retirement.test.js
-node tests/touch-ux.test.js
-node tests/chromium-compat.test.js
-node tests/hydrology.test.js
-node tests/magnetosphere.test.js
+(( syntax_status == 0 )) || exit "$syntax_status"
+
+# Regression tests are independent enough that stopping on the first failure
+# hides useful information. Run the complete suite and report all failures at
+# once; CI still exits non-zero if anything failed.
+tests=(
+  tests/build-integrity.test.js
+  tests/performance-guards.test.js
+  tests/visual-regressions.test.js
+  tests/param-model.test.js
+  tests/star-orbit.test.js
+  tests/planet-physics.test.js
+  tests/atmosphere-inventory.test.js
+  tests/volcanic-atmosphere-coupling.test.js
+  tests/water-budget.test.js
+  tests/climate-regimes.test.js
+  tests/stellar-weather-coupling.test.js
+  tests/ui-random-polish.test.js
+  tests/weather-core.test.js
+  tests/local-energy-balance.test.js
+  tests/diurnal-cycle.test.js
+  tests/seasons.test.js
+  tests/baric-field.test.js
+  tests/wind-dynamics.test.js
+  tests/h2o-advection.test.js
+  tests/condensation.test.js
+  tests/precipitation.test.js
+  tests/orographic-lift.test.js
+  tests/soil-hydrology.test.js
+  tests/weather-fronts.test.js
+  tests/pressure-systems.test.js
+  tests/deep-convection.test.js
+  tests/vertical-stability.test.js
+  tests/cloud-radiative-feedback.test.js
+  tests/ocean-thermal.test.js
+  tests/cryosphere.test.js
+  tests/physical-fog.test.js
+  tests/weather-stabilization.test.js
+  tests/lightning-weather.test.js
+  tests/cloud-visual-response.test.js
+  tests/weather-cloud-visual.test.js
+  tests/planet-export.test.js
+  tests/procedural-synoptic-retirement.test.js
+  tests/touch-ux.test.js
+  tests/chromium-compat.test.js
+  tests/hydrology.test.js
+  tests/magnetosphere.test.js
+)
+
+failures=()
+for test_file in "${tests[@]}"; do
+  if ! node "$test_file"; then
+    failures+=("$test_file")
+  fi
+done
+
+if ((${#failures[@]})); then
+  printf '\nFAILED (%d):\n' "${#failures[@]}" >&2
+  printf '  %s\n' "${failures[@]}" >&2
+  exit 1
+fi
+
+echo "All ${#tests[@]} regression tests passed."
