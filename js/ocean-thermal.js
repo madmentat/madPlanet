@@ -20,7 +20,7 @@ const OCEAN_MIXED_LAYER_BASE_M=35.0;
 const OCEAN_MIXED_LAYER_MIN_M=8.0;
 const OCEAN_MIXED_LAYER_MAX_M=85.0;
 const OCEAN_LAND_HEAT_CAPACITY=1.6e7;         /* J m^-2 K^-1, same land-skin scale as 0.5.40 */
-const OCEAN_EDGE_MIX_TAU_SEC=18*86400;        /* deliberately weak: diffusion, not a fake current */
+const OCEAN_HORIZONTAL_DIFFUSIVITY_M2_S=1.8e5;/* unresolved eddy/mixed-layer heat spreading */
 const OCEAN_EDGE_MAX_MIX=0.025;
 
 function oceanClamp(x,a,b){return Math.max(a,Math.min(b,Number(x)||0));}
@@ -108,7 +108,8 @@ function oceanDiffuseSST(core,dtSec){
     const Ci=Math.max(1e6,core.oceanHeatCapacity[i])*ai;
     const Cj=Math.max(1e6,core.oceanHeatCapacity[j])*aj;
     const exchangeCap=Math.min(Ci,Cj);
-    const mix=Math.min(OCEAN_EDGE_MAX_MIX,dt/OCEAN_EDGE_MIX_TAU_SEC)*wet;
+    const L=Math.max(1,Number(core.h2oEdgeDistance?.[e])||1);
+    const mix=Math.min(OCEAN_EDGE_MAX_MIX,OCEAN_HORIZONTAL_DIFFUSIVITY_M2_S*dt/(L*L))*wet;
     const q=dT*exchangeCap*mix;
     delta[i]-=q;delta[j]+=q;moved+=Math.abs(q);
   }
