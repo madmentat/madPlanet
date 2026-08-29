@@ -34,6 +34,7 @@ tests=(
   tests/climate-regimes.test.js
   tests/stellar-weather-coupling.test.js
   tests/ui-random-polish.test.js
+  tests/cloud-visibility-controls.test.js
   tests/weather-core.test.js
   tests/local-energy-balance.test.js
   tests/diurnal-cycle.test.js
@@ -53,6 +54,7 @@ tests=(
   tests/ocean-thermal.test.js
   tests/cryosphere.test.js
   tests/physical-fog.test.js
+  tests/biome-state.test.js
   tests/weather-stabilization.test.js
   tests/weather-audit-diagnostics.test.js
   tests/lightning-weather.test.js
