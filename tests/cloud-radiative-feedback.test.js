@@ -30,8 +30,8 @@ assert.match(surface,/lowCover\(normalize\(n0 \+ uSunDir\*0\.030\)/);
 assert.match(surface,/midCover\(normalize\(n0 \+ uSunDir\*0\.055\)/);
 assert.match(surface,/uLowOn\s*>\s*0\.5/);assert.match(surface,/uMidOn\s*>\s*0\.5/);
 assert.match(bridge,/weatherCloudInfluence\(dir\)/);
-assert.match(bridge,/mix\(a,b,clamp\(uWeatherCloudBlend,0\.0,1\.0\)\)/);
-assert.match(header,/uWeatherCloudPrevTex/);assert.match(header,/uWeatherCloudTex/);assert.match(header,/uWeatherCloudBlend/);
+assert.match(bridge,/return\s+mix\(prev,curr,b\)/);
+assert.match(header,/uWeatherCloudTexPrev/);assert.match(header,/uWeatherCloudTex/);assert.match(header,/uWeatherCloudBlend/);
 assert.ok(!/cloudLowMass|cloudMidMass|cloudHighMass/.test(surface),'surface shadow shader must not sample raw Weather Core mass');
 
 const ctx={
@@ -68,6 +68,7 @@ function coreWith({low=0,mid=0,high=0,insolation=430,olr=240,deep=0}={}){
 }
 const out={};
 let c=coreWith();ctx.cloudRadEnsureFields(c);ctx.cloudRadCellForcing(c,0,climate,out);
+assert.ok(out.clearAlbedo>0.15,'fresh diagnostic arrays must not masquerade as a zero clear-sky baseline');
 assert.ok(Math.abs(out.sw)<1e-9&&Math.abs(out.lw)<1e-9&&Math.abs(out.net)<1e-9,'clear sky must have zero cloud forcing');
 
 c=coreWith({low:0.55});ctx.cloudRadEnsureFields(c);ctx.cloudRadCellForcing(c,0,climate,out);
