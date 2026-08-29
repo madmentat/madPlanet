@@ -11,10 +11,14 @@ const version = fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,
   'touch UX test must see a semantic version');
 
-assert.ok(buildPs.includes("'js/camera.js','js/magnetosphere.js','js/touch-ux.js','js/ui.js'"),
-  'PowerShell build must register touch arbitration before ui outside-tap capture');
-assert.ok(buildSh.includes('js/camera.js js/magnetosphere.js js/touch-ux.js js/ui.js'),
-  'shell build must register touch arbitration before ui outside-tap capture');
+function ordered(text,names,label){
+  let p=-1;
+  for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}
+}
+ordered(buildPs,["'js/camera.js'","'js/magnetosphere.js'","'js/magnet-axis-rotation.js'","'js/touch-ux.js'","'js/ui.js'"],
+  'PowerShell build must register magnetic rotation and touch arbitration before ui outside-tap capture');
+ordered(buildSh,['js/camera.js','js/magnetosphere.js','js/magnet-axis-rotation.js','js/touch-ux.js','js/ui.js'],
+  'shell build must register magnetic rotation and touch arbitration before ui outside-tap capture');
 
 assert.ok(camera.includes("let orbitControlMode = 'planet'"),
   'camera needs an explicit planet/sun drag mode');
