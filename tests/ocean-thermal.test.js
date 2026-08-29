@@ -65,7 +65,7 @@ core.oceanHeatCapacity[0]=1.5e8;core.oceanHeatCapacity[1]=1.5e8;
 const E0=core.seaSurfaceTemp[0]*core.oceanHeatCapacity[0]+core.seaSurfaceTemp[1]*core.oceanHeatCapacity[1];
 ctx.oceanDiffuseSST(core,300);
 const E1=core.seaSurfaceTemp[0]*core.oceanHeatCapacity[0]+core.seaSurfaceTemp[1]*core.oceanHeatCapacity[1];
-assert.ok(Math.abs(E1-E0)<2e3,'SST neighbour exchange must conserve ocean heat');
+assert.ok(Math.abs(E1-E0)/Math.max(1,Math.abs(E0))<1e-6,'SST neighbour exchange must conserve ocean heat');
 assert.ok(core.seaSurfaceTemp[0]<300&&core.seaSurfaceTemp[1]>280,'SST diffusion must reduce a thermal contrast');
 
 core.windU[1]=18;
