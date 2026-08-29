@@ -1,19 +1,18 @@
-/* ============ 0.5.60 hotfix: spatially coherent physical fog ============ */
+/* ============ 0.5.60 / 0.5.65: spatially coherent physical fog ============ */
 /*
-   A single Weather Core fog cell magnified through a 32/48 cubemap becomes a
-   very visible bilinear tent.  The old 0.002 shader cutoff then exposes the
-   finite texel support as a rectangle/cross.  Fog is already an optical
-   diagnostic state rather than a conserved H2O reservoir, so it may be
-   spatially mixed after physical formation/advection without moving water.
+   A single Weather Core fog cell magnified through a cubemap can expose the
+   grid. A very small neighbour blend smooths that sampling footprint before
+   GPU publication, but it must not become a second fog-formation mechanism.
 
-   Two light neighbour passes turn isolated cells into coherent banks before
-   GPU publication.  This is deliberately not a permission mask and not an
-   FPS process; it runs once on the fixed Weather Core tick.
+   0.5.65 reduces the old two-pass 24% diffusion substantially. That setting
+   could repeatedly spread an already too-permissive fog field into a broad
+   blanket. One 12% pass is enough to hide isolated-cell geometry while
+   preserving physically clear gaps between fog banks.
 */
 
 const FOG_SPATIAL_FIX_MODEL=1;
-const FOG_SPATIAL_BLEND=0.24;
-const FOG_SPATIAL_PASSES=2;
+const FOG_SPATIAL_BLEND=0.12;
+const FOG_SPATIAL_PASSES=1;
 
 function fogSpatialEnsure(core){
   if(!core?.count)return core;
