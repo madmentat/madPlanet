@@ -1,14 +1,14 @@
-/* ============ 0.5.54 hotfix v2: inertial cloud influence, never a mask ============ */
+/* ============ 0.5.54 hotfix v3: inertial cloud influence + temporal interpolation ============ */
 /*
-   The Weather Core cubemap no longer contains visible cloud density. RGB is a
-   slowly evolving signed influence (-1 disperser .. 0 neutral .. +1 growth
-   magnet). The mature 0.5.53 continuous morphology remains the cloud itself.
+   Weather Core never masks visible cloud pixels. RGB is a slowly evolving
+   signed influence (-1 disperser .. 0 neutral .. +1 growth magnet) and the
+   mature 0.5.53 procedural morphology remains the cloud itself.
 
-   The influence only moves local formation thresholds/coverage parameters.
-   It is NEVER multiplied as a visibility mask, so a Weather Core cell edge
-   cannot become a cloud edge. Formation/dissipation inertia lives on CPU in
-   cloud-visual-response.js; linear cubemap filtering and a neighbour diffusion
-   pass make the influence broader and softer than a raw weather texel.
+   The CPU publishes fixed-tick influence targets into a double-buffered
+   cubemap. The renderer continuously blends previous -> current between
+   Weather Core ticks. This removes the last temporal staircase: formation,
+   dissipation and horizontal influence changes can no longer jump once per
+   weather tick even though the physics itself remains fixed-step.
 */
 #undef lowCover
 #undef midCover
@@ -19,11 +19,15 @@
 
 vec4 weatherCloudSample(vec3 dirW){
   vec3 body=normalize(uRotS*normalize(dirW));
+  float b=clamp(uWeatherCloudBlend,0.0,1.0);
 #if __VERSION__ >= 300
-  return texture(uWeatherCloudTex,body);
+  vec4 prev=texture(uWeatherCloudTexPrev,body);
+  vec4 curr=texture(uWeatherCloudTex,body);
 #else
-  return textureCube(uWeatherCloudTex,body);
+  vec4 prev=textureCube(uWeatherCloudTexPrev,body);
+  vec4 curr=textureCube(uWeatherCloudTex,body);
 #endif
+  return mix(prev,curr,b);
 }
 vec4 weatherCloudInfluence(vec3 dirW){
   vec4 s=weatherCloudSample(dirW);
