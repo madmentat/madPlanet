@@ -1,24 +1,26 @@
-/* ============ 0.5.56: physical near-surface fog ============ */
+/* ============ 0.5.56 / 0.5.65: physical near-surface fog ============ */
 /*
    Fog is a persistent near-surface weather state, not a latitude/coast/
-   terminator mask. Formation is favoured by near-saturation, small dew-point
-   deficit / low LCL, stable or surface-cooled air, local wetness and weak wind.
-   Dryness, surface heating, strong mixing, deep convection and strong wind
-   dissipate it with finite response time.
+   terminator mask. Formation requires genuinely near-saturated air together
+   with a low condensation level, weak mixing and stable/cooling conditions.
 
-   fogState/fogOpticalDepth are diagnostic visual-weather scalars. They do not
-   create or destroy H2O: atmospheric vapor/cloud condensate remain owned by
-   the H2O/condensation modules. The state is advected on the existing H2O edge
-   graph so an established fog bank can drift with the resolved near-surface
-   wind instead of remaining glued to its formation cell.
+   0.5.65 fixes runaway Earth-like fog. Weather Core advances five simulated
+   minutes every real second, so the old broad RH gate beginning at 86% plus a
+   45-minute formation time could turn a merely humid +21 C planet into an
+   opaque global bank in seconds. Ordinary humid air is no longer enough:
+   near-saturation AND near-ground condensation must coincide. Formation is
+   slower, dissipation quicker, and optical depth is capped below an opaque
+   whiteout. Genuine saturated calm basins/coasts can still grow persistent
+   fog causally.
 */
 
 const PHYSICAL_FOG_MODEL=1;
-const FOG_FORM_TAU_SEC=45*60;
-const FOG_DISSIPATE_TAU_SEC=32*60;
+const FOG_FORM_TAU_SEC=90*60;
+const FOG_DISSIPATE_TAU_SEC=24*60;
 const FOG_ADVECT_EDGE_CFL=0.18;
 const FOG_ADVECT_MAX_OUTFLOW=0.46;
-const FOG_MAX_DEPTH_M=900;
+const FOG_MAX_DEPTH_M=620;
+const FOG_MAX_OPTICAL_DEPTH=0.72;
 
 function fogClamp(x,a,b){return Math.max(a,Math.min(b,Number(x)||0));}
 function fogSmooth(a,b,x){
@@ -73,23 +75,29 @@ function fogCellForcing(core,i,out){
   else dew=Ta-Math.max(0,lcl/125);
   const dewDef=Math.max(0,Ta-dew);
 
-  const saturation=fogSmooth(0.86,1.01,rh);
-  const dewGate=1-fogSmooth(1.2,5.0,dewDef);
-  const lclGate=1-fogSmooth(180,1150,lcl);
-  const calm=1-fogSmooth(5.0,12.0,wind);
-  const stable=fogSmooth(0.42,0.84,stability);
-  const surfaceCooling=fogSmooth(-0.5,2.5,Ta-Ts); /* surface <= air favours radiation fog */
-  const humidSupport=fogClamp(0.68*saturation+0.20*Math.max(dewGate,lclGate)+0.12*wet,0,1);
-  let formation=humidSupport*Math.max(dewGate,lclGate)*calm;
-  formation*=fogClamp(0.38+0.30*stable+0.18*surfaceCooling+0.14*wet,0,1.15);
-  formation*=1-0.78*deep;
+  /* Fog is condensation at the ground, not generic humid haze. Require the
+     three related indicators to agree instead of allowing the maximum of one
+     loose gate to carry the whole formation term. */
+  const saturation=fogSmooth(0.925,1.005,rh);
+  const dewGate=1-fogSmooth(0.65,3.0,dewDef);
+  const lclGate=1-fogSmooth(100,760,lcl);
+  const nearGround=Math.sqrt(Math.max(0,dewGate*lclGate));
+  const calm=1-fogSmooth(4.0,10.0,wind);
+  const stable=fogSmooth(0.50,0.88,stability);
+  const surfaceCooling=fogSmooth(-0.25,2.2,Ta-Ts); /* surface <= air favours radiation fog */
+  const support=fogClamp(0.46+0.23*stable+0.17*surfaceCooling+0.14*wet,0,1.05);
+  let formation=saturation*nearGround*calm*support;
+  formation=Math.pow(fogClamp(formation,0,1),1.22);
+  formation*=1-0.84*deep;
 
-  const dry=1-fogSmooth(0.70,0.90,rh);
-  const windMix=fogSmooth(8.0,18.0,wind);
-  const surfaceHeating=fogSmooth(0.8,5.0,Ts-Ta);
-  const turbulent=fogClamp(0.55*deep+0.25*(1-stability)+0.20*windMix,0,1);
-  const dissipation=fogClamp(Math.max(dry,windMix,0.78*surfaceHeating,0.70*turbulent),0,1);
-  const target=fogClamp(formation*(1-0.92*dissipation),0,1);
+  /* Humid-but-unsaturated air should actively clear rather than sit at a high
+     neutral target forever. */
+  const dry=1-fogSmooth(0.80,0.94,rh);
+  const windMix=fogSmooth(6.5,15.0,wind);
+  const surfaceHeating=fogSmooth(0.6,4.0,Ts-Ta);
+  const turbulent=fogClamp(0.58*deep+0.25*(1-stability)+0.22*windMix,0,1);
+  const dissipation=fogClamp(Math.max(dry,windMix,0.82*surfaceHeating,0.74*turbulent),0,1);
+  const target=fogClamp(formation*(1-0.95*dissipation),0,1);
 
   out.rh=rh;out.wind=wind;out.wet=wet;out.lcl=lcl;out.dewDef=dewDef;
   out.formation=fogClamp(formation,0,1);out.dissipation=dissipation;out.target=target;out.stability=stability;
@@ -135,11 +143,11 @@ function fogAdvanceValue(current,target,dtSec,formation,dissipation){
   current=fogClamp(current,0,1);target=fogClamp(target,0,1);
   let tau;
   if(target>current){
-    tau=FOG_FORM_TAU_SEC*(1.45-0.75*fogClamp(formation,0,1));
+    tau=FOG_FORM_TAU_SEC*(1.55-0.72*fogClamp(formation,0,1));
   }else{
-    tau=FOG_DISSIPATE_TAU_SEC/(0.62+0.88*fogClamp(dissipation,0,1));
+    tau=FOG_DISSIPATE_TAU_SEC/(0.58+1.05*fogClamp(dissipation,0,1));
   }
-  tau=Math.max(8*60,tau);
+  tau=Math.max(7*60,tau);
   const a=1-Math.exp(-Math.max(0,dtSec)/tau);
   return fogClamp(current+(target-current)*a,0,1);
 }
@@ -150,8 +158,9 @@ function fogRefreshDerived(core){
     const rh=fogRelativeHumidity(core,i);
     const lcl=fogClamp(core.lclHeightM?.[i]??700,0,2000);
     const stable=fogClamp(core.bulkStabilityIndex?.[i]??0.5,0,1);
-    core.fogOpticalDepth[i]=fogClamp(s*(0.58+0.42*fogSmooth(0.86,1.02,rh)),0,1);
-    const depth=fogClamp(80+0.42*lcl+260*stable,70,FOG_MAX_DEPTH_M);
+    const optical=s*(0.48+0.36*fogSmooth(0.925,1.01,rh));
+    core.fogOpticalDepth[i]=fogClamp(optical,0,FOG_MAX_OPTICAL_DEPTH);
+    const depth=fogClamp(55+0.30*lcl+215*stable,55,FOG_MAX_DEPTH_M);
     core.fogDepthM[i]=s*depth;
   }
   return core;
@@ -177,7 +186,6 @@ const weatherCoreCreateBeforePhysicalFog=weatherCoreCreate;
 weatherCoreCreate=function(seed,N,climate,axis){
   const core=weatherCoreCreateBeforePhysicalFog(seed,N,climate,axis);
   fogEnsureFields(core);
-  /* New worlds start clear and acquire fog causally; no instant fog mask. */
   fogRefreshDerived(core);
   return core;
 };
