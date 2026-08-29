@@ -94,6 +94,7 @@ function cryoSublimationStep(core,dtSec,climate){
     if(core.landSurfaceTemp)core.landSurfaceTemp[i]=cryoSubClamp(T,80,1600);
     if(core.surfaceTemp&&water<0.01)core.surfaceTemp[i]=core.landSurfaceTemp?core.landSurfaceTemp[i]:cryoSubClamp(T,80,1600);
   }
+  if(typeof cryoRefreshCovers==='function')cryoRefreshCovers(core);
   if(typeof h2oRefreshRelativeHumidity==='function')h2oRefreshRelativeHumidity(core,climate);
   core.cryoSublimatedKgM2Mean=meanMass/Math.max(1e-12,ws);
   return core;
