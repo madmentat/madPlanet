@@ -27,9 +27,11 @@ for(const u of ['uFogTex','uFogTexPrev','uFogBlend'])assert.match(header,new Reg
 assert.ok(!/inversionBelt|coastal\s*=|terminator\s*=/.test(shader),'legacy latitude/coast/terminator fog heuristics must stay retired');
 assert.match(shader,/physicalFogSample/);assert.match(shader,/uRotS\*normalize\(dir\)/);
 assert.match(shader,/mix\(prev,curr,b\)/,'fog must interpolate fixed-tick targets');
-assert.match(shader,/density=optical\*textureMod/,'procedural texture may modulate physical fog but never create it from zero');
-assert.ok(!/Math\.random|requestAnimationFrame/.test(phys),'fog physics must be deterministic fixed-tick code');
-assert.ok(!/requestAnimationFrame/.test(gpu),'fog texture upload must not be render-FPS driven');
+assert.match(shader,/float shaped=max\(0\.0,optical-erosion\)/,'procedural erosion must only subtract from physical fog');
+assert.match(shader,/float density=shaped\*softVisibility\*textureMod/,'procedural texture may modulate already-positive physical fog only');
+const executablePhys=phys.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\/.*$/gm,'$1');
+assert.ok(!/Math\.random\s*\(|requestAnimationFrame\s*\(/.test(executablePhys),'fog physics must be deterministic fixed-tick code');
+assert.ok(!/requestAnimationFrame\s*\(/.test(gpu),'fog texture upload must not be render-FPS driven');
 assert.ok(!/texSubImage2D/.test(render),'fog render bridge must never upload textures per frame');
 assert.match(phys,/FOG_FORM_TAU_SEC/);assert.match(phys,/FOG_DISSIPATE_TAU_SEC/);assert.match(phys,/fogAdvect/);
 
