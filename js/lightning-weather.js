@@ -1,4 +1,4 @@
-/* ============ 0.5.52 / 0.5.62 / 0.5.64: lightning from physical deep convection ============ */
+/* ============ 0.5.52 / 0.5.65: lightning from physical deep convection ============ */
 /*
    Lightning is no longer an independent procedural weather source. Electrical
    potential is diagnosed only inside resolved deep moist convection, using
@@ -6,30 +6,11 @@
    existing precipitation rate. Dry/stable/shallow columns cannot create a
    lightning centre regardless of the visual storm sliders.
 
-   0.5.62 keeps that physical requirement but removes an accidental scarcity:
-   the old diagnosis multiplied four broad 0..1 gates. A perfectly ordinary
-   thunderstorm could therefore be reduced to a near-zero score simply because
-   each individual proxy was only moderate. Mixed-phase depth remains a hard
-   physical requirement; deep state, updraft and condensate now combine as a
-   softer coupled vigor term so ordinary cumulonimbus can be electrically live.
-
-   0.5.64 keeps the same physical potential, but stops treating that potential
-   as a linear flash-frequency multiplier. Weak/moderate electrically valid
-   cells were still flashing absurdly rarely even when the user explicitly
-   requested high storm activity. Cadence now uses a sub-linear response while
-   intensity still follows the physical potential, and the render selection
-   floor is lowered slightly so the five available GPU slots are populated by
-   real secondary storms instead of waiting only for near-supercells.
-
-   Until the Weather Core cloud visual bridge arrives in 0.5.53, reuse the five
-   retired uCycA/uCycB uniform slots as a tiny render transport. Important:
-   uCycA.w is ALWAYS zero. Legacy synoptic()/vortexWarp() therefore skip every
-   slot and procedural cyclones remain dead. The payload layout is:
-     A.xyz = body-fixed Weather Core direction, A.w = 0
-     B.x   = angular storm radius (rad)
-     B.y   = physical flash cadence (Hz)
-     B.z   = electrical intensity 0..1
-     B.w   = deterministic phase seed 0..1
+   0.5.65 keeps mixed-phase cloud as the hard physical requirement, but softens
+   the thresholds for ordinary cumulonimbus. Earth-like storms should not need
+   a near-supercell state before the five render slots contain anything at all.
+   Cadence remains sub-linear in electrical potential, while intensity remains
+   tied to the diagnosed physical storm strength.
 */
 
 const LIGHTNING_WEATHER_MODEL = 1;
@@ -39,7 +20,7 @@ const LIGHTNING_MIXED_COLD_K = 238.15;
 const LIGHTNING_MOIST_LAPSE_K_M = 0.0060;
 const LIGHTNING_MAX_FLASH_HZ = 4.5;
 const LIGHTNING_MIN_SEPARATION_RAD = 0.105;
-const LIGHTNING_SELECTION_FLOOR = 0.006;
+const LIGHTNING_SELECTION_FLOOR = 0.004;
 
 function lightningClamp(x,a,b){ return Math.max(a,Math.min(b,Number(x)||0)); }
 function lightningSmooth(a,b,x){
@@ -79,9 +60,6 @@ function lightningMixedPhaseDepth(core,i,climate){
   const base=lightningClamp(core.cloudBaseHeightM?.[i]??core.lclHeightM?.[i]??0,0,1.8*H);
   const top=lightningClamp(core.cloudTopHeightM?.[i]??base,base,1.8*H);
   const Ta=lightningClamp(core.airTemp?.[i]??climate?.T??288.15,150,1400);
-  /* Approximate the vertical portion of the cloud spanning 0..-35 C, where
-     collisions among supercooled droplets, ice and graupel can separate
-     charge. This is a mixed-phase-depth proxy, not explicit ice microphysics. */
   const zWarm=Math.max(0,(Ta-LIGHTNING_MIXED_WARM_K)/LIGHTNING_MOIST_LAPSE_K_M);
   const zCold=Math.max(zWarm,(Ta-LIGHTNING_MIXED_COLD_K)/LIGHTNING_MOIST_LAPSE_K_M);
   return lightningOverlap(base,top,zWarm,zCold);
@@ -94,23 +72,16 @@ function lightningDiagnoseCell(core,i,climate){
   const mixed=lightningMixedPhaseDepth(core,i,climate);
   const precipHr=Math.max(0,Number(core.precipRate?.[i])||0)*3600;
 
-  /* 0.5.62: mixed phase is still mandatory, but the other indicators are
-     correlated symptoms of the same plume and must not be multiplied as four
-     independent probabilities. The old product made moderate real storms
-     practically disappear: 0.4*0.3*0.25*0.5 is already only 0.015. */
-  const stateGate=lightningSmooth(0.04,0.62,deep);
-  const upGate=lightningSmooth(2.5,20.0,up);
-  const cloudGate=lightningSmooth(0.015,0.28,cloud);
-  const mixedGate=lightningSmooth(180,2400,mixed);
-  const precipGate=lightningSmooth(0.5,20.0,precipHr);
+  const stateGate=lightningSmooth(0.025,0.50,deep);
+  const upGate=lightningSmooth(1.8,16.0,up);
+  const cloudGate=lightningSmooth(0.010,0.22,cloud);
+  const mixedGate=lightningSmooth(120,1800,mixed);
+  const precipGate=lightningSmooth(0.35,16.0,precipHr);
   const plumeVigor=stateGate*Math.sqrt(Math.max(0,upGate*cloudGate));
-  const potential=lightningClamp(mixedGate*plumeVigor*(0.78+0.22*precipGate),0,1);
-  const intensity=lightningClamp(potential*(0.55+0.30*upGate+0.25*cloudGate),0,1);
-  /* Electrical potential is not the same thing as the probability that the
-     next second contains a flash. A sub-linear cadence response keeps weak but
-     genuine thunderstorms alive without making them as bright as strong ones. */
-  const cadencePotential=Math.pow(potential,0.78);
-  let rate=cadencePotential*(0.18+0.090*Math.min(42,up)+0.022*Math.min(35,precipHr));
+  const potential=lightningClamp(mixedGate*plumeVigor*(0.80+0.20*precipGate),0,1);
+  const intensity=lightningClamp(potential*(0.58+0.30*upGate+0.26*cloudGate),0,1);
+  const cadencePotential=Math.pow(potential,0.72);
+  let rate=cadencePotential*(0.20+0.095*Math.min(42,up)+0.024*Math.min(35,precipHr));
   rate=lightningClamp(rate,0,LIGHTNING_MAX_FLASH_HZ);
   return {potential,intensity,rate,mixed,deep,up,precipHr};
 }
@@ -171,9 +142,9 @@ function lightningRefresh(core,climate){
     const deep=lightningClamp(core.deepConvectiveState[best],0,1);
     const front=lightningClamp(core.frontStrength?.[best]||0,0,1);
     const cyc=lightningClamp(core.cycloneStrength?.[best]||0,0,1);
-    const radius=lightningClamp(0.050+0.095*Math.sqrt(deep)+0.024*Math.max(front,cyc),0.050,0.18);
+    const radius=lightningClamp(0.052+0.100*Math.sqrt(deep)+0.026*Math.max(front,cyc),0.052,0.19);
     core.lightningRenderA[o]=core.dirX[best];core.lightningRenderA[o+1]=core.dirY[best];core.lightningRenderA[o+2]=core.dirZ[best];
-    core.lightningRenderA[o+3]=0; /* CRITICAL: never wake legacy procedural synoptic weather. */
+    core.lightningRenderA[o+3]=0;
     core.lightningRenderB[o]=radius;
     core.lightningRenderB[o+1]=core.lightningFlashRateHz[best];
     core.lightningRenderB[o+2]=core.lightningElectricalIntensity[best];
