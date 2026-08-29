@@ -73,13 +73,15 @@ assert.ok(!/optical\s*<\s*0\.002/.test(fogShader),'hard 0.002 fog contour must n
 assert.match(fogShader,/softVisibility=smoothstep/,'weak physical fog must fade continuously');
 assert.match(fogShader,/max\(0\.0,optical-erosion\)/,'edge noise must be subtractive and unable to create fog');
 
-/* Snow sublimation must be a locally mass-conservative return path. */
+/* Snow sublimation must be a locally mass-conservative return path and must
+   refresh derived cryosphere cover immediately after changing snow/ice mass. */
 {
-  let rhRefresh=0;
+  let rhRefresh=0,coverRefresh=0;
   const ctx={console,Math,Number,Float32Array,
     WEATHER_CORE_FIXED_DT_SEC:300,
     h2oSaturationColumnKgM2:()=>10,
     h2oRefreshRelativeHumidity:()=>{rhRefresh++;},
+    cryoRefreshCovers:()=>{coverRefresh++;},
     weatherCoreCreate:(seed,N)=>({seed,N,count:1}),weatherCoreStep:(core)=>core
   };
   vm.createContext(ctx);vm.runInContext(sub,ctx,{filename:'cryosphere-sublimation.js'});
@@ -92,6 +94,7 @@ assert.match(fogShader,/max\(0\.0,optical-erosion\)/,'edge noise must be subtrac
   assert.ok(core.vaporColumn[0]>1&&core.surfaceSnowWater[0]<20,'dry cold air must sublimate some snow');
   assert.ok(Math.abs(total1-total0)<2e-5,'snow -> vapor sublimation must conserve local H2O mass');
   assert.ok(core.landSurfaceTemp[0]<260,'sublimation must consume latent heat');
+  assert.ok(coverRefresh>0,'cryosphere coverage must refresh after sublimation changes snow/ice stores');
   assert.ok(rhRefresh>0,'relative humidity must refresh after sublimation');
 }
 
