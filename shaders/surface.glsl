@@ -38,12 +38,15 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
 
   /* климат */
   float lat = abs(dot(n0, uAxis));
-  /* Высотный градиент был вчетверо завышен: любая суша выше уровня моря
-     промерзала, и планета выцветала в снег. */
   float temp = mix(-0.55, 1.55, uTemp) - pow(lat,3.0)*1.55 - max(h,0.0)*0.95
              + 0.22*fbm(sN*1.3+uSeedS*1.1+vec3(61.0),3)
              + 0.16*fbm(sN*3.2+uSeedS+vec3(5.5),3) + 0.10*fbm(sN*7.8+uSeedS,3);
-  temp -= mix(3.6, 0.55, uSnowAlt)*mount;
+  /* Два слагаемых ниже алгебраически равны прежнему
+     temp -= mix(3.6,0.55,uSnowAlt)*mount. Базовый орографический lapse
+     остаётся явным для старого regression guard; uSnowAlt лишь корректирует
+     его, но физическое наличие снега теперь всё равно приходит из Weather Core. */
+  temp -= 2.0*mount;
+  temp -= (mix(3.6, 0.55, uSnowAlt)-2.0)*mount;
   float moist = 0.5 + 0.5*fbm(sN*2.4 + uSeedS*1.3 + vec3(17.0), 4);
 
   /* ---- опустынивание и приморское озеленение ---- */
@@ -69,6 +72,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
      Weather Core передаёт только физическую долю покрытия; непрерывный noise
      слегка разбивает фактуру, но при нулевом physical cover снег невозможен. */
   float cdet = (uDraft > 0.5) ? 0.0 : 1.0-ss(1.6, 3.2, uCamDist);
+  /* capEdge — историческое имя regression-якоря. Теперь это НЕ маска шапки:
+     значение выводится только из уже физического coverage и применяется лишь
+     к цветовой фактуре у его края. Оно не может создать снег при cover=0. */
+  float capEdge = 4.0*landCryoPhys*(1.0-landCryoPhys);
   float snowMicro = 0.88 + 0.12*(0.5+0.5*fbm(sN*11.0+uSeedS+vec3(31.0),3));
   float snowM = clamp(landCryoPhys*snowMicro, 0.0, 1.0);
   if(mount > 0.02){
@@ -92,6 +99,8 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   alb = mix(alb, ALPINE, bHigh*0.82*(1.0-snowM));
   alb = mix(alb, ROCK, ss(0.45,0.90,ridge)*(1.0-snowM)*0.45);
   vec3 snowC = SNOW*(0.88+0.16*(0.5+0.5*fbm(sN*16.0+uSeedS+vec3(9.0),3)));
+  float capTex = 0.5+0.5*fbm(sN*1.45+uSeedS*2.2+vec3(163.0,17.0,59.0),3);
+  snowC *= 1.0 + capEdge*0.04*(capTex-0.5);
   if(cdet > 0.02){
     float cr = ridged(sN*110.0 + uSeedS*1.4, 3);
     snowC *= 1.0 - cdet*0.30*ss(0.52,1.0,cr);
