@@ -59,6 +59,11 @@ uniform float uWeatherCloudBlend;
 uniform samplerCube uFogTex;
 uniform samplerCube uFogTexPrev;
 uniform float uFogBlend;
+/* 0.5.60 physical cryosphere. One WebGL1-safe cubemap stores both temporal
+   endpoints: R/G previous land-cryosphere / sea-ice coverage, B/A current.
+   The renderer interpolates them with uCryosphereBlend. */
+uniform samplerCube uCryosphereTex;
+uniform float uCryosphereBlend;
 uniform vec4  uCycA[5];   /* 0.5.52 bridge: xyz lightning centre, w stays 0 */
 uniform vec4  uCycB[5];   /* x radius, y flash rate, z electrical strength, w phase */
 uniform int   uPlateN;    /* число тектонических плит */
