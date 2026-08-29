@@ -106,7 +106,7 @@ function cloudRadCellForcing(core,i,climate,out){
   const rMid=CLOUD_RAD_SW_MID*mid;
   const rHigh=CLOUD_RAD_SW_HIGH*high;
   const cloudReflect=1-(1-rLow)*(1-rMid)*(1-rHigh);
-  const Aclear=cloudRadClamp(core.clearSkyAlbedo?.[i]??localEnergyCellAlbedo(core.surfaceTemp[i],0,climate),0.03,0.90);
+  const Aclear=cloudRadClamp(localEnergyCellAlbedo(core.surfaceTemp[i],0,climate),0.03,0.90);
   const deltaA=(1-Aclear)*cloudRadClamp(cloudReflect,0,0.82);
   const sw=-Math.max(0,Number(core.insolation?.[i])||0)*deltaA;
 
