@@ -1,13 +1,21 @@
-/* ============ 0.5.39: persistent low-resolution Weather Core ============ */
+/* ============ 0.5.39 / 0.5.65: persistent low-resolution Weather Core ============ */
 /*
    CPU climate/weather state, deliberately decoupled from render FPS.
 
    v1 establishes the state container and deterministic fixed-step clock only.
    Local radiative balance, pressure-gradient dynamics, advection,
-   condensation and precipitation physics are layered onto these fields by
-   the following milestones. Procedural hashing below is only a tiny initial
+   condensation and precipitation physics are layered onto these fields by the
+   following milestones. Procedural hashing below is only a tiny initial
    perturbation so an otherwise perfectly symmetric world has something for
    later physical instabilities to amplify; it is not a weather morphology.
+
+   0.5.65: render Detail/Draft is not a physics control. Earlier versions used
+   state.draft to switch the Weather Core between 32 and 48 cells per cube
+   face. weatherCoreEnsure() therefore destroyed and recreated the complete
+   persistent atmosphere every time the user touched the Details toggle. That
+   erased thunderstorms, fog, pressure systems and every other accumulated
+   field. Resolution now depends only on the device class; changing visual
+   quality can no longer reset weather.
 */
 
 const WEATHER_CORE_MODEL = 1;
@@ -39,7 +47,7 @@ function weatherHash01(seed,index){
 }
 function weatherCoreRequestedResolution(){
   const mobile=(typeof matchMedia==='function') && matchMedia('(max-width:700px)').matches;
-  return (mobile || state.draft) ? WEATHER_CORE_DRAFT_N : WEATHER_CORE_DESKTOP_N;
+  return mobile ? WEATHER_CORE_DRAFT_N : WEATHER_CORE_DESKTOP_N;
 }
 function weatherCoreAxis(){
   const a=(typeof world!=='undefined' && world && world.axis) ? world.axis : [0,1,0];
