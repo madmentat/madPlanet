@@ -1,10 +1,17 @@
-/* ============ 0.5.52: lightning from physical deep convection ============ */
+/* ============ 0.5.52 / 0.5.62: lightning from physical deep convection ============ */
 /*
    Lightning is no longer an independent procedural weather source. Electrical
    potential is diagnosed only inside resolved deep moist convection, using
    sub-grid updraft speed, cloud condensate, mixed-phase cloud depth and the
    existing precipitation rate. Dry/stable/shallow columns cannot create a
    lightning centre regardless of the visual storm sliders.
+
+   0.5.62 keeps that physical requirement but removes an accidental scarcity:
+   the old diagnosis multiplied four broad 0..1 gates. A perfectly ordinary
+   thunderstorm could therefore be reduced to a near-zero score simply because
+   each individual proxy was only moderate. Mixed-phase depth remains a hard
+   physical requirement; deep state, updraft and condensate now combine as a
+   softer coupled vigor term so ordinary cumulonimbus can be electrically live.
 
    Until the Weather Core cloud visual bridge arrives in 0.5.53, reuse the five
    retired uCycA/uCycB uniform slots as a tiny render transport. Important:
@@ -77,14 +84,20 @@ function lightningDiagnoseCell(core,i,climate){
   const cloud=Math.max(0,Number(core.cloudWaterState?.[i])||0);
   const mixed=lightningMixedPhaseDepth(core,i,climate);
   const precipHr=Math.max(0,Number(core.precipRate?.[i])||0)*3600;
-  const stateGate=lightningSmooth(0.07,0.78,deep);
-  const upGate=lightningSmooth(4.0,28.0,up);
-  const cloudGate=lightningSmooth(0.025,0.42,cloud);
-  const mixedGate=lightningSmooth(350,3200,mixed);
-  const precipGate=lightningSmooth(0.8,28.0,precipHr);
-  const potential=lightningClamp(stateGate*upGate*cloudGate*mixedGate*(0.72+0.28*precipGate),0,1);
-  const intensity=lightningClamp(potential*(0.42+0.33*upGate+0.25*cloudGate),0,1);
-  let rate=potential*(0.10+0.078*Math.min(42,up)+0.018*Math.min(35,precipHr));
+
+  /* 0.5.62: mixed phase is still mandatory, but the other indicators are
+     correlated symptoms of the same plume and must not be multiplied as four
+     independent probabilities. The old product made moderate real storms
+     practically disappear: 0.4*0.3*0.25*0.5 is already only 0.015. */
+  const stateGate=lightningSmooth(0.04,0.62,deep);
+  const upGate=lightningSmooth(2.5,20.0,up);
+  const cloudGate=lightningSmooth(0.015,0.28,cloud);
+  const mixedGate=lightningSmooth(180,2400,mixed);
+  const precipGate=lightningSmooth(0.5,20.0,precipHr);
+  const plumeVigor=stateGate*Math.sqrt(Math.max(0,upGate*cloudGate));
+  const potential=lightningClamp(mixedGate*plumeVigor*(0.78+0.22*precipGate),0,1);
+  const intensity=lightningClamp(potential*(0.55+0.30*upGate+0.25*cloudGate),0,1);
+  let rate=potential*(0.18+0.090*Math.min(42,up)+0.022*Math.min(35,precipHr));
   rate=lightningClamp(rate,0,LIGHTNING_MAX_FLASH_HZ);
   return {potential,intensity,rate,mixed,deep,up,precipHr};
 }
@@ -135,7 +148,7 @@ function lightningRefresh(core,climate){
     let best=-1,bestScore=0;
     for(let i=0;i<core.count;i++){
       const score=core.lightningPotential[i];
-      if(score<=bestScore||score<0.018) continue;
+      if(score<=bestScore||score<0.010) continue;
       if(!lightningSeparated(core,i,selected,active)) continue;
       best=i;bestScore=score;
     }
@@ -145,7 +158,7 @@ function lightningRefresh(core,climate){
     const deep=lightningClamp(core.deepConvectiveState[best],0,1);
     const front=lightningClamp(core.frontStrength?.[best]||0,0,1);
     const cyc=lightningClamp(core.cycloneStrength?.[best]||0,0,1);
-    const radius=lightningClamp(0.045+0.085*Math.sqrt(deep)+0.022*Math.max(front,cyc),0.045,0.17);
+    const radius=lightningClamp(0.050+0.095*Math.sqrt(deep)+0.024*Math.max(front,cyc),0.050,0.18);
     core.lightningRenderA[o]=core.dirX[best];core.lightningRenderA[o+1]=core.dirY[best];core.lightningRenderA[o+2]=core.dirZ[best];
     core.lightningRenderA[o+3]=0; /* CRITICAL: never wake legacy procedural synoptic weather. */
     core.lightningRenderB[o]=radius;
