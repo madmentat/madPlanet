@@ -44,14 +44,14 @@ void main(){
     cl2 = shadeDeck(2, nc, rd, highDeck(nc, ft), 1.0, boost, ft);
   }
 
-  /* 0.5.62: молния принадлежит физическому грозовому очагу, а не конкретному
-     opaque-пикселю процедурной формы нижнего облака. Старый cl0.a>0.08 здесь
-     обрезал ветви разряда ровно по облачной alpha-маске и мог скрыть весь удар.
-     Дорогой lightningGlow вызывается только когда CPU реально опубликовал
-     хотя бы один активный очаг в первом слоте. */
+  /* 0.5.65: the physical strike is independent of Detail/Draft. cl0.a changes
+     when the lower cloud volume uses one vs three samples, so multiplying the
+     complete bolt by that alpha made a render-quality toggle appear to switch
+     lightning off. lightningGlow() itself uses cl0.a only for irregular cloud
+     illumination; the direct channel is not attenuated by cloud morphology. */
   vec3 bolt = vec3(0.0);
   if(uLowOn > 0.5 && uCloudLow > 0.015 && tLo > 0.0 && uCycB[0].y > 0.005)
-    bolt = lightningGlow(normalize(ro + rd*tLo), cl0.a) * (0.45 + cl0.a*1.55);
+    bolt = lightningGlow(normalize(ro + rd*tLo), cl0.a);
 
   vec3 col;
   /* Покрытие пикселя планетой: 1 на диске, доля на лимбе, 0 в пустоте. Ореол
