@@ -13,20 +13,18 @@ void main(){
   float tP = iSphere(ro, rd, 1.0);
   float tLo = iSphere(ro, rd, R_LOW);
 
-  /* 0.5.54: synoptic/weather/lowCloudClimate no longer own cloud geography.
-     Weather Core low/mid/high condensate is sampled by the replacement cloud
-     entry points from a body-fixed cubemap. Keep these globals neutral only
-     because some legacy helper signatures still reference them internally;
-     dead legacy paths are expected to be removed by the GLSL compiler. */
+  /* 0.5.54 hotfix: Weather Core still owns cloud geography, while the mature
+     0.5.53 cloud bodies are reused as morphology inside that physical mask.
+     Their old gWx hooks only affect local appearance/intensity, so give them
+     a neutral mid-state instead of procedural weather. gSyn stays zero: old
+     seeded cyclone/front geography must not return. */
   gSyn = vec4(0.0);
-  gWx = vec4(0.0);
+  gWx = vec4(0.5);
   gClimLow = 1.0;
-  /* Retain the historical middle-deck relation only as a neutral compatibility
-     expression: with gClimLow=1 it is exactly 1 and performs no geography. */
-  gClimMid = clamp(0.48 + 0.52*gClimLow, 0.48, 1.0);
+  gClimMid = 1.0;
 
-  /* Три яруса считаются здесь, один раз на пиксель. Теперь их география
-     приходит из Weather Core; procedural noise только мнёт кромку и фактуру. */
+  /* Три яруса считаются здесь, один раз на пиксель. География приходит из
+     Weather Core, а прежние FBM/cumulus/wisp поля формируют тело облака. */
   float boost = (tP > 0.0) ? 1.0 : 1.12;
   vec4 cl0 = vec4(0.0), cl1 = vec4(0.0), cl2 = vec4(0.0);
   if(uLowOn > 0.5 && uCloudLow > 0.015 && tLo > 0.0){
