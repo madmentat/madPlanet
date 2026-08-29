@@ -69,7 +69,8 @@ ordered(buildPs,order,'PowerShell stabilization order');
   assert.ok(core.fogState[0]<1,'isolated fog cell should lose its grid-point spike');
   assert.ok(core.fogState.slice(1).some(v=>v>0),'fog influence should spread into neighbours');
 }
-assert.ok(!/optical\s*<\s*0\.002/.test(fogShader),'hard 0.002 fog contour must not return');
+const fogExecutable=fogShader.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\/.*$/gm,'$1');
+assert.ok(!/optical\s*<\s*0\.002/.test(fogExecutable),'hard 0.002 fog contour must not return');
 assert.match(fogShader,/softVisibility=smoothstep/,'weak physical fog must fade continuously');
 assert.match(fogShader,/max\(0\.0,optical-erosion\)/,'edge noise must be subtractive and unable to create fog');
 
