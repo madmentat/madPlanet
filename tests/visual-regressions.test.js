@@ -168,7 +168,7 @@ assert.match(shell, /input\[type=range\]\{[^}]*height:34px/s, 'slider hit area m
 
 /* 0.5.29: ворота молний плавные, часы завёрнуты, у гроз есть ползунок. */
 assert.ok(!/if\(storm < 0\.09\) return acc;/.test(lightning), 'hard lightning cut-offs must not return');
-assert.match(lightning, /float gate = ss\(/, 'lightning gates must fade, not snap');
+assert.match(lightning, /float gate = 0\.55 \+ 0\.45\*ss\(/, 'lightning gates must fade, not snap');
 assert.match(lightning, /float lt = mod\(uTime, 900\.0\)/, 'lightning clock must wrap to keep hash precision');
 assert.match(state, /k:'storm'/, 'storm activity slider missing');
 /* Кольца: цвет из состава, размера частиц и спектра звезды. */
