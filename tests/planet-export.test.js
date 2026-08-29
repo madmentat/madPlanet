@@ -62,7 +62,8 @@ assert.match(shader,/0\.70\*exp\(-abs\(fr-0\.105\)\*58\.0\)/,'reference second-s
 assert.match(trigger,/lt\*rate\+phase\*37\.0\+i\*5\.17/,'trigger phase must mirror shader');
 assert.match(trigger,/Math\.exp\(-fr\*42\.0\)/,'trigger first-stroke window must mirror shader');
 assert.match(trigger,/0\.70\*Math\.exp\(-Math\.abs\(fr-0\.105\)\*58\.0\)/,'trigger second-stroke window must mirror shader');
-assert.match(trigger,/prev<lightningShotTrigger\.threshold/,'trigger must fire on a rising threshold crossing');
+assert.match(trigger,/const threshold=Number\(lightningShotTrigger\.threshold\)\|\|SHOT_LIGHTNING_TRIGGER_THRESHOLD/,'trigger must resolve a calibrated threshold');
+assert.match(trigger,/score>=threshold&&prev<threshold/,'trigger must fire on a rising threshold crossing');
 assert.match(trigger,/takeShot\(\{now,includeCard,showPreview:true\}\)/,'capture must reuse the exact triggering frame timestamp');
 assert.match(trigger,/world\.cycB/,'trigger must consume the physical Weather Core lightning payload');
 assert.match(trigger,/shotLightningFrontVisibility/,'trigger should reject physical flashes on the far side of the planet');
