@@ -110,6 +110,19 @@ function shotRenderCanvas(now,includeCard){
 function shotCanvasBlob(c2){
   return new Promise((resolve,reject)=>c2.toBlob(b=>b?resolve(b):reject(new Error('PNG encode failed')),'image/png'));
 }
+/* Web Share consumes transient user activation. canvas.toBlob() resumes in a
+   later task on some browsers and loses that activation, so the Share button
+   uses this deliberately synchronous PNG path only while handling the click. */
+function shotCanvasBlobSync(c2){
+  const url=c2.toDataURL('image/png'),comma=url.indexOf(','),raw=atob(url.slice(comma+1));
+  const bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+  return new Blob([bytes],{type:'image/png'});
+}
+function takeShotSyncBlob(options={}){
+  const includeCard=options.includeCard!==undefined?!!options.includeCard:shotIncludeCard;
+  const now=Number.isFinite(options.now)?options.now:lastNow;
+  const blob=shotCanvasBlobSync(shotRenderCanvas(now,includeCard));shotBlob=blob;return blob;
+}
 function shotShowBlob(blob){
   shotBlob=blob;if(shotObjectUrl)URL.revokeObjectURL(shotObjectUrl);shotObjectUrl=URL.createObjectURL(blob);
   const im=document.getElementById('shotImg');im.src=shotObjectUrl;
