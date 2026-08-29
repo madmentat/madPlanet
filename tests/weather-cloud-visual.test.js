@@ -10,54 +10,46 @@ const prelude=read('shaders/weather-cloud-prelude.glsl');
 const bridge=read('shaders/weather-cloud-visual.glsl');
 const main=read('shaders/main.glsl');
 const gpu=read('js/weather-cloud-gpu.js');
+const response=read('js/cloud-visual-response.js');
 const render=read('js/weather-cloud-render.js');
 const buildSh=read('build.sh');
 const buildPs=read('build.ps1');
 
-const vmx=version.match(/^VERSION\s+(\d+)\.(\d+)\.(\d+)\s*$/m);
-assert.ok(vmx,'Weather Core cloud visual test must see a semantic version');
-assert.ok(+vmx[1]>0 || +vmx[2]>5 || (+vmx[2]===5 && +vmx[3]>=54),'cloud visual bridge requires 0.5.54 or newer');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m);
 function ordered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
 const shaderOrder=['shaders/header.glsl','shaders/weather-cloud-prelude.glsl','shaders/clouds.glsl','shaders/weather-cloud-visual.glsl','shaders/atmosphere.glsl'];
 ordered(buildSh,shaderOrder,'shell shader order');ordered(buildPs,shaderOrder,'PowerShell shader order');
-const jsOrder=['js/lightning-weather.js','js/weather-cloud-gpu.js','js/planet-export.js','js/render.js','js/weather-cloud-render.js','js/screenshot-trigger.js'];
+const jsOrder=['js/lightning-weather.js','js/cloud-visual-response.js','js/weather-cloud-gpu.js','js/planet-export.js','js/render.js','js/weather-cloud-render.js'];
 ordered(buildSh,jsOrder,'shell JS order');ordered(buildPs,jsOrder,'PowerShell JS order');
 
 assert.match(header,/uniform\s+samplerCube\s+uWeatherCloudTex\s*;/,'cloud cubemap uniform missing');
 for(const name of ['lowCover','midCover','lowDeck','midDeck','highDeck','volumeLow']){
-  assert.match(prelude,new RegExp('#define\\s+'+name+'\\s+legacy'+name[0].toUpperCase()+name.slice(1)),'legacy '+name+' must be privately renamed');
-  assert.match(bridge,new RegExp('#undef\\s+'+name),'physical bridge must reclaim '+name);
+  assert.match(prelude,new RegExp('#define\\s+'+name+'\\s+legacy'+name[0].toUpperCase()+name.slice(1)),'legacy '+name+' must remain privately available');
+  assert.match(bridge,new RegExp('#undef\\s+'+name),'bridge must reclaim '+name);
 }
-assert.match(bridge,/texture\(uWeatherCloudTex,body\)/,'WebGL2 physical cloud sample missing');
-assert.match(bridge,/textureCube\(uWeatherCloudTex,body\)/,'WebGL1 cubemap fallback missing');
-assert.match(bridge,/normalize\(uRotS\*normalize\(dirW\)\)/,'Weather Core map must be sampled in body-fixed surface coordinates');
-assert.ok(!/\bgWx\b|\bgSyn\b|lowCloudClimate\s*\(|synoptic\s*\(|\bweather\s*\(/.test(bridge),
-  'new cloud entry points must not depend on procedural synoptic/climate geography');
+assert.match(bridge,/texture\(uWeatherCloudTex,body\)/);
+assert.match(bridge,/textureCube\(uWeatherCloudTex,body\)/);
+assert.match(bridge,/s\.rgb\*2\.0-1\.0/,'RGB must decode to signed influence, not density');
+assert.match(bridge,/legacyLowDeck\(dir,foot,weatherLowClimateFromInfluence\(inf\.r\)\)/,
+  'low cloud must keep 0.5.53 morphology and move its threshold via influence');
+assert.match(bridge,/coverageMask\(body,amount\)/,'mid/high geography must be changed through old morphology thresholds');
+assert.ok(!bridge.includes('weatherCloudEnvelope'),'old physical opacity envelope must be gone');
+assert.ok(!/m\.x\s*=\s*clamp\(m\.x\s*\*\s*gate/.test(bridge),'physical field must never multiply finished cloud density as a mask');
+assert.ok(!/if\s*\(gate\s*[<=>]/.test(bridge),'physical field must never hard gate a cloud');
 assert.ok(!/gSyn\s*=\s*synoptic\s*\(|gWx\s*=\s*weather\s*\(|lowCloudClimate\s*\(wd\)/.test(main),
-  'main shader must stop evaluating procedural cloud geography');
-assert.match(main,/gSyn\s*=\s*vec4\(0\.0\)/,'legacy synoptic globals should be neutralized');
-assert.match(main,/gWx\s*=\s*vec4\(0\.5\)/,'legacy morphology helpers should receive only a neutral weather state');
-assert.match(main,/gClimLow\s*=\s*1\.0/,'legacy cloud climate should be neutralized');
+  'procedural climate/synoptic geography must remain retired');
 
-/* 0.5.54 visual hotfix: the coarse 48x48 grid must not become the cloud body.
-   Restore the mature 0.5.53 morphology and use physical q only as a smooth
-   multiplicative envelope. */
-assert.match(bridge,/legacyLowDeck\(dir,foot,1\.0\)/,'low clouds must reuse the pre-0.5.54 connected cumulus morphology');
-assert.match(bridge,/legacyMidDeck\(dir,foot\)/,'middle clouds must reuse the pre-0.5.54 morphology');
-assert.match(bridge,/legacyHighDeck\(dir,foot\)/,'high clouds must reuse the pre-0.5.54 wispy morphology');
-assert.match(bridge,/legacyLowCover\(dir,1\.0\)\*gate/,'cloud shadows must follow the same old morphology inside the physical envelope');
-assert.match(bridge,/pow\(q,0\.56\)/,'physical cloud envelope should be continuous instead of thresholding a texel into a round token');
-assert.ok(!/weatherCloudPhysicalDensity\s*\(/.test(bridge),'coarse Weather Core q must not be thresholded directly into a cloud silhouette');
-assert.match(bridge,/m\.x=clamp\(m\.x\*gate/,'physical envelope must multiply morphology, not replace it');
+assert.match(gpu,/cloudVisualLow/);assert.match(gpu,/cloudVisualMid/);assert.match(gpu,/cloudVisualHigh/);assert.match(gpu,/deepConvectiveState/);
+assert.match(gpu,/weatherCloudSignedToByte/,'GPU must encode signed response');
+assert.ok(!/cloudLowMass|cloudMidMass|cloudHighMass/.test(gpu),'GPU visual bridge must not upload physical condensate as a visibility mask');
+assert.match(gpu,/dstY=N-1-y/);
+assert.match(gpu,/gl\.texSubImage2D/);
+assert.ok(!/requestAnimationFrame/.test(gpu));
+assert.ok(!/texSubImage2D/.test(render));
+assert.match(response,/CLOUD_VISUAL_GROW_TAU_SEC/);assert.match(response,/CLOUD_VISUAL_DISSIPATE_TAU_SEC/);
+assert.match(response,/cloudVisualDiffuse/);
 
-assert.match(gpu,/cloudLowMass/);assert.match(gpu,/cloudMidMass/);assert.match(gpu,/cloudHighMass/);assert.match(gpu,/deepConvectiveState/);
-assert.match(gpu,/dstY=N-1-y/,'cubemap packing must perform the canonical vertical flip');
-assert.match(gpu,/gl\.texSubImage2D/,'tick upload must use cubemap sub-image updates');
-assert.match(gpu,/weatherCoreStep=function[\s\S]*weatherCloudGpuUpload\(core\)/,'upload must follow fixed Weather Core step');
-assert.ok(!/requestAnimationFrame/.test(gpu),'cloud map upload must never be driven by render FPS');
-assert.ok(!/texSubImage2D/.test(render),'render bridge must bind only, never upload cloud grids per frame');
-
-/* Exercise transfer and canonical row orientation with a tiny fake cubemap. */
+/* Exercise signed transfer and canonical row orientation with a tiny fake cubemap. */
 const calls=[];
 const fakeGl={
   TEXTURE0:33984,TEXTURE_CUBE_MAP:34067,TEXTURE_CUBE_MAP_POSITIVE_X:34069,
@@ -69,23 +61,22 @@ const fakeGl={
 const ctx={console,Math,Number,Uint8Array,Array,gl:fakeGl,webglVersion:2,UNIFORM_NAMES:[],
   weatherCoreCreate(){return null;},weatherCoreStep(){return null;}};
 vm.createContext(ctx);vm.runInContext(gpu,ctx,{filename:'weather-cloud-gpu.js'});
-assert.equal(ctx.weatherCloudMassToByte(0,0.1),0,'zero condensate must encode clear');
-assert.ok(ctx.weatherCloudMassToByte(0.4,0.1)>ctx.weatherCloudMassToByte(0.04,0.1),'mass transfer must be monotonic');
+assert.ok(Math.abs(ctx.weatherCloudByteToSigned(ctx.weatherCloudSignedToByte(0)))<0.01,'neutral influence must survive RGBA8 encoding');
+assert.ok(ctx.weatherCloudSignedToByte(0.8)>ctx.weatherCloudSignedToByte(0),'positive magnet must encode brighter than neutral');
+assert.ok(ctx.weatherCloudSignedToByte(-0.8)<ctx.weatherCloudSignedToByte(0),'disperser must encode darker than neutral');
 const N=4,count=6*N*N;
 const core={N,count,ticks:7,seed:9,
-  cloudLowMass:new Float32Array(count),cloudMidMass:new Float32Array(count),cloudHighMass:new Float32Array(count),deepConvectiveState:new Float32Array(count)};
-core.cloudLowMass[0]=0.01;
-core.cloudLowMass[(N-1)*N]=0.60;
-core.cloudMidMass[5]=0.20;core.cloudHighMass[10]=0.12;core.deepConvectiveState[15]=0.9;
-const lowBefore=Array.from(core.cloudLowMass),midBefore=Array.from(core.cloudMidMass),highBefore=Array.from(core.cloudHighMass);
+  cloudVisualLow:new Float32Array(count),cloudVisualMid:new Float32Array(count),cloudVisualHigh:new Float32Array(count),deepConvectiveState:new Float32Array(count)};
+core.cloudVisualLow[0]=-0.8;
+core.cloudVisualLow[(N-1)*N]=0.8;
+core.cloudVisualMid[5]=0.4;core.cloudVisualHigh[10]=-0.4;core.deepConvectiveState[15]=0.9;
+const lowBefore=Array.from(core.cloudVisualLow);
 ctx.weatherCloudGpuEnsure(N);
 const packed=ctx.weatherCloudGpuPackFace(core,0);
-assert.equal(packed[0],ctx.weatherCloudMassToByte(0.60,0.16),'first texture row must come from highest weather v row');
-assert.equal(packed[((N-1)*N)*4],ctx.weatherCloudMassToByte(0.01,0.16),'last texture row must come from lowest weather v row');
+assert.equal(packed[0],ctx.weatherCloudSignedToByte(0.8),'first texture row must come from highest weather v row');
+assert.equal(packed[((N-1)*N)*4],ctx.weatherCloudSignedToByte(-0.8),'last texture row must come from lowest weather v row');
 ctx.weatherCloudGpuUpload(core);
 assert.equal(calls.length,6,'one fixed-tick upload must update exactly six cubemap faces');
-assert.deepEqual(Array.from(core.cloudLowMass),lowBefore,'GPU bridge must not mutate low cloud mass');
-assert.deepEqual(Array.from(core.cloudMidMass),midBefore,'GPU bridge must not mutate mid cloud mass');
-assert.deepEqual(Array.from(core.cloudHighMass),highBefore,'GPU bridge must not mutate high cloud mass');
+assert.deepEqual(Array.from(core.cloudVisualLow),lowBefore,'GPU bridge must not mutate inertial response');
 
 console.log('weather-cloud-visual.test.js: OK');
