@@ -45,10 +45,14 @@ uniform float uDraft;     /* 1 — черновик: дорогие слои в�
 uniform float uVoid;      /* 1 — космос заливается чёрным */
 uniform mat3  uRingMat;
 uniform vec3  uSeedS, uSeedC;
-/* 0.5.54: Weather Core owns cloud geography. RGB are physical low/mid/high
-   condensate visualized from the body-fixed cubed-sphere grid; A carries
-   deep-convective state for tower morphology. Updated only on weather ticks. */
+/* 0.5.54 temporal cloud bridge. RGB of both cubemaps are the signed inertial
+   growth/dispersal influence (-1..+1 encoded around neutral 0.5); A is deep
+   convection. Weather Core publishes discrete fixed-tick targets, while the
+   renderer blends previous -> current continuously between ticks so those
+   targets can never make clouds jump on screen. */
 uniform samplerCube uWeatherCloudTex;
+uniform samplerCube uWeatherCloudTexPrev;
+uniform float uWeatherCloudBlend;
 uniform vec4  uCycA[5];   /* 0.5.52 bridge: xyz lightning centre, w stays 0 */
 uniform vec4  uCycB[5];   /* x radius, y flash rate, z electrical strength, w phase */
 uniform int   uPlateN;    /* число тектонических плит */
