@@ -1,4 +1,4 @@
-/* ============ 0.5.52 / 0.5.62: lightning from physical deep convection ============ */
+/* ============ 0.5.52 / 0.5.62 / 0.5.64: lightning from physical deep convection ============ */
 /*
    Lightning is no longer an independent procedural weather source. Electrical
    potential is diagnosed only inside resolved deep moist convection, using
@@ -12,6 +12,14 @@
    each individual proxy was only moderate. Mixed-phase depth remains a hard
    physical requirement; deep state, updraft and condensate now combine as a
    softer coupled vigor term so ordinary cumulonimbus can be electrically live.
+
+   0.5.64 keeps the same physical potential, but stops treating that potential
+   as a linear flash-frequency multiplier. Weak/moderate electrically valid
+   cells were still flashing absurdly rarely even when the user explicitly
+   requested high storm activity. Cadence now uses a sub-linear response while
+   intensity still follows the physical potential, and the render selection
+   floor is lowered slightly so the five available GPU slots are populated by
+   real secondary storms instead of waiting only for near-supercells.
 
    Until the Weather Core cloud visual bridge arrives in 0.5.53, reuse the five
    retired uCycA/uCycB uniform slots as a tiny render transport. Important:
@@ -31,6 +39,7 @@ const LIGHTNING_MIXED_COLD_K = 238.15;
 const LIGHTNING_MOIST_LAPSE_K_M = 0.0060;
 const LIGHTNING_MAX_FLASH_HZ = 4.5;
 const LIGHTNING_MIN_SEPARATION_RAD = 0.105;
+const LIGHTNING_SELECTION_FLOOR = 0.006;
 
 function lightningClamp(x,a,b){ return Math.max(a,Math.min(b,Number(x)||0)); }
 function lightningSmooth(a,b,x){
@@ -97,7 +106,11 @@ function lightningDiagnoseCell(core,i,climate){
   const plumeVigor=stateGate*Math.sqrt(Math.max(0,upGate*cloudGate));
   const potential=lightningClamp(mixedGate*plumeVigor*(0.78+0.22*precipGate),0,1);
   const intensity=lightningClamp(potential*(0.55+0.30*upGate+0.25*cloudGate),0,1);
-  let rate=potential*(0.18+0.090*Math.min(42,up)+0.022*Math.min(35,precipHr));
+  /* Electrical potential is not the same thing as the probability that the
+     next second contains a flash. A sub-linear cadence response keeps weak but
+     genuine thunderstorms alive without making them as bright as strong ones. */
+  const cadencePotential=Math.pow(potential,0.78);
+  let rate=cadencePotential*(0.18+0.090*Math.min(42,up)+0.022*Math.min(35,precipHr));
   rate=lightningClamp(rate,0,LIGHTNING_MAX_FLASH_HZ);
   return {potential,intensity,rate,mixed,deep,up,precipHr};
 }
@@ -148,7 +161,7 @@ function lightningRefresh(core,climate){
     let best=-1,bestScore=0;
     for(let i=0;i<core.count;i++){
       const score=core.lightningPotential[i];
-      if(score<=bestScore||score<0.010) continue;
+      if(score<=bestScore||score<LIGHTNING_SELECTION_FLOOR) continue;
       if(!lightningSeparated(core,i,selected,active)) continue;
       best=i;bestScore=score;
     }
