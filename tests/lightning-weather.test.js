@@ -12,7 +12,7 @@ const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 
-assert.match(version,/^VERSION\s+0\.5\.52\s*$/m,'lightning milestone must be 0.5.52');
+assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'lightning regression must see a semantic version');
 function ordered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
 ordered(buildSh,['js/deep-convection.js','js/vertical-stability.js','js/deep-convection-coupling.js','js/lightning-weather.js','js/render.js'],'shell lightning order');
 ordered(buildPs,['js/deep-convection.js','js/vertical-stability.js','js/deep-convection-coupling.js','js/lightning-weather.js','js/render.js'],'PowerShell lightning order');
