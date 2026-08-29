@@ -27,7 +27,7 @@ assert.match(render, /mobileDevice \? 31\.0 : 16\.5/, 'mobile target should favo
 assert.ok(!/auroraGlow\s*\(/.test(main), 'aurora must not be compiled into monolithic main shader');
 assert.match(render, /drawAuroraWebGL/, 'separate aurora draw pass missing');
 assert.match(aurora, /const int N=6;/, 'aurora should integrate through a thin atmospheric volume');
-assert.match(aurora, /float sector=smoothstep/, 'broken auroral sectors missing');
+assert.match(aurora, /float sector=0\.10\+0\.90\*smoothstep/, 'broken auroral sectors need a nonzero physical floor so noise cannot erase the whole oval');
 assert.match(aurora, /float folds=/, 'irregular auroral curtain folds missing');
 assert.ok(!/sin\s*\(\s*lon\s*\*/.test(aurora), 'periodic longitude grille/iris must not return');
 assert.ok(!/float phase=lon\*/.test(aurora), 'old radial iris phase must not return');
