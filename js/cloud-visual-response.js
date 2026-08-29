@@ -1,4 +1,4 @@
-/* ============ 0.5.54 hotfix: inertial cloud visual response ============ */
+/* ============ 0.5.54 / 0.5.61 hotfix: inertial cloud visual response ============ */
 /*
    This layer deliberately does NOT decide whether a rendered cloud pixel is
    allowed or forbidden.  Weather Core supplies only a slowly varying signed
@@ -12,12 +12,18 @@
    finite time instead of clipping it at a grid boundary, while a humid/lifting
    cell must accumulate enough favourable forcing before the morphology grows.
    No H2O, condensate or thermodynamic state is modified here.
+
+   0.5.61 reduces the per-tick spatial blend. At 22% every five model minutes,
+   a single physically favourable cell surrounded by dry cells was driven back
+   through zero faster than its deliberately slow local growth could respond.
+   Spatial smoothing remains, but it can no longer reverse sustained local
+   forcing merely because neighbouring cells are dry.
 */
 
 const CLOUD_VISUAL_RESPONSE_MODEL=2;
 const CLOUD_VISUAL_GROW_TAU_SEC=95*60;
 const CLOUD_VISUAL_DISSIPATE_TAU_SEC=70*60;
-const CLOUD_VISUAL_SPATIAL_BLEND=0.22;
+const CLOUD_VISUAL_SPATIAL_BLEND=0.10;
 
 function cloudVisualClamp(x,a,b){return Math.max(a,Math.min(b,Number(x)||0));}
 function cloudVisualSmooth(a,b,x){
