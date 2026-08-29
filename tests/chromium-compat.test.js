@@ -8,6 +8,7 @@ const init=read('js/gl-init.js');
 const main=read('shaders/main.glsl');
 const atmo=read('shaders/atmosphere.glsl');
 const deploy=read('deploy.ps1');
+const madlib=read('madlib.ps1');
 
 assert.ok(Buffer.byteLength(compat,'utf8') < 8000, 'compat shader must stay compact enough for ANGLE');
 assert.ok(!/sampler2DArray|textureLod|uTexMean|uCycA|uCycB/.test(compat), 'compat shader must avoid texture arrays and large uniform arrays');
@@ -17,5 +18,7 @@ const compileBody=(init.match(/function compile\(type, src\)\{([\s\S]*?)\n\}/)||
 assert.ok(!/showFatal\s*\(/.test(compileBody), 'a failed full shader attempt must not leave a fatal overlay before fallback succeeds');
 assert.ok(!/auroraGlow\s*\(/.test(main+atmo), 'main program must not contain aurora implementation');
 assert.match(deploy, /Building a fresh temporary index\.html before deploy/, 'deploy must build fresh output by default');
-assert.match(deploy, /stale index\.html: APP_VERSION/, 'deploy must reject a stale built version');
+assert.match(deploy, /Test-MadBuild \$src \$version/, 'deploy must validate the selected build through the shared validator');
+assert.match(madlib, /stale build: APP_VERSION is not \$Version/, 'shared validator must reject a stale built version');
+assert.match(madlib, /stale build: visible version is not \$Version/, 'shared validator must reject stale visible version text');
 console.log('chromium-compat.test.js: OK');
