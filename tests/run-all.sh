@@ -41,6 +41,7 @@ node tests/deep-convection.test.js
 node tests/vertical-stability.test.js
 node tests/cloud-radiative-feedback.test.js
 node tests/ocean-thermal.test.js
+node tests/cryosphere.test.js
 node tests/physical-fog.test.js
 node tests/lightning-weather.test.js
 node tests/cloud-visual-response.test.js
