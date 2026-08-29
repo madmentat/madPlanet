@@ -35,8 +35,8 @@ function one(v={}){
 const moderate=one();
 const d=ctx.lightningDiagnoseCell(moderate,0,climate);
 assert.ok(d.mixed>2000,'moderate test plume must span a real mixed-phase layer');
-assert.ok(d.potential>0.006&&d.potential<0.35,'moderate storm should have finite non-supercell potential');
-const oldLinear=d.potential*(0.18+0.090*Math.min(42,d.up)+0.022*Math.min(35,d.precipHr));
+assert.ok(d.potential>0.004&&d.potential<0.45,'moderate storm should have finite non-supercell potential');
+const oldLinear=d.potential*(0.20+0.095*Math.min(42,d.up)+0.024*Math.min(35,d.precipHr));
 assert.ok(d.rate>oldLinear*1.25,'sub-linear cadence response must materially lift moderate-storm flash rate');
 
 ctx.lightningRefresh(moderate,climate);
@@ -51,6 +51,6 @@ assert.equal(s.mixed,0,'shallow warm cloud must have zero mixed-phase depth');
 assert.equal(s.potential,0,'shallow warm cloud must have zero lightning potential');
 assert.equal(s.rate,0,'shallow warm cloud must have zero flash cadence');
 
-assert.match(src,/LIGHTNING_SELECTION_FLOOR\s*=\s*0\.006/,'secondary physical storms should use the lowered selection floor');
-assert.match(src,/Math\.pow\(potential,0\.78\)/,'moderate-storm cadence must use the sub-linear potential response');
+assert.match(src,/LIGHTNING_SELECTION_FLOOR\s*=\s*0\.004/,'ordinary secondary storms should use the softened selection floor');
+assert.match(src,/Math\.pow\(potential,0\.72\)/,'moderate-storm cadence must use the sub-linear potential response');
 console.log('lightning-abundance.test.js: OK');
