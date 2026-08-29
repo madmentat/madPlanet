@@ -45,9 +45,12 @@ uniform float uDraft;     /* 1 — черновик: дорогие слои в�
 uniform float uVoid;      /* 1 — космос заливается чёрным */
 uniform mat3  uRingMat;
 uniform vec3  uSeedS, uSeedC;
-uniform vec4  uCycA[5];   /* xyz — центр циклона, w — сила */
-uniform vec4  uCycB[5];   /* x — радиус, y — знак вращения, z — закрутка, w — азимут фронта */
+/* 0.5.54: Weather Core owns cloud geography. RGB are physical low/mid/high
+   condensate visualized from the body-fixed cubed-sphere grid; A carries
+   deep-convective state for tower morphology. Updated only on weather ticks. */
+uniform samplerCube uWeatherCloudTex;
+uniform vec4  uCycA[5];   /* 0.5.52 bridge: xyz lightning centre, w stays 0 */
+uniform vec4  uCycB[5];   /* x radius, y flash rate, z electrical strength, w phase */
 uniform int   uPlateN;    /* число тектонических плит */
 uniform vec4  uPlateP[12];/* xyz — центр плиты в системе поверхности */
 uniform vec4  uPlateW[12];/* xyz — вектор Эйлера плиты (ось x скорость) */
-
