@@ -28,6 +28,31 @@ function cloudRadOptical(mass,scale){
   mass=Math.max(0,Number(mass)||0);scale=Math.max(1e-6,Number(scale)||1);
   return cloudRadClamp(1-Math.exp(-mass/scale),0,1);
 }
+
+/* 0.5.40 used c.A as a local surface baseline even though c.A already
+   contains the old slider-derived cloud albedo (0.230*cloudCov), and then
+   added another cloudWater perturbation on top. Once real cloud condensate
+   owns radiation, that scaffold would double count clouds. Keep the old
+   function names because local-energy calls them dynamically, but redefine
+   them here as a cloud-free/ice-aware baseline. */
+if(typeof localEnergyNonIceAlbedo==='function'){
+  localEnergyNonIceAlbedo=function(c){
+    const A=localEnergyClamp(Number.isFinite(c?.A)?c.A:0.30,0.03,0.86);
+    const ice=localEnergyClamp(c?.iceArea||0,0,0.98);
+    const iceA=localEnergyIceAlbedo(c);
+    const oldCloudAlbedo=0.230*localEnergyClamp(c?.cloudCov||0,0,1);
+    return localEnergyClamp((A-ice*iceA-oldCloudAlbedo)/Math.max(0.02,1-ice),0.03,0.72);
+  };
+}
+if(typeof localEnergyCellAlbedo==='function'){
+  localEnergyCellAlbedo=function(T,cloudWater,c){
+    const ice=localEnergyIceFraction(T,c);
+    const base=localEnergyNonIceAlbedo(c);
+    const iceA=localEnergyIceAlbedo(c);
+    return localEnergyClamp(base*(1-ice)+iceA*ice,0.03,0.90);
+  };
+}
+
 function cloudRadEnsureFields(core){
   if(!core?.count)return core;
   const n=core.count;
