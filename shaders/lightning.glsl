@@ -1,4 +1,4 @@
-/* ---------- молнии 0.5.52 / 0.5.62: только из Weather Core ---------- */
+/* ---------- молнии 0.5.52 / 0.5.62 / 0.5.64: только из Weather Core ---------- */
 /*
    Пять бывших uCycA/uCycB slots временно используются как компактный мост
    CPU Weather Core -> GLSL. uCycA.w всегда 0, поэтому старые procedural
@@ -10,6 +10,11 @@
    значения остаются близки к прежним, но последние 30-40% шкалы заметно
    увеличивают частоту и яркость. Ползунки всё ещё не создают физический очаг
    из ясного неба — они усиливают только уже диагностированную грозу.
+
+   0.5.64 поднимает именно частоту/читаемость уже существующих очагов. Это
+   компенсирует слишком редкие вспышки умеренных физически валидных гроз и
+   синхронизировано с js/screenshot-trigger.js, чтобы trigger видел ровно те
+   же фазы и коэффициенты, что настоящий рендер.
 
    A.xyz = центр очага в body/surface coordinates, A.w = 0
    B.x   = угловой радиус очага
@@ -44,8 +49,8 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
      это устраняет старое обрезание по cloud mask в main.glsl. */
   float gate = 0.55 + 0.45*ss(0.02,0.16,cloudA);
   float lt = mod(uTime, 900.0);
-  float rateScale = 0.55 + 2.10*uStormRate*uStormRate;
-  float activityScale = 0.75 + 0.90*uStorm*uStorm;
+  float rateScale = 0.60 + 3.40*uStormRate*uStormRate;
+  float activityScale = 0.80 + 1.20*uStorm*uStorm;
 
   float halo = 0.0;
   float bestScore = 0.0, bestWin = 0.0, bestIntensity = 0.0;
@@ -56,7 +61,7 @@ vec3 lightningGlow(vec3 dirW, float cloudA){
     vec4 B=uCycB[i];
     float radius=clamp(B.x,0.02,0.22);
     float rate=max(0.0,B.y)*rateScale;
-    float intensity=clamp(B.z*activityScale,0.0,1.65);
+    float intensity=clamp(B.z*activityScale,0.0,2.0);
     if(rate<0.005 || intensity<0.006) continue;
 
     float fi=float(i);
