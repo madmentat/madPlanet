@@ -54,6 +54,7 @@ tests=(
   tests/cryosphere.test.js
   tests/physical-fog.test.js
   tests/weather-stabilization.test.js
+  tests/weather-audit-diagnostics.test.js
   tests/lightning-weather.test.js
   tests/cloud-visual-response.test.js
   tests/weather-cloud-visual.test.js
