@@ -1,9 +1,21 @@
-/* ============ 0.5.54: Weather Core cloud visual entry points ============ */
+/* ============ 0.5.54 hotfix: legacy morphology inside physical Weather Core envelope ============ */
 /*
-   Cloud geography now comes from the body-fixed Weather Core cubemap. The
-   old procedural cloud code remains available only as morphology helpers:
-   cumulusShape/cloudBody/puffDetail/noise may roughen edges INSIDE a physical
-   condensate field, but can no longer decide where a cloud system exists.
+   The first 0.5.54 visual bridge converted each coarse Weather Core texel
+   almost directly into optical cloud density. On a 48x48x6 grid that exposed
+   the grid itself as repeated round/square "tokens" on the planet.
+
+   Keep the important 0.5.54 ownership rule -- Weather Core decides WHERE
+   condensate is allowed -- but restore the mature 0.5.53 morphology for HOW
+   cloud bodies look. The old low/mid/high implementations were already kept
+   under legacy* names by weather-cloud-prelude.glsl, so reuse them here and
+   multiply their continuous FBM/cumulus bodies by a smooth physical envelope.
+
+   Consequences:
+     - q == 0 => visible density is exactly zero; procedural noise cannot seed
+       a cloud in physically clear air.
+     - q > 0 => old connected cloud banks / cumulus lobes / wisps shape the
+       cloud, so the 48x48 Weather Core texel footprint is not the silhouette.
+     - deepConvectiveState still strengthens tower/anvil character.
 */
 #undef lowCover
 #undef midCover
@@ -22,113 +34,103 @@ vec4 weatherCloudSample(vec3 dirW){
 }
 
 float weatherCloudLayerGain(float slider){
-  /* Keep the familiar layer controls as modest visual/manual gain. At zero
-     the user can still explicitly hide a layer; otherwise geography remains
-     authoritative from Weather Core rather than from this scalar. */
-  return ss(0.0,0.045,slider)*mix(0.84,1.16,clamp(slider,0.0,1.0));
+  /* Layer sliders remain a modest visual/manual gain and an explicit hide
+     control. They do not invent spatial cloud morphology. */
+  return ss(0.0,0.045,slider)*mix(0.86,1.14,clamp(slider,0.0,1.0));
 }
 
-float weatherCloudPhysicalDensity(float q,float shape,float edgeAmount){
+float weatherCloudEnvelope(float q){
+  /* No threshold-derived circular body. A continuous power curve turns the
+     linearly filtered physical field into opacity support. The exact zero is
+     preserved, while weak neighbouring condensate fades gradually. */
   q=clamp(q,0.0,1.0);
-  /* Noise perturbs only the transition of an existing physical field. As q
-     tends to zero edgeAmp also tends to zero, so procedural noise cannot seed
-     a cloud in a physically clear cell. Dense condensate becomes a blanket. */
-  float edgeGate=ss(0.010,0.20,q)*(1.0-ss(0.52,0.94,q));
-  float support=q+(shape-0.5)*edgeAmount*edgeGate;
-  float body=ss(0.024,0.235,support);
-  float physicalGate=ss(0.004,0.050,q);
-  float optical=mix(0.48,1.0,ss(0.055,0.52,q));
-  return clamp(body*physicalGate*optical,0.0,1.0);
+  return (q<=0.0)?0.0:pow(q,0.56);
 }
 
-float weatherLowDensity(vec3 dir,float foot,out float cauliflower,out float tower){
+float weatherCloudOpticalGain(float q){
+  q=clamp(q,0.0,1.0);
+  return mix(0.70,1.16,pow(q,0.42));
+}
+
+float weatherCloudLowGate(vec3 dir,out float deep){
   vec4 phys=weatherCloudSample(dir);
-  float q=phys.r*weatherCloudLayerGain(uCloudLow);
-  if(q<0.003){cauliflower=0.5;tower=phys.a;return 0.0;}
-  vec3 p=cumulusCoord(uRotC*dir,2.58,uSeedC+vec3(3.0,9.0,15.0));
-  float shape=cumulusShape(p);
-  float d=weatherCloudPhysicalDensity(q,shape,0.30);
-  float fd=detailFade(82.0,foot);
-  if(fd>0.02){
-    float micro=0.5+0.5*fbm(p*8.2+vec3(83.0),2);
-    d*=mix(0.94,1.055,micro*fd);
-  }
-  cauliflower=0.5+0.5*fbm(p*4.6+vec3(131.0,17.0,29.0),2);
-  tower=clamp(phys.a,0.0,1.0);
-  return clamp(d,0.0,1.0);
+  deep=clamp(phys.a,0.0,1.0);
+  float q=clamp(phys.r*weatherCloudLayerGain(uCloudLow),0.0,1.0);
+  return weatherCloudEnvelope(q)*weatherCloudOpticalGain(q);
 }
-
-float weatherMidDensity(vec3 dir,float foot,out float body,out float tower){
+float weatherCloudMidGate(vec3 dir,out float deep){
   vec4 phys=weatherCloudSample(dir);
-  float q=phys.g*weatherCloudLayerGain(uCloudMid);
-  if(q<0.003){body=0.5;tower=phys.a;return 0.0;}
-  vec3 p=cloudCoord(uRotC2*dir,3.35,-0.0075,uSeedC*1.55+vec3(23.0,5.0,37.0));
-  body=cloudBody(p*0.95+vec3(4.0));
-  float d=weatherCloudPhysicalDensity(q,body,0.24);
-  float detail=puffDetail(p*1.1+vec3(9.0));
-  d*=mix(0.78,1.10,detail);
-  float fd=detailFade(70.0,foot);
-  if(fd>0.02) d*=mix(0.95,1.055,0.5+0.5*fbm(p*9.0+vec3(101.0),2));
-  tower=clamp(phys.a,0.0,1.0);
-  return clamp(d,0.0,0.94);
+  deep=clamp(phys.a,0.0,1.0);
+  float q=clamp(phys.g*weatherCloudLayerGain(uCloudMid),0.0,1.0);
+  return weatherCloudEnvelope(q)*weatherCloudOpticalGain(q);
 }
-
-float weatherHighDensity(vec3 dir,float foot,out float body,out float tower){
+float weatherCloudHighGate(vec3 dir,out float deep){
   vec4 phys=weatherCloudSample(dir);
-  float q=phys.b*weatherCloudLayerGain(uCloudHigh);
-  if(q<0.002){body=0.5;tower=phys.a;return 0.0;}
-  vec3 p=cloudCoord(uRotC3*dir,4.0,-0.011,uSeedC*1.3+vec3(31.0,11.0,53.0));
-  body=0.5+0.5*fbm(p*1.45,3);
-  float broad=weatherCloudPhysicalDensity(q,body,0.20);
-  float wispBase=0.5+0.5*fbm(p*4.1+vec3(71.0),3);
-  float wispFine=0.5+0.5*fbm(p*8.2+vec3(13.0),2);
-  float wisps=clamp(wispBase*0.72+wispFine*0.28,0.0,1.0);
-  /* High condensate remains optically thinner than a low deck, but a deep
-     convective tower can make its anvil visibly substantial. */
-  tower=clamp(phys.a,0.0,1.0);
-  float d=broad*mix(0.30,0.62,ss(0.03,0.60,q))*mix(0.58,1.10,wisps);
-  d*=mix(0.86,1.28,tower);
-  return clamp(d,0.0,0.66);
+  deep=clamp(phys.a,0.0,1.0);
+  float q=clamp(phys.b*weatherCloudLayerGain(uCloudHigh),0.0,1.0);
+  return weatherCloudEnvelope(q)*weatherCloudOpticalGain(q);
 }
 
+/* ---------- shadows use the same physical envelope + old morphology ---------- */
 float lowCover(vec3 dir,float climate){
-  if(uLowOn<0.5)return 0.0;
-  float puff,tower;
-  return pow(weatherLowDensity(dir,0.0055,puff,tower),1.10);
+  if(uLowOn<0.5||uCloudLow<0.015)return 0.0;
+  float deep;
+  float gate=weatherCloudLowGate(dir,deep);
+  if(gate<=0.0001)return 0.0;
+  return clamp(legacyLowCover(dir,1.0)*gate,0.0,1.0);
 }
 float midCover(vec3 dir){
-  if(uMidOn<0.5)return 0.0;
-  float body,tower;
-  return weatherMidDensity(dir,0.0065,body,tower)*0.90;
+  if(uMidOn<0.5||uCloudMid<0.025)return 0.0;
+  float deep;
+  float gate=weatherCloudMidGate(dir,deep);
+  if(gate<=0.0001)return 0.0;
+  return clamp(legacyMidCover(dir)*gate,0.0,1.0);
 }
 
+/* ---------- visible cloud decks: 0.5.53 bodies, 0.5.54 geography ---------- */
 vec3 lowDeck(vec3 dir,float foot,float climate){
-  if(uLowOn<0.5)return vec3(0.0);
-  float cauliflower,tower;
-  float density=weatherLowDensity(dir,foot,cauliflower,tower);
-  /* m.z controls cumuliform shading and vertical tower emphasis. Real deep
-     convection now owns it instead of the old latitude/noise weather(). */
-  float typ=clamp(0.28+0.72*tower,0.20,1.0);
-  return vec3(density,cauliflower,typ);
+  if(uLowOn<0.5||uCloudLow<0.015)return vec3(0.0);
+  float deep;
+  float gate=weatherCloudLowGate(dir,deep);
+  if(gate<=0.0001)return vec3(0.0);
+
+  /* climate=1 intentionally disables the old terrain/shoreline ownership.
+     legacyLowDeck contributes only its connected cumulus morphology. */
+  vec3 m=legacyLowDeck(dir,foot,1.0);
+  m.x=clamp(m.x*gate,0.0,1.0);
+  /* Preserve the familiar old cloud type but let real deep convection turn
+     the same cloud bank into a stronger vertical tower. */
+  m.z=max(m.z,0.26+0.74*deep);
+  return m;
 }
 
 vec3 midDeck(vec3 dir,float foot){
-  if(uMidOn<0.5)return vec3(0.0);
-  float body,tower;
-  float density=weatherMidDensity(dir,foot,body,tower);
-  return vec3(density,body,clamp(0.18+0.82*tower,0.0,1.0));
+  if(uMidOn<0.5||uCloudMid<0.025)return vec3(0.0);
+  float deep;
+  float gate=weatherCloudMidGate(dir,deep);
+  if(gate<=0.0001)return vec3(0.0);
+  vec3 m=legacyMidDeck(dir,foot);
+  m.x=clamp(m.x*gate,0.0,0.94);
+  m.z=max(m.z,0.14+0.76*deep);
+  return m;
 }
 
 vec3 highDeck(vec3 dir,float foot){
-  if(uHighOn<0.5||uDraft>0.5)return vec3(0.0);
-  float body,tower;
-  float density=weatherHighDensity(dir,foot,body,tower);
-  return vec3(density,body,clamp(0.65+0.35*tower,0.0,1.0));
+  if(uHighOn<0.5||uCloudHigh<0.02||uDraft>0.5)return vec3(0.0);
+  float deep;
+  float gate=weatherCloudHighGate(dir,deep);
+  if(gate<=0.0001)return vec3(0.0);
+  vec3 m=legacyHighDeck(dir,foot);
+  /* Real deep convection thickens the anvil without changing its old wispy
+     morphology. */
+  m.x=clamp(m.x*gate*mix(0.92,1.32,deep),0.0,0.66);
+  m.z=max(m.z,0.62+0.38*deep);
+  return m;
 }
 
-/* Copy of the existing inexpensive three-slice low-cloud volume, but calling
-   the new physical lowDeck(). The legacy version was macro-renamed before
-   clouds.glsl so its body cannot accidentally keep using procedural geography. */
+/* Same inexpensive three-slice low-cloud volume as before. Its samples call
+   the hybrid lowDeck above, so the physical envelope and old morphology stay
+   aligned through the whole cloud thickness. */
 vec4 volumeLow(vec3 ro,vec3 rd,float t0,float span,float boost,float climate){
   vec4 acc=vec4(0.0);
   int N=(uDraft>0.5)?1:3;
