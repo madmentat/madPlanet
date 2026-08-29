@@ -3,9 +3,11 @@ const fs=require('node:fs');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
+const strip=t=>t.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\n)\s*\/\/[^\n]*/g,'$1');
 const shot=read('js/screenshot.js');
 const trigger=read('js/screenshot-trigger.js');
 const exp=read('js/planet-export.js');
+const share=read('js/planet-share-activation.js');
 const shader=read('shaders/lightning.glsl');
 const buildSh=read('build.sh');
 const buildPs=read('build.ps1');
@@ -13,7 +15,7 @@ const version=read('VERSION.txt');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'planet export test must see semantic version');
 function ordered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
-const order=['js/screenshot.js','js/lightning-weather.js','js/planet-export.js','js/render.js','js/screenshot-trigger.js'];
+const order=['js/screenshot.js','js/lightning-weather.js','js/planet-export.js','js/planet-share-activation.js','js/render.js','js/screenshot-trigger.js'];
 ordered(buildSh,order,'shell export order');
 ordered(buildPs,order,'PowerShell export order');
 
@@ -22,7 +24,7 @@ assert.match(exp,/\.madplanet\.json/,'local archive extension missing');
 assert.match(exp,/prompt\('Название планеты:'/,'save must ask the user for a planet name');
 assert.match(exp,/format:'madPlanet\.save'/,'save document format marker missing');
 assert.match(exp,/shareUrl:planetUrlWithName\(\)/,'save document must include canonical share URL');
-assert.ok(!/localStorage|IndexedDB|indexedDB/.test(exp),'0.5.53 must not introduce browser/database persistence');
+assert.ok(!/localStorage|IndexedDB|indexedDB/.test(strip(exp)),'0.5.53 must not introduce browser/database persistence');
 
 /* Name is metadata carried by the named hash, not a physical PARAM. */
 assert.match(exp,/name='\+encodeURIComponent\(state\.planetName\)/,'planet name must be encoded into shared URL');
@@ -37,11 +39,14 @@ assert.match(exp,/planetDrawSummaryCard/,'styled screenshot card missing');
 assert.match(exp,/АТМОСФЕРА/,'card atmosphere footer missing');
 assert.match(exp,/КОЛЬЦА/,'card ring composition footer missing');
 
-/* Share uses the platform share sheet when available and a mail/link fallback. */
-assert.match(exp,/navigator\.share/,'Web Share path missing');
-assert.match(exp,/new File\(\[blob\]/,'share should attach the rendered PNG when supported');
+/* Share uses platform share sheet with synchronous PNG capture and has mail/link fallback. */
+assert.match(share,/navigator\.share/,'Web Share path missing');
+assert.match(share,/takeShotSyncBlob\(\{includeCard:true\}\)/,'share must synchronously capture the card PNG while activation is live');
+assert.match(share,/new File\(\[blob\]/,'share should attach the rendered PNG when supported');
+assert.match(share,/addEventListener\('click',planetShareActivatedClick,true\)/,'share bridge must intercept in capture phase before old async listener');
 assert.match(exp,/mailto:\?subject=/,'mail fallback missing');
 assert.match(exp,/navigator\.clipboard\.writeText/,'copy-link fallback missing');
+assert.match(shot,/function takeShotSyncBlob/,'synchronous PNG path for Web Share missing');
 
 /* Screenshot menu includes a true armed trigger and an optional planet card. */
 assert.match(shot,/⚡ Молния — trigger/,'lightning trigger option missing');
@@ -60,6 +65,7 @@ assert.match(trigger,/0\.70\*Math\.exp\(-Math\.abs\(fr-0\.105\)\*58\.0\)/,'trigg
 assert.match(trigger,/prev<lightningShotTrigger\.threshold/,'trigger must fire on a rising threshold crossing');
 assert.match(trigger,/takeShot\(\{now,includeCard,showPreview:true\}\)/,'capture must reuse the exact triggering frame timestamp');
 assert.match(trigger,/world\.cycB/,'trigger must consume the physical Weather Core lightning payload');
+assert.match(trigger,/shotLightningFrontVisibility/,'trigger should reject physical flashes on the far side of the planet');
 assert.ok(!/Math\.random/.test(trigger),'trigger must not invent random lightning events');
 
 console.log('planet-export.test.js: OK');
