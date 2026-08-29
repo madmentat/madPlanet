@@ -36,7 +36,19 @@ assert.ok(!/\bgWx\b|\bgSyn\b|lowCloudClimate\s*\(|synoptic\s*\(|\bweather\s*\(/.
 assert.ok(!/gSyn\s*=\s*synoptic\s*\(|gWx\s*=\s*weather\s*\(|lowCloudClimate\s*\(wd\)/.test(main),
   'main shader must stop evaluating procedural cloud geography');
 assert.match(main,/gSyn\s*=\s*vec4\(0\.0\)/,'legacy synoptic globals should be neutralized');
+assert.match(main,/gWx\s*=\s*vec4\(0\.5\)/,'legacy morphology helpers should receive only a neutral weather state');
 assert.match(main,/gClimLow\s*=\s*1\.0/,'legacy cloud climate should be neutralized');
+
+/* 0.5.54 visual hotfix: the coarse 48x48 grid must not become the cloud body.
+   Restore the mature 0.5.53 morphology and use physical q only as a smooth
+   multiplicative envelope. */
+assert.match(bridge,/legacyLowDeck\(dir,foot,1\.0\)/,'low clouds must reuse the pre-0.5.54 connected cumulus morphology');
+assert.match(bridge,/legacyMidDeck\(dir,foot\)/,'middle clouds must reuse the pre-0.5.54 morphology');
+assert.match(bridge,/legacyHighDeck\(dir,foot\)/,'high clouds must reuse the pre-0.5.54 wispy morphology');
+assert.match(bridge,/legacyLowCover\(dir,1\.0\)\*gate/,'cloud shadows must follow the same old morphology inside the physical envelope');
+assert.match(bridge,/pow\(q,0\.56\)/,'physical cloud envelope should be continuous instead of thresholding a texel into a round token');
+assert.ok(!/weatherCloudPhysicalDensity\s*\(/.test(bridge),'coarse Weather Core q must not be thresholded directly into a cloud silhouette');
+assert.match(bridge,/m\.x=clamp\(m\.x\*gate/,'physical envelope must multiply morphology, not replace it');
 
 assert.match(gpu,/cloudLowMass/);assert.match(gpu,/cloudMidMass/);assert.match(gpu,/cloudHighMass/);assert.match(gpu,/deepConvectiveState/);
 assert.match(gpu,/dstY=N-1-y/,'cubemap packing must perform the canonical vertical flip');
@@ -62,8 +74,8 @@ assert.ok(ctx.weatherCloudMassToByte(0.4,0.1)>ctx.weatherCloudMassToByte(0.04,0.
 const N=4,count=6*N*N;
 const core={N,count,ticks:7,seed:9,
   cloudLowMass:new Float32Array(count),cloudMidMass:new Float32Array(count),cloudHighMass:new Float32Array(count),deepConvectiveState:new Float32Array(count)};
-core.cloudLowMass[0]=0.01;                 // weather y=0 -> texture top after flip
-core.cloudLowMass[(N-1)*N]=0.60;           // weather y=N-1 -> texture first row
+core.cloudLowMass[0]=0.01;
+core.cloudLowMass[(N-1)*N]=0.60;
 core.cloudMidMass[5]=0.20;core.cloudHighMass[10]=0.12;core.deepConvectiveState[15]=0.9;
 const lowBefore=Array.from(core.cloudLowMass),midBefore=Array.from(core.cloudMidMass),highBefore=Array.from(core.cloudHighMass);
 ctx.weatherCloudGpuEnsure(N);
