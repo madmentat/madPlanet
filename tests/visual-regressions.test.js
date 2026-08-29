@@ -7,6 +7,7 @@ const render = read('js/render.js');
 const aurora = read('shaders/aurora-pass.glsl');
 const clouds = read('shaders/clouds.glsl');
 const main = read('shaders/main.glsl');
+const cloudVisual = read('shaders/weather-cloud-visual.glsl');
 const shell = read('index.src.html');
 const state = read('js/state.js');
 const versionText = read('VERSION.txt');
@@ -33,7 +34,8 @@ assert.ok(!/float phase=lon\*/.test(aurora), 'old radial iris phase must not ret
 
 assert.match(clouds, /float cumulusShape\(/, 'cumulus macro shape missing');
 assert.match(clouds, /float lowCloudClimate\(/, 'lower cloud climate zoning missing');
-assert.match(main, /gClimMid = clamp\(0\.48 \+ 0\.52\*gClimLow/, 'middle cloud climate zoning missing');
+assert.match(main, /gClimMid = 1\.0;/, 'monolithic main must leave middle-cloud geography neutral for Weather Core');
+assert.match(cloudVisual, /weatherLocalAmount\(uCloudMid,inf\.g,0\.32\)/, 'middle cloud zoning must come from Weather Core influence');
 assert.match(clouds, /float desert=land\*hot\*dry/, 'hot dry land suppression missing');
 assert.ok(!/float worleyD2\(/.test(clouds), 'Worley bubble morphology must not return to the lower cloud model');
 const lowDeck = (clouds.match(/vec3 lowDeck\([\s\S]*?\n\}/) || [''])[0];
