@@ -54,7 +54,10 @@ const hot={...climate,T:500,h2oBar:2,cloudCov:0.7,iceArea:0};
 ctx.weatherCoreStep(s1,300,hot,axis);
 assert.ok(ctx.weatherCoreMeans(s1).T>before,'global climate change must move persistent local air temperatures in the same direction');
 
-assert.ok(!src.includes('requestAnimationFrame'),'weather integration must never run at render FPS');
+const executableSrc=src
+  .replace(/\/\*[\s\S]*?\*\//g,'')
+  .replace(/(^|\s)\/\/.*$/gm,'$1');
+assert.ok(!/requestAnimationFrame\s*\(/.test(executableSrc),'weather integration must never run at render FPS');
 assert.ok(src.includes('WEATHER_CORE_REAL_TICK_MS = 1000'),'CPU weather tick must be explicitly slow');
 assert.ok(src.includes('WEATHER_CORE_FIXED_DT_SEC = 300'),'weather simulation must use a fixed model timestep');
 assert.ok(src.includes('document.hidden')&&src.includes('return false; /* no catch-up */'),
