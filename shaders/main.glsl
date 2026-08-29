@@ -12,29 +12,19 @@ void main(){
 
   float tP = iSphere(ro, rd, 1.0);
   float tLo = iSphere(ro, rd, R_LOW);
-  /* Синоптическая обстановка считается один раз на пиксель: все три яруса
-     и тени на поверхности берут её готовой, иначе шум гонялся бы четырежды. */
-  {
-    float tw = (tLo > 0.0) ? tLo : iSphere(ro, rd, R_HIGH);
-    vec3 wd = (tw > 0.0) ? normalize(ro + rd*tw) : rd;
-    vec3 wc = uRotC*wd;
-    gSyn = synoptic(wc);
-    gWx = weather(wd, vortexWarp(wc));
-    /* Климат облачных ярусов — тоже один раз на пиксель. Раньше его
-       пересчитывали нижний ярус, средний ярус и обе карты теней, и в
-       каждой копии сидел полный terrain(). */
-    bool needClim = (uLowOn > 0.5 && uCloudLow > 0.015)
-                 || (uMidOn > 0.5 && uCloudMid > 0.025);
-    gClimLow = needClim ? lowCloudClimate(wd) : 1.0;
-    /* Средняя облачность меньше привязана к поверхности, но пустынный
-       провал всё равно заметен. */
-    gClimMid = clamp(0.48 + 0.52*gClimLow, 0.48, 1.0);
-  }
 
-  /* Три яруса считаются здесь, один раз на пиксель. Раньше композитинг был
-     продублирован в ветках поверхности и лимба, cloudLayer инлайнился шесть
-     раз вместе с телами всех ярусов, и компилятор шейдеров не справлялся
-     с размером кода. */
+  /* 0.5.54: synoptic/weather/lowCloudClimate no longer own cloud geography.
+     Weather Core low/mid/high condensate is sampled by the replacement cloud
+     entry points from a body-fixed cubemap. Keep these globals neutral only
+     because some legacy helper signatures still reference them internally;
+     dead legacy paths are expected to be removed by the GLSL compiler. */
+  gSyn = vec4(0.0);
+  gWx = vec4(0.0);
+  gClimLow = 1.0;
+  gClimMid = 1.0;
+
+  /* Три яруса считаются здесь, один раз на пиксель. Теперь их география
+     приходит из Weather Core; procedural noise только мнёт кромку и фактуру. */
   float boost = (tP > 0.0) ? 1.0 : 1.12;
   vec4 cl0 = vec4(0.0), cl1 = vec4(0.0), cl2 = vec4(0.0);
   if(uLowOn > 0.5 && uCloudLow > 0.015 && tLo > 0.0){
@@ -45,10 +35,6 @@ void main(){
   if(uMidOn > 0.5 && uCloudMid > 0.025 && tMd > 0.0){
     vec3 nc = normalize(ro + rd*tMd);
     float ft = tMd*uPixA;
-    /* Собственная тень среднего яруса раньше требовала ещё одного полного
-       midCover() со своим cloudBody() — вторая по стоимости ветка облаков
-       при линковке ради 16 % затемнения. Объёмное затемнение по плотности
-       в shadeDeck() даёт тот же эффект даром. */
     cl1 = shadeDeck(1, nc, rd, midDeck(nc, ft), 1.0, boost, ft);
   }
   float tHi = iSphere(ro, rd, R_HIGH);
