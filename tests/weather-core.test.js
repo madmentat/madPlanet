@@ -15,16 +15,18 @@ assertOrdered(buildPs,order,'PowerShell Weather Core order');
 assertOrdered(buildSh,order,'shell Weather Core order');
 
 const state={seed:8127344,draft:true};
-const ctx={console,Math,Number,Date,Float32Array,state};
+const fakeClimate=()=>({T:288.15,pressureBar:1.013,h2oBar:0.004,cloudCov:0.45,iceArea:0.02,waterAvail:1,S:1,regime:'temperate'});
+const ctx={console,Math,Number,Date,Float32Array,state,
+  matchMedia:()=>({matches:false}),climateModel:fakeClimate,world:{axis:[0,1,0]}};
 vm.createContext(ctx);
 vm.runInContext(src,ctx,{filename:'weather-core.js'});
 
-const climate={T:288.15,pressureBar:1.013,h2oBar:0.004,cloudCov:0.45,iceArea:0.02,waterAvail:1,S:1,regime:'temperate'};
+const climate=fakeClimate();
 const axis=[0,1,0];
 const a=ctx.weatherCoreCreate(12345,32,climate,axis);
 const b=ctx.weatherCoreCreate(12345,32,climate,axis);
 const c=ctx.weatherCoreCreate(54321,32,climate,axis);
-assert.equal(a.count,6*32*32,'draft/mobile grid must contain 6144 cubed-sphere cells');
+assert.equal(a.count,6*32*32,'mobile grid must contain 6144 cubed-sphere cells');
 assert.equal(ctx.weatherCoreCreate(1,48,climate,axis).count,6*48*48,
   'normal desktop grid must contain 13824 cubed-sphere cells');
 assert.ok(a.surfaceTemp instanceof Float32Array&&a.humidity instanceof Float32Array,
@@ -53,6 +55,16 @@ const before=ctx.weatherCoreMeans(s1).T;
 const hot={...climate,T:500,h2oBar:2,cloudCov:0.7,iceArea:0};
 ctx.weatherCoreStep(s1,300,hot,axis);
 assert.ok(ctx.weatherCoreMeans(s1).T>before,'global climate change must move persistent local air temperatures in the same direction');
+
+/* 0.5.65 regression: Details is a render-quality switch, never a physics reset. */
+state.seed=8127344;state.draft=true;
+const persistedA=ctx.weatherCoreEnsure();
+persistedA.ticks=17;persistedA.simSeconds=5100;
+state.draft=false;
+const persistedB=ctx.weatherCoreEnsure();
+assert.equal(persistedB,persistedA,'toggling Details must preserve the exact Weather Core object');
+assert.equal(persistedB.ticks,17,'toggling Details must preserve accumulated weather time/state');
+assert.ok(!/return\s*\(mobile\s*\|\|\s*state\.draft\)/.test(src),'Weather Core resolution must not depend on state.draft');
 
 const executableSrc=src
   .replace(/\/\*[\s\S]*?\*\//g,'')
