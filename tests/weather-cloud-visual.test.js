@@ -14,7 +14,9 @@ const render=read('js/weather-cloud-render.js');
 const buildSh=read('build.sh');
 const buildPs=read('build.ps1');
 
-assert.match(version,/^VERSION\s+0\.5\.54\s*$/m,'Weather Core cloud visual milestone must be 0.5.54');
+const vmx=version.match(/^VERSION\s+(\d+)\.(\d+)\.(\d+)\s*$/m);
+assert.ok(vmx,'Weather Core cloud visual test must see a semantic version');
+assert.ok(+vmx[1]>0 || +vmx[2]>5 || (+vmx[2]===5 && +vmx[3]>=54),'cloud visual bridge requires 0.5.54 or newer');
 function ordered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
 const shaderOrder=['shaders/header.glsl','shaders/weather-cloud-prelude.glsl','shaders/clouds.glsl','shaders/weather-cloud-visual.glsl','shaders/atmosphere.glsl'];
 ordered(buildSh,shaderOrder,'shell shader order');ordered(buildPs,shaderOrder,'PowerShell shader order');
