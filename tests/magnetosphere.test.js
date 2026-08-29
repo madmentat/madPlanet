@@ -1,4 +1,7 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname,'..');
 
 function auroraLatitudeRad(a){
   a=Math.max(0,Math.min(1,a));
@@ -19,10 +22,28 @@ for(const L of [1.5,2,4,8]){
   assert.ok(Math.abs(dipoleRadius(L,Math.PI/2)-L)<1e-12, `L=${L} equatorial apex`);
 }
 
-// Авроральный диапазон должен оставаться полярным и соответствовать |dot(n,M)| >> 0.34.
+// Nominal oval centre stays polar even though strong activity widens its visible skirt.
 for(const a of [0,0.25,0.5,0.75,1]){
   const mu=Math.sin(auroraLatitudeRad(a));
   assert.ok(mu>0.85, `activity=${a}: magnetic pole projection too small: ${mu}`);
 }
 
-console.log('magnetosphere math tests: OK');
+/* 0.5.63 regressions: the separate aurora pass is composited after the already
+   tone-mapped planet, so it must convert its linear emission into display
+   space itself. Strong Kp also needs a genuinely wider, non-vanishing oval. */
+const aurora=fs.readFileSync(path.join(root,'shaders','aurora-pass.glsl'),'utf8');
+assert.match(aurora,/float activityV=pow\(clamp\(activity,0\.0,1\.0\),0\.82\)/,'aurora activity response missing');
+assert.match(aurora,/float hw=radians\(mix\(1\.35,6\.2,activityV\)\)/,'strong aurora must widen beyond the old narrow oval');
+assert.match(aurora,/float sector=0\.10\+0\.90\*smoothstep/,'noise must not erase the entire physical oval');
+assert.match(aurora,/vec3 display=sum\/\(vec3\(1\.0\)\+0\.80\*sum\)/,'separate aurora pass needs display-space compression');
+assert.match(aurora,/pow\(clamp\(display,vec3\(0\.0\),vec3\(1\.0\)\),vec3\(1\.0\/2\.2\)\)/,'separate aurora pass needs gamma conversion');
+
+const rotation=fs.readFileSync(path.join(root,'js','magnet-axis-rotation.js'),'utf8');
+assert.match(rotation,/m3axis\(world\.axis,t\*SPIN\)/,'tilted magnetic axis must rotate with the planet');
+assert.match(rotation,/currentMagAxisBodyFixed/,'rotation must preserve the slider-defined body-frame dipole');
+const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
+const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
+assert.ok(buildSh.includes('js/magnet-axis-rotation.js'),'shell build must include magnetic-axis rotation');
+assert.ok(buildPs.includes('js/magnet-axis-rotation.js'),'PowerShell build must include magnetic-axis rotation');
+
+console.log('magnetosphere math/render tests: OK');
