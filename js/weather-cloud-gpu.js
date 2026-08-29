@@ -1,19 +1,20 @@
-/* ============ 0.5.54: Weather Core -> GPU cloud cubemap ============ */
+/* ============ 0.5.54: Weather Core -> GPU cloud influence cubemap ============ */
 /*
-   One RGBA8 cubemap mirrors the 6xNxN body-fixed Weather Core grid:
-     R low cloud condensate, G mid, B high, A deep-convection state.
+   One RGBA8 cubemap mirrors the 6xNxN body-fixed Weather Core grid, but it is
+   deliberately NOT a cloud-visibility mask anymore:
+     R/G/B = inertial signed visual response for low/mid/high layers,
+             encoded from -1..+1 to 0..255 (127/128 = neutral)
+     A     = deep-convection state.
+   The shader uses these channels only to move the formation threshold of the
+   continuous 0.5.53 morphology.  Zero physical condensate therefore does not
+   hard-clip the rendered cloud body at a Weather Core texel boundary.
    Upload happens only after a fixed weather tick (or core creation), never
-   from requestAnimationFrame. Procedural cloud noise remains shader detail.
+   from requestAnimationFrame.
 */
 
-const WEATHER_CLOUD_GPU_MODEL=1;
+const WEATHER_CLOUD_GPU_MODEL=2;
 const WEATHER_CLOUD_TEX_UNIT=3;
-const WEATHER_CLOUD_LOW_SCALE_KG_M2=0.16;
-const WEATHER_CLOUD_MID_SCALE_KG_M2=0.11;
-const WEATHER_CLOUD_HIGH_SCALE_KG_M2=0.055;
 
-/* UNIFORM_NAMES is a mutable array created by gl-init.js. The full shader is
-   adopted only from the render loop, after this module has executed. */
 if(typeof UNIFORM_NAMES!=='undefined'&&!UNIFORM_NAMES.includes('uWeatherCloudTex'))
   UNIFORM_NAMES.push('uWeatherCloudTex');
 
@@ -28,13 +29,14 @@ function weatherCloudByte01(x){
   x=Math.max(0,Math.min(1,Number(x)||0));
   return Math.max(0,Math.min(255,Math.round(x*255)));
 }
-function weatherCloudMassToByte(mass,scale){
-  mass=Math.max(0,Number(mass)||0);scale=Math.max(1e-6,Number(scale)||1);
-  return weatherCloudByte01(1-Math.exp(-mass/scale));
+function weatherCloudSignedToByte(x){
+  x=Math.max(-1,Math.min(1,Number(x)||0));
+  return weatherCloudByte01(0.5+0.5*x);
 }
-function weatherCloudFaceTarget(face){
-  return gl.TEXTURE_CUBE_MAP_POSITIVE_X+face;
+function weatherCloudByteToSigned(b){
+  return Math.max(-1,Math.min(1,(Math.max(0,Math.min(255,Number(b)||0))/255)*2-1));
 }
+function weatherCloudFaceTarget(face){return gl.TEXTURE_CUBE_MAP_POSITIVE_X+face;}
 function weatherCloudGpuEnsure(N){
   N=Math.max(4,Math.round(Number(N)||32));
   if(weatherCloudGpuTex&&weatherCloudGpuN===N)return;
@@ -55,16 +57,15 @@ function weatherCloudGpuEnsure(N){
 }
 function weatherCloudGpuPackFace(core,face){
   const N=core.N,pix=weatherCloudGpuFaces[face],base=face*N*N;
-  const low=core.cloudLowMass,mid=core.cloudMidMass,high=core.cloudHighMass,deep=core.deepConvectiveState;
-  /* Cube sampling uses t=-v for all six canonical weatherFaceDir mappings.
-     Flip only the row order; x/u orientation already matches OpenGL faces. */
+  const low=core.cloudVisualLow,mid=core.cloudVisualMid,high=core.cloudVisualHigh,deep=core.deepConvectiveState;
+  /* Cube sampling uses t=-v for all six canonical weatherFaceDir mappings. */
   for(let y=0;y<N;y++){
     const dstY=N-1-y;
     for(let x=0;x<N;x++){
       const src=base+y*N+x,dst=(dstY*N+x)*4;
-      pix[dst]=weatherCloudMassToByte(low?.[src],WEATHER_CLOUD_LOW_SCALE_KG_M2);
-      pix[dst+1]=weatherCloudMassToByte(mid?.[src],WEATHER_CLOUD_MID_SCALE_KG_M2);
-      pix[dst+2]=weatherCloudMassToByte(high?.[src],WEATHER_CLOUD_HIGH_SCALE_KG_M2);
+      pix[dst]=weatherCloudSignedToByte(low?.[src]);
+      pix[dst+1]=weatherCloudSignedToByte(mid?.[src]);
+      pix[dst+2]=weatherCloudSignedToByte(high?.[src]);
       pix[dst+3]=weatherCloudByte01(deep?.[src]);
     }
   }
