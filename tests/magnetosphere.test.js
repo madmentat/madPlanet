@@ -22,21 +22,24 @@ for(const L of [1.5,2,4,8]){
   assert.ok(Math.abs(dipoleRadius(L,Math.PI/2)-L)<1e-12, `L=${L} equatorial apex`);
 }
 
-// Nominal oval centre stays polar even though strong activity widens its visible skirt.
 for(const a of [0,0.25,0.5,0.75,1]){
   const mu=Math.sin(auroraLatitudeRad(a));
   assert.ok(mu>0.85, `activity=${a}: magnetic pole projection too small: ${mu}`);
 }
 
-/* 0.5.63 regressions: the separate aurora pass is composited after the already
-   tone-mapped planet, so it must convert its linear emission into display
-   space itself. Strong Kp also needs a genuinely wider, non-vanishing oval. */
+/* Separate aurora pass must be visible at high Kp without becoming a perfect
+   ring. Check the physical/visual invariants rather than pinning 0.5.63 exact
+   constants. */
 const aurora=fs.readFileSync(path.join(root,'shaders','aurora-pass.glsl'),'utf8');
-assert.match(aurora,/float activityV=pow\(clamp\(activity,0\.0,1\.0\),0\.82\)/,'aurora activity response missing');
-assert.match(aurora,/float hw=radians\(mix\(1\.35,6\.2,activityV\)\)/,'strong aurora must widen beyond the old narrow oval');
-assert.match(aurora,/float sector=0\.10\+0\.90\*smoothstep/,'noise must not erase the entire physical oval');
-assert.match(aurora,/vec3 display=sum\/\(vec3\(1\.0\)\+0\.80\*sum\)/,'separate aurora pass needs display-space compression');
+assert.match(aurora,/float activityV=pow\(clamp\(activity,0\.0,1\.0\),0\.78\)/,'aurora activity response missing');
+assert.match(aurora,/float hw=radians\(mix\(1\.55,8\.8,activityV\)\)/,'Kp 9 must produce a broad visible oval');
+assert.match(aurora,/float sector=0\.16\+0\.84\*smoothstep/,'noise must not erase the entire physical oval');
+assert.match(aurora,/float power=\(0\.028\+0\.64\*pow\(activityV,1\.35\)\)/,'high Kp needs readable nightside emission');
+assert.match(aurora,/const int N=9;/,'thin auroral volume needs enough samples to remain visible');
+assert.match(aurora,/vec3 display=sum\/\(vec3\(1\.0\)\+0\.72\*sum\)/,'separate aurora pass needs display-space compression');
+assert.match(aurora,/\*1\.08;/,'separate pass must not crush aurora back below display visibility');
 assert.match(aurora,/pow\(clamp\(display,vec3\(0\.0\),vec3\(1\.0\)\),vec3\(1\.0\/2\.2\)\)/,'separate aurora pass needs gamma conversion');
+assert.ok(!/sin\s*\(\s*lon\s*\*/.test(aurora),'periodic techno-ring must not return');
 
 const rotation=fs.readFileSync(path.join(root,'js','magnet-axis-rotation.js'),'utf8');
 assert.match(rotation,/m3axis\(world\.axis,t\*SPIN\)/,'tilted magnetic axis must rotate with the planet');
