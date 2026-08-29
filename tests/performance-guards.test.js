@@ -10,22 +10,23 @@ const ui = read('js/ui.js');
 const glInit = read('js/gl-init.js');
 const lightning = read('shaders/lightning.glsl');
 const main = read('shaders/main.glsl');
+const cloudGpu = read('js/weather-cloud-gpu.js');
+const cloudRender = read('js/weather-cloud-render.js');
+const cloudVisual = read('shaders/weather-cloud-visual.glsl');
 
 assert.ok(!/gl\.finish\s*\(\s*\)\s*;/.test(render), 'render loop must not synchronously stall GPU with gl.finish()');
 assert.match(render, /EXT_disjoint_timer_query_webgl2/, 'async GPU timer query expected');
 assert.match(render, /renderUniformRevision/, 'static uniform cache expected');
 assert.match(render, /ResizeObserver/, 'resize-on-change optimization expected');
 assert.match(ui, /markRenderUniformsDirty\(\)/, 'UI must invalidate cached uniforms');
-assert.match(clouds, /int N=\(uDraft>0\.5\)\?1:3;/, 'low-cloud volume must use three samples (one in draft) from a single inlined body');
-assert.match(clouds, /cumulusDensityFromShape\(p,shape,foot,climate\)/, 'low deck must reuse its cumulus shape instead of recomputing it');
+assert.match(clouds, /int N=\(uDraft>0\.5\)\?1:3;/, 'legacy low-cloud volume body should remain bounded while replacement is staged');
+assert.match(clouds, /cumulusDensityFromShape\(p,shape,foot,climate\)/, 'legacy cloud morphology helper integrity expected');
 assert.match(clouds, /0\.68\);/, 'low-cloud optical-depth compensation missing');
 // Explicit regression guard: the screen-derivative terrain-normal experiment caused compatibility trouble.
 assert.ok(!/dFdx\(|dFdy\(|fwidth\(h\)/.test(surface), 'unsafe derivative terrain-normal optimization must stay disabled until separately validated on target GPUs');
 assert.match(surface, /terrain\(normalize\(n0 \+ tg\*eps\)/, 'known-good finite-difference terrain normals expected');
 
-/* 0.5.8: запуск не должен блокировать поток на линковке основной программы.
-   На ANGLE/D3D она собирается минутами, и getProgramParameter(LINK_STATUS)
-   сразу после linkProgram() держал вкладку белой всё это время. */
+/* Launch must not block the main thread on the full shader link. */
 assert.match(glInit, /KHR_parallel_shader_compile/, 'async shader link must use the parallel compile extension');
 assert.match(glInit, /COMPLETION_STATUS_KHR/, 'link readiness must be polled, not waited on');
 assert.match(glInit, /function pollShaderCompile\(/, 'per-frame link poll expected');
@@ -34,15 +35,22 @@ const adoptIdx = glInit.indexOf("adoptProgram(p, 'balanced-compat')");
 const kickIdx = glInit.lastIndexOf('startNextVariant();');
 assert.ok(adoptIdx > 0 && kickIdx > adoptIdx, 'compact renderer must be adopted before the full program is queued');
 
-/* 0.5.8: грозовые ячейки больше не гоняют погоду и рельеф по шесть раз. */
-assert.ok(!/weather\s*\(/.test(lightning), 'lightning must not evaluate the weather field per bolt cell');
-assert.ok(!/lowCover\s*\(/.test(lightning), 'lightning must not evaluate cloud cover per bolt cell');
+/* Lightning must not evaluate weather/cloud maps per bolt cell. */
+assert.ok(!/\bweather\s*\(/.test(lightning), 'lightning must not evaluate the weather field per bolt cell');
+assert.ok(!/\blowCover\s*\(/.test(lightning), 'lightning must not evaluate cloud cover per bolt cell');
 assert.equal((main.match(/lightningGlow\s*\(/g) || []).length, 1, 'lightningGlow must be inlined once, not per compositing branch');
 
-/* 0.5.8: климат ярусов считается один раз на пиксель. */
-assert.match(main, /gClimLow = needClim \? lowCloudClimate\(wd\)/, 'cloud climate must be hoisted to a per-pixel global');
-assert.ok(!/float midCloudClimate\(/.test(clouds), 'middle-deck climate must reuse the hoisted global, not recompute terrain');
-const cloudsCode = clouds.replace(/\/\*[\s\S]*?\*\//g, '');
-assert.equal((cloudsCode.match(/lowCloudClimate\(/g) || []).length, 1, 'lowCloudClimate must be defined once and never called from the cloud decks');
+/* 0.5.54: cloud geography is a cheap cubemap lookup. The expensive historical
+   terrain/moisture/synoptic cloud diagnosis must not execute from main(), and
+   the CPU texture upload must stay on the fixed Weather Core clock. */
+assert.ok(!/gSyn\s*=\s*synoptic\s*\(|gWx\s*=\s*weather\s*\(|lowCloudClimate\s*\(wd\)/.test(main),
+  'main shader must not execute legacy procedural cloud geography');
+assert.match(cloudVisual,/uWeatherCloudTex/,'physical cloud bridge must sample the Weather Core cubemap');
+assert.ok(!/\bgWx\b|\bgSyn\b|lowCloudClimate\s*\(/.test(cloudVisual),
+  'physical cloud decks must not reintroduce legacy climate/synoptic work');
+assert.match(cloudGpu,/weatherCoreStep=function[\s\S]*weatherCloudGpuUpload\(core\)/,
+  'cloud cubemap must upload after the fixed weather step');
+assert.ok(!/requestAnimationFrame/.test(cloudGpu),'cloud cubemap upload must not run at render FPS');
+assert.ok(!/texSubImage2D/.test(cloudRender),'per-frame render bridge may bind the cubemap but must never upload it');
 
 console.log('performance-guards.test.js: OK');
