@@ -69,6 +69,6 @@ assert.ok(Math.abs(E1-E0)<2e3,'SST neighbour exchange must conserve ocean heat')
 assert.ok(core.seaSurfaceTemp[0]<300&&core.seaSurfaceTemp[1]>280,'SST diffusion must reduce a thermal contrast');
 
 core.windU[1]=18;
-assert.ok(ctx.oceanMixedLayerDepthM(core,1)>ctx.OCEAN_MIXED_LAYER_BASE_M,'strong wind must deepen the mixed layer');
+assert.ok(ctx.oceanMixedLayerDepthM(core,1)>35,'strong wind must deepen the mixed layer above the calm 35 m baseline');
 assert.ok(ctx.weatherCoreFinite(core),'ocean thermal fields must remain finite');
 console.log('ocean-thermal.test.js: OK');
