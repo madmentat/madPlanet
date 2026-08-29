@@ -9,8 +9,10 @@ const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'precipitation test must see a semantic version');
-assert.ok(buildPs.includes("'js/h2o-advection.js','js/condensation.js','js/precipitation.js','js/soil-hydrology.js','js/render.js'"));
-assert.ok(buildSh.includes('js/h2o-advection.js js/condensation.js js/precipitation.js js/soil-hydrology.js js/render.js'));
+function ordered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
+const order=['js/h2o-advection.js','js/condensation.js','js/precipitation.js','js/soil-hydrology.js','js/render.js'];
+ordered(buildPs,order,'PowerShell precipitation order');
+ordered(buildSh,order,'shell precipitation order');
 
 const state={seed:123,draft:true,sea:0.58,cont:0.45,tect:0.65,star:0.43,luminosity:0.43};
 const world={seedS:[2.3,-4.1,7.7],plateN:4,
