@@ -39,6 +39,7 @@ uniform float uSnowAlt;     /* высота снеговой линии на х�
 uniform float uWind;
 uniform float uConvection;
 uniform float uLowOn, uMidOn, uHighOn;  /* визуальная видимость ярусов; Weather Core не выключается */
+uniform float uFogOn, uLightningOn, uAtmoVisualOn; /* 0.5.72 diagnostic visibility only; physics stays active */
 uniform mat3  uRotC2;     /* средний ярус облаков */
 uniform mat3  uRotC3;     /* верхний ярус облаков */
 uniform float uDraft;     /* 1 — черновик: дорогие слои выключены */
