@@ -5,13 +5,14 @@ const vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
 const src=fs.readFileSync(path.join(root,'js/weather-core.js'),'utf8');
 const tempDiag=fs.readFileSync(path.join(root,'js/temperature-diagnostics.js'),'utf8');
+const targetSmooth=fs.readFileSync(path.join(root,'js/weather-target-smoothing.js'),'utf8');
 const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'Weather Core test must see a semantic version');
 function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
-const order=['js/stellar-weather-coupling.js','js/weather-core.js','js/temperature-diagnostics.js','js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/render.js'];
+const order=['js/stellar-weather-coupling.js','js/weather-core.js','js/temperature-diagnostics.js','js/weather-target-smoothing.js','js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/render.js'];
 assertOrdered(buildPs,order,'PowerShell Weather Core order');
 assertOrdered(buildSh,order,'shell Weather Core order');
 
@@ -22,6 +23,7 @@ const ctx={console,Math,Number,Date,Float32Array,state,
 vm.createContext(ctx);
 vm.runInContext(src,ctx,{filename:'weather-core.js'});
 vm.runInContext(tempDiag,ctx,{filename:'temperature-diagnostics.js'});
+vm.runInContext(targetSmooth,ctx,{filename:'weather-target-smoothing.js'});
 
 const climate=fakeClimate();
 const axis=[0,1,0];
@@ -34,7 +36,9 @@ assert.equal(ctx.weatherCoreCreate(1,48,climate,axis).count,6*48*48,
 assert.ok(a.surfaceTemp instanceof Float32Array&&a.humidity instanceof Float32Array,
   'weather fields must use compact persistent typed arrays');
 assert.equal(a.surfaceTemp[137],b.surfaceTemp[137],'same seed/base/N must initialize deterministically');
-assert.notEqual(a.surfaceTemp[137],c.surfaceTemp[137],'different seed must alter only the small initial perturbation');
+/* 0.5.72 target smoothing deliberately removed the permanent hash seed from
+   temperature, so another seed must NOT alter the equilibrium temperature map. */
+assert.equal(a.surfaceTemp[137],c.surfaceTemp[137],'smoothed temperature target must not contain seed-grid forcing');
 assert.ok(ctx.weatherCoreFinite(a),'initial Weather Core must contain no NaN/Infinity');
 
 for(const i of [0,31,1024,4095,6143]){
@@ -43,6 +47,21 @@ for(const i of [0,31,1024,4095,6143]){
   assert.ok(a.pressure[i]>0,'Earth-like cell pressure must stay positive');
   assert.ok(a.humidity[i]>=0&&a.humidity[i]<=1,'humidity must stay bounded');
 }
+
+/* 0.5.72: climateModel().T is a planet-wide MEAN, not an equatorial target.
+   Use the cubed-sphere Jacobian proxy to verify the initialized latitude field
+   is area-mean neutral instead of silently bootstrapping ~11 K too cold. */
+let sw=0,st=0;
+for(let i=0;i<a.count;i++){
+  const m=Math.max(Math.abs(a.dirX[i]),Math.abs(a.dirY[i]),Math.abs(a.dirZ[i]));
+  const w=m*m*m;sw+=w;st+=w*a.surfaceTemp[i];
+}
+const weightedSurfaceMean=st/sw;
+assert.ok(Math.abs(weightedSurfaceMean-climate.T)<0.35,
+  'area-weighted bootstrap surface temperature must match headline mean: '+weightedSurfaceMean+' vs '+climate.T);
+assert.match(targetSmooth,/WEATHER_TARGET_LAT_MEAN/,'latitude target must explicitly remove its spherical mean');
+assert.match(targetSmooth,/Math\.pow\(lat,WEATHER_TARGET_LAT_POWER\)-WEATHER_TARGET_LAT_MEAN/,
+  'latitude gradient must warm the equator and cool the poles around a zero-mean anomaly');
 
 /* 0.5.69: one global thermometer is not enough to diagnose frozen worlds. */
 const bands=ctx.planetTemperatureBands(a,axis);
