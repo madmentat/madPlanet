@@ -30,9 +30,25 @@ assert.ok(ctx.fogGpuSurfaceTemp01(core,1)>ctx.fogGpuSurfaceTemp01(core,0),'hotte
 assert.match(surface,/vec4 surfaceWx = physicalFogSample\(n0\)/,'surface must consume interpolated Weather Core surface state');
 assert.match(surface,/float soilMoistPhys = clamp\(surfaceWx\.b/,'surface drought must use physical soil moisture');
 assert.match(surface,/float surfaceK = mix\(180\.0,380\.0/,'surface drought must use physical surface temperature');
-assert.match(surface,/float drought = clamp\(soilDry\*\(0\.30\+0\.70\*heatStress\)\*land/,'drought must require physical dryness with heat amplification');
+assert.match(surface,/float floodplain = 1\.0-ss\(/,'river floodplain wetness must exist');
+assert.match(surface,/float lakeMargin = ss\(/,'lake-adjacent wetness must exist');
+assert.match(surface,/float hydroWet = clamp\(/,'hydrology must feed ecological wetness');
+assert.match(surface,/float ecoPatch = clamp\(/,'fine sub-cell ecological breakup missing');
+assert.match(surface,/float localWetGain = mix\(/,'coarse Weather Core wetness must be an envelope, not the visible biome mask');
+assert.match(surface,/drought \*= 1\.0-0\.82\*hydroWet/,'river/lake corridors must resist drought');
+assert.ok(!/mix\(moist,soilGreen,0\.58\)/.test(surface),'low-resolution Weather Core cells must not directly dominate biome colour');
 assert.match(surface,/STRAW=vec3/);assert.match(surface,/DRYSOIL=vec3/);
 assert.match(surface,/droughtMild/);assert.match(surface,/droughtHard/);assert.match(surface,/droughtExtreme/);
+assert.match(surface,/float riparian = hydroWet/,'riparian vegetation response missing');
+
+/* Hydrology noise is moved before biome colour and reused later. Do not pay
+   twice for river/lake FBM just to green the banks. */
+assert.equal((surface.match(/float rn = fbm\(/g)||[]).length,1,'river geometry should be evaluated once');
+assert.equal((surface.match(/float lakeN = fbm\(/g)||[]).length,1,'lake geometry should be evaluated once');
+const hydro=surface.indexOf('float riverWarpX');
+const drought=surface.indexOf('float drought =');
+const biome=surface.indexOf('/* биомы */');
+assert.ok(hydro>=0&&hydro<drought&&drought<biome,'hydrology must disaggregate coarse moisture before biome colour selection');
 
 const dense=surface.indexOf('alb = mix(alb, denseC');
 const river=surface.indexOf('alb = mix(alb, mix(vec3(0.022,0.062,0.090)');
