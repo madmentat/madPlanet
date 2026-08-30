@@ -24,8 +24,13 @@ assert.match(render, /mobileDevice \? 31\.0 : 16\.5/, 'mobile target should favo
 
 assert.ok(!/auroraGlow\s*\(/.test(main), 'aurora must not be compiled into monolithic main shader');
 assert.match(render, /drawAuroraWebGL/, 'separate aurora draw pass missing');
-assert.match(aurora, /const int N=9;/, 'aurora should integrate the thin atmospheric volume densely enough to remain visible');
-assert.match(aurora, /float sector=0\.16\+0\.84\*smoothstep/, 'broken auroral sectors need a nonzero physical floor so noise cannot erase the whole oval');
+assert.match(aurora, /const int N=8;/, 'aurora should integrate the thin atmospheric volume densely enough to remain visible');
+assert.match(aurora, /float zoneHW=radians\(mix\(1\.8,7\.0,activityV\)\)/, 'Kp should widen the allowed auroral region');
+assert.match(aurora, /float ribbonHW=radians\(mix\(0\.38,0\.88,activityV\)\)/, 'visible auroral curtains must stay thin inside that region');
+assert.match(aurora, /float sector0=smoothstep\(cut0,cut0\+0\.17,broad0\)/, 'auroral sectors need genuine dark gaps rather than a luminous floor');
+assert.match(aurora, /float sector1=smoothstep\(cut1,cut1\+0\.18,broad1\)/, 'secondary auroral sectors need independent dark gaps');
+assert.ok(!/float\s+sector\w*\s*=\s*0\.(?:0?[1-9]|1[0-9])\s*\+/.test(aurora), 'non-zero auroral sector floors recreate the fluorescent eye');
+assert.match(aurora, /float viewGain=mix\(0\.70,1\.55,tangent\)/, 'orbital aurora should strengthen toward tangential limb views');
 assert.match(aurora, /float folds=/, 'irregular auroral curtain folds missing');
 assert.ok(!/sin\s*\(\s*lon\s*\*/.test(aurora), 'periodic longitude grille/iris must not return');
 assert.ok(!/float phase=lon\*/.test(aurora), 'old radial iris phase must not return');
@@ -88,7 +93,7 @@ assert.match(ui, /const V2_KEYS = /, 'old v2 links must be migrated by name, not
 assert.match(shell, /\.param-panel \.p-close\{[^}]*width:36px;height:36px/s, 'close button needs a finger-sized target');
 assert.match(ui, /e\.key === 'Escape'/, 'Escape must close the open panel');
 assert.match(state, /k:'ringCount'/, 'ring count control missing');
-assert.match(state, /k:'ringMat'/, 'ring material control missing');
+assert.match(state, /k:'ringMat'/, 'ring material label missing');
 assert.match(state, /function ringMatLabel/, 'ring material label missing');
 assert.match(surface, /float capEdge = /, 'polar cap edge must be perturbed at continental scale');
 assert.match(surface, /float steepBare = /, 'ridges must lose snow on steep faces');
