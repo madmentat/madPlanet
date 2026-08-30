@@ -1,4 +1,4 @@
-/* ============ 0.5.60 / 0.5.70 / 0.5.73 / 0.5.74: physical cryosphere -> GPU cubemap ============ */
+/* ============ 0.5.60 / 0.5.70 / 0.5.73 / 0.5.74 / 0.5.75: physical cryosphere -> GPU cubemap ============ */
 /*
    One RGBA8 cubemap carries both temporal endpoints to remain WebGL1-safe:
    R/G = previous land-cryosphere / sea-ice coverage,
@@ -19,19 +19,25 @@
    bright great-circle arc on the planet. Corner taps may now leave the source
    face: their extended face coordinate is converted to a 3-D direction and
    mapped back onto the canonical cubed sphere before the source cell is read.
-   Physics remains untouched: zero physical cover is still exactly zero ice.
+
+   0.5.75 makes the DISPLAY reconstruction 5x rather than 3x. This does not
+   increase Weather Core resolution or physical cost: it only gives the sharp
+   visual threshold enough sub-cell samples that a close mobile view no longer
+   exposes each 32x32 physics cell as a soft polygon. Two extra high-frequency
+   spherical terms break the last over-smooth edge segments. Dense continental
+   ice is now exactly opaque in the display mask; surface texture belongs in
+   the shader colour/lighting, not in semi-transparent coverage. Physics remains
+   untouched: zero physical cover is still exactly zero visible ice.
 */
 
-const CRYO_GPU_MODEL=3;
+const CRYO_GPU_MODEL=4;
 const CRYO_TEX_UNIT=7;
-const CRYO_GPU_UPSCALE=3;
-/* A nearly-one-second crossfade meant the ice edge was permanently in a
-   translucent intermediate state because Weather Core publishes once/second.
-   Keep enough interpolation to avoid popping, but let the edge spend most of
-   each tick as an actual opaque boundary. */
-const CRYO_BLEND_DEFAULT_MS=360;
-const CRYO_BLEND_MIN_MS=120;
-const CRYO_BLEND_MAX_MS=560;
+const CRYO_GPU_UPSCALE=5;
+/* Keep enough interpolation to avoid popping, but do not spend most of a
+   one-second weather tick cross-fading two sharp ice margins into grey milk. */
+const CRYO_BLEND_DEFAULT_MS=220;
+const CRYO_BLEND_MIN_MS=70;
+const CRYO_BLEND_MAX_MS=360;
 
 if(typeof UNIFORM_NAMES!=='undefined'){
   for(const n of ['uCryosphereTex','uCryosphereBlend'])if(!UNIFORM_NAMES.includes(n))UNIFORM_NAMES.push(n);
@@ -104,8 +110,8 @@ function cryoGpuDirToIndex(core,dx,dy,dz){
 /* x/y are deliberately allowed outside [0,N-1]. weatherFaceDir() turns that
    extended face coordinate into a real sphere direction; cryoGpuDirToIndex()
    then selects the adjacent canonical face. This is the CPU equivalent of
-   seamless cubemap filtering and removes the long projected face arcs without
-   blurring the geographic ice edge itself. */
+   seamless cubemap filtering and removes projected face arcs without blurring
+   the geographic ice edge itself. */
 function cryoGpuProjectedSample(core,face,x,y,sea){
   const N=core.N,u=2*(x+0.5)/N-1,v=2*(y+0.5)/N-1;
   const d=weatherFaceDir(face,u,v),i=cryoGpuDirToIndex(core,d[0],d[1],d[2]);
@@ -118,10 +124,10 @@ function cryoGpuBilerp(core,face,fx,fy,sea){
   const c=cryoGpuProjectedSample(core,face,x0,y1,sea),d=cryoGpuProjectedSample(core,face,x1,y1,sea);
   const ab=a+(b-a)*tx,cd=c+(d-c)*tx;return ab+(cd-ab)*ty;
 }
-/* Seamless, seed-stable multi-scale perturbation. The old pair of broad sine
-   waves could make a polar transition look like a smooth circular cookie.
-   Four unrelated spherical frequencies produce large embayments, intermediate
-   tongues and small edge roughness without a latitude/pole special case. */
+/* Seed-stable seamless sub-cell geography. Broad terms make bays and tongues;
+   high-frequency terms stop long edge sections from turning into smooth arcs.
+   All inputs are 3-D directions, so none of these scales knows about cube
+   faces, latitude circles or screen coordinates. */
 function cryoGpuEdgeNoise(seed,face,x,y,N){
   if(typeof weatherFaceDir!=='function')return 0.5;
   const u=2*(x+0.5)/N-1,v=2*(y+0.5)/N-1,d=weatherFaceDir(face,u,v);
@@ -130,19 +136,19 @@ function cryoGpuEdgeNoise(seed,face,x,y,N){
   const b=Math.sin(d[0]*23.1-d[1]*31.7+d[2]*19.1-p*1.71);
   const c=Math.sin(d[0]*47.3+d[1]*37.9-d[2]*53.1+p*2.37);
   const e=Math.sin(d[0]*91.7-d[1]*73.3+d[2]*61.9-p*3.11);
-  return Math.max(0,Math.min(1,0.5+0.18*a+0.12*b+0.075*c+0.040*e));
+  const f=Math.sin(d[0]*173.3+d[1]*139.1-d[2]*151.7+p*4.07);
+  const g=Math.sin(d[0]*307.9-d[1]*263.3+d[2]*281.1-p*5.23);
+  return Math.max(0,Math.min(1,0.5+0.17*a+0.115*b+0.070*c+0.040*e+0.025*f+0.014*g));
 }
 function cryoGpuVisualCoverage(raw,edgeNoise,sea){
   raw=Math.max(0,Math.min(1,Number(raw)||0));
-  if(raw<=0.020)return 0;
-  /* Dense continental ice remains solid but gets a tiny coverage texture so
-     the underlying terrain lighting is not replaced by a perfectly flat white
-     decal. Sea ice stays fully opaque when physics says it is fully packed. */
-  if(raw>=0.86)return sea?1:(0.94+0.06*edgeNoise);
-  const shift=(edgeNoise-0.5)*(sea?0.14:0.22);
-  /* Land transition is intentionally narrow: fractional physical coverage is
-     represented as geographic patches, not translucent milk. */
-  const lo=(sea?0.18:0.32)+shift,hi=(sea?0.46:0.49)+shift;
+  if(raw<=0.012)return 0;
+  /* Dense physical ice is a solid surface. Texture/crevasses belong to colour
+     and lighting in surface.glsl; varying coverage here is what made the cap
+     look like translucent milk. */
+  if(raw>=0.78)return 1;
+  const shift=(edgeNoise-0.5)*(sea?0.15:0.26);
+  const lo=(sea?0.18:0.30)+shift,hi=(sea?0.44:0.43)+shift;
   return cryoGpuSmooth(lo,hi,raw);
 }
 function cryoGpuReadCurrent(core){
@@ -152,7 +158,7 @@ function cryoGpuReadCurrent(core){
     for(let y=0;y<N;y++)for(let x=0;x<N;x++){
       const fx=(x+0.5)/scale-0.5,fy=(y+0.5)/scale-0.5;
       const rawLand=cryoGpuBilerp(core,face,fx,fy,false),rawSea=cryoGpuBilerp(core,face,fx,fy,true);
-      const needsNoise=(rawLand>0.02)||(rawSea>0.03&&rawSea<0.80);
+      const needsNoise=(rawLand>0.012&&rawLand<0.82)||(rawSea>0.02&&rawSea<0.82);
       const edge=needsNoise?cryoGpuEdgeNoise(seed,face,x,y,N):0.5;
       const dst=(N-1-y)*N+x;
       land[dst]=cryoGpuVisualCoverage(rawLand,edge,false);
@@ -187,7 +193,7 @@ function cryoGpuUpload(core){
   }else{
     cryoGpuCollapseVisible(cryoGpuBlendAt(now));cryoGpuReadCurrent(core);
     const interval=Number.isFinite(cryoGpuLastUploadMs)?Math.max(1,now-cryoGpuLastUploadMs):CRYO_BLEND_DEFAULT_MS;
-    cryoGpuBlendDurationMs=Math.max(CRYO_BLEND_MIN_MS,Math.min(CRYO_BLEND_MAX_MS,interval*0.36));cryoGpuBlendStartMs=now;
+    cryoGpuBlendDurationMs=Math.max(CRYO_BLEND_MIN_MS,Math.min(CRYO_BLEND_MAX_MS,interval*0.22));cryoGpuBlendStartMs=now;
   }
   cryoGpuPackAndUpload();cryoGpuLastUploadMs=now;cryoGpuLastSeed=seed;cryoGpuUploads++;
   core.cryoGpuModel=CRYO_GPU_MODEL;core.cryoGpuUploads=cryoGpuUploads;return true;
