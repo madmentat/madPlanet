@@ -214,20 +214,37 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec3 riparianC = mix(GRAS,mix(FORS,JUNG,ss(0.62,0.96,temp)),ss(0.36,0.70,moist));
   alb = mix(alb,riparianC,riparian*0.48);
 
-  /* реки и озёра: geometry was computed before biome colouring and is reused
-     here, so adding river-fed greening costs no duplicate hydrology FBM. */
+  /* 0.5.71: lake ice should normally establish on shallow margins before the
+     deeper centre. lakeN already defines the procedural basin, so reuse its
+     distance-from-threshold as a cheap depth proxy rather than adding another
+     texture/noise field. Rivers are treated separately because moving water
+     can remain open a little longer than sheltered lake margins. */
   float rv = 0.0;
-  float inlandFreeze = 1.0-ss(270.0,274.0,ecologyK);
+  float inlandFreeze = 0.0;
+  float inlandLiquid = 0.0;
   if(h > 0.0 && snowM < 0.85){
     float riv = riverGeom;
     riv *= clamp(wReal/wPix*0.8, 0.0, 1.0);
     riv *= ss(0.24,0.44,moist) * (1.0-ss(0.16,0.30,h));
     float lake = lakeGeom * ss(0.20,0.38,moist);
-    rv = clamp(riv + lake, 0.0, 1.0) * (1.0 - snowM*0.9);
+    float waterScale = 1.0-snowM*0.9;
+    float riverM = clamp(riv,0.0,1.0)*waterScale;
+    float lakeM = clamp(lake,0.0,1.0)*waterScale;
+    rv = clamp(riverM+lakeM,0.0,1.0);
+
+    float lakeInterior = ss(lth+0.045,lth+0.16,lakeN);
+    float lakeFreezeLo = mix(272.2,268.5,lakeInterior);
+    float lakeFreezeHi = mix(273.9,271.8,lakeInterior);
+    float lakeFreeze = 1.0-ss(lakeFreezeLo,lakeFreezeHi,ecologyK);
+    float riverFreeze = 1.0-ss(268.8,272.2,ecologyK);
+    float frozenRv = clamp(lakeM*lakeFreeze + riverM*riverFreeze,0.0,1.0);
+    inlandLiquid = clamp(lakeM*(1.0-lakeFreeze) + riverM*(1.0-riverFreeze),0.0,1.0);
+    inlandFreeze = (rv>1.0e-4) ? clamp(frozenRv/rv,0.0,1.0) : 0.0;
+
     vec3 inlandWater=mix(vec3(0.022,0.062,0.090), vec3(0.045,0.135,0.155), ss(0.30,0.85,temp));
     vec3 inlandIce=vec3(0.76,0.82,0.88)*(0.90+0.10*mo3);
-    alb = mix(alb, inlandWater, rv*0.90);
-    alb = mix(alb, inlandIce, rv*inlandFreeze*0.96);
+    alb = mix(alb, inlandWater, inlandLiquid*0.90);
+    alb = mix(alb, inlandIce, frozenRv*0.96);
   }
 
   /* 0.5.66: the cryosphere is a surface state, not a biome. Apply it after
@@ -257,9 +274,15 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float chop = 1.0-ss(1.5,3.0,uCamDist);
   if(chop > 0.02)
     oc *= 1.0 + chop*0.13*fbm(sN*420.0 + vec3(uTime*0.35, 0.0, uTime*0.2), 3);
-  /* 0.5.60: sea-ice area comes only from physical SST/latent-heat state. */
+  /* Physical sea-ice concentration still comes only from SST/latent heat. In
+     partially frozen cells, redistribute the visual edge slightly toward
+     shallow coastal water; the 4*f*(1-f) factor makes this exactly zero when
+     physical coverage is either 0 or 1, so shoreline bias cannot invent ice. */
+  float coastalShallow = 1.0-ss(0.03,0.24,depth);
+  float seaTransition = 4.0*seaIcePhys*(1.0-seaIcePhys);
+  float shoreBiasedSea = clamp(seaIcePhys + (coastalShallow-0.38)*0.22*seaTransition,0.0,1.0);
   float iceMicro = 0.92 + 0.08*(0.5+0.5*fbm(sN*18.0+uSeedS+vec3(3.0),2));
-  float ice = clamp(seaIcePhys*iceMicro,0.0,1.0);
+  float ice = clamp(shoreBiasedSea*iceMicro,0.0,1.0);
   if(ice > 0.01){
     vec3 iceCol = vec3(0.80,0.86,0.92)*(0.86+0.24*(0.5+0.5*fbm(sN*30.0+uSeedS,2)));
     oc = mix(oc, iceCol, ice*0.95);
@@ -298,7 +321,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec3 col = albF * dif * shad * sunC;
 
   /* блик солнца на воде */
-  float waterM = max((1.0-land)*(1.0-ice), rv*land*0.40*(1.0-inlandFreeze));
+  float waterM = max((1.0-land)*(1.0-ice), inlandLiquid*land*0.40);
   if(waterM > 0.01){
     vec3 hv = normalize(uSunDir - rd);
     float cosH = max(dot(nS, hv), 0.0);
