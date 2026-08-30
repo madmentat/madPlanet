@@ -8,9 +8,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec4 cryoTex = texture(uCryosphereTex, normalize(sN));
   float landCryoPhys = mix(cryoTex.r, cryoTex.b, uCryosphereBlend);
   float seaIcePhys = mix(cryoTex.g, cryoTex.a, uCryosphereBlend);
-  /* 0.5.66: B/A of the existing double-buffered fog/weather texture are now
-     dynamic soil wetness and Weather Core surface temperature. This costs no
-     extra sampler and keeps drought colour changes on the fixed weather clock. */
+  /* 0.5.66: B/A of the existing double-buffered fog/weather texture carry
+     coarse physical soil wetness and Weather Core surface temperature. 0.5.67
+     deliberately treats these as a broad envelope only: direct thresholding
+     of the low-resolution cubemap painted its cubed-sphere cells onto biomes. */
   vec4 surfaceWx = physicalFogSample(n0);
   float soilMoistPhys = clamp(surfaceWx.b,0.0,1.0);
   float surfaceK = mix(180.0,380.0,clamp(surfaceWx.a,0.0,1.0));
@@ -62,14 +63,51 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float arid = ss(0.46, 1.00, temp) * contin * (0.30 + 0.70*ss(0.06, 0.55, lee));
   moist = clamp(moist*(1.0 - 0.78*arid) + 0.22*coastal*coastal, 0.0, 1.0);
 
-  /* Static climate says what biome can exist here; physical soil water says
-     what that biome looks like NOW. A cool dry tundra must not turn into sand,
-     so heat stress amplifies drought rather than defining it alone. */
+  /* 0.5.67: fine ecological geography is resolved from fields we already
+     needed later for rivers/lakes and vegetation. Weather Core remains coarse
+     and cheap, but its cells no longer become visible green rectangles. */
+  float riverWarpX = fbm(sN*3.1+uSeedS,3);
+  float riverWarpY = fbm(sN*3.1+uSeedS+vec3(7.7),3);
+  float rn = fbm(sN*5.2 + uSeedS*1.9 + 0.5*vec3(riverWarpX,riverWarpY,0.0), 4);
+  float wVar = 0.45 + 1.15*(0.5+0.5*fbm(sN*19.0 + uSeedS + vec3(71.0), 3));
+  float wReal = mix(0.013, 0.0030, ss(0.02,0.22,h)) * wVar;
+  float wPix = tHit*uPixA*1.6;
+  float w = max(wReal, wPix);
+  float riverSignal = abs(rn) + 0.0016*fbm(sN*260.0+uSeedS,2);
+  float riverGeom = 1.0 - ss(w*0.82, w*1.06, riverSignal);
+  /* Floodplain width is world-space, not pixel-space: zooming cannot change
+     which soil is ecologically close to a river. */
+  float floodplain = 1.0-ss(wReal*1.7,wReal*6.2,abs(rn));
+  floodplain *= 1.0-ss(0.14,0.32,h);
+
+  float lakeN = fbm(sN*3.4 + uSeedS*3.7 + vec3(53.0), 4);
+  float lth = mix(0.46, 0.20, uLake);
+  float lakeGeom = ss(lth,lth+0.07,lakeN) * (1.0-ss(0.05,0.14,h)) * ss(0.02,0.10,uLake);
+  float lakeMargin = ss(lth-0.12,lth+0.025,lakeN) * (1.0-ss(0.07,0.18,h)) * ss(0.02,0.10,uLake);
+
+  /* These three fields existed in 0.5.66 as cosmetic vegetation breakup.
+     Reuse them earlier as sub-cell ecological structure instead of adding new
+     FBM calls. This makes patches smaller/more numerous at almost no extra
+     fragment cost. */
+  float mo1 = 0.5+0.5*fbm(sN*9.0  + uSeedS*2.1 + vec3(101.0), 3);
+  float mo2 = 0.5+0.5*fbm(sN*19.0 + uSeedS*3.3 + vec3(202.0), 3);
+  float mo3 = 0.5+0.5*fbm(sN*38.0 + uSeedS*1.5 + vec3(303.0), 2);
+  float ecoPatch = clamp(0.42*mo1+0.36*mo2+0.22*mo3,0.0,1.0);
+  float lowlandWet = coastal*coastal*(0.30+0.70*soilMoistPhys);
+  float hydroWet = clamp(max(floodplain*0.92,lakeMargin*0.82)+0.18*lowlandWet,0.0,1.0);
+
+  /* Static climate says what biome can exist here. Low-resolution physical
+     soil water only bends that potential up/down; local ecological texture and
+     hydrology decide where living cover actually concentrates inside a cell. */
   float soilGreen = ss(0.08,0.72,soilMoistPhys);
   float soilDry = 1.0-ss(0.16,0.58,soilMoistPhys);
   float heatStress = ss(289.0,315.0,surfaceK);
-  float drought = clamp(soilDry*(0.30+0.70*heatStress)*land,0.0,1.0);
-  moist = clamp(mix(moist,soilGreen,0.58)*(1.0-0.46*drought),0.0,1.0);
+  float localWetGain = mix(0.82,1.16,soilGreen) * mix(0.90,1.10,ecoPatch);
+  moist = clamp(moist*localWetGain + 0.34*hydroWet,0.0,1.0);
+  float localDryBreakup = mix(1.12,0.72,ecoPatch);
+  float drought = clamp(soilDry*(0.30+0.70*heatStress)*localDryBreakup*land,0.0,1.0);
+  drought *= 1.0-0.82*hydroWet;
+  moist = clamp(moist*(1.0-0.38*drought),0.0,1.0);
   moist = clamp(moist + 0.20*ss(0.0004, 0.040, uCO2)*(1.0-max(arid,drought)), 0.0, 1.0);
 
   /* биомы */
@@ -86,9 +124,9 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
 
   /* Drought progression is not one brown overlay. Mild stress yellows living
      cover, stronger stress exposes dull soil, and only hot prolonged extreme
-     dryness approaches sand/red-rock colours. Low-frequency modulation keeps
-     dieback patchy rather than drawing a climate contour. */
-  float dryPatch=0.58+0.42*(0.5+0.5*fbm(sN*4.6+uSeedS*2.8+vec3(313.0,71.0,19.0),3));
+     dryness approaches sand/red-rock colours. Fine ecological breakup is now
+     reused here, so coarse Weather Core cells cannot define the patch edge. */
+  float dryPatch=0.58+0.42*(0.56*mo1+0.44*mo2);
   float droughtMild=ss(0.10,0.45,drought);
   float droughtHard=ss(0.42,0.78,drought);
   float droughtExtreme=ss(0.74,0.96,drought)*heatStress;
@@ -145,28 +183,25 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   alb *= 1.0 + 0.18*veg*(1.0-0.72*drought);
   vec3 bareC  = mix(vec3(0.20,0.165,0.115), REDR, ss(0.40,0.92,temp));
   vec3 denseC = FORS*0.82;
-  float mo1 = 0.5+0.5*fbm(sN*9.0  + uSeedS*2.1 + vec3(101.0), 3);
-  float mo2 = 0.5+0.5*fbm(sN*19.0 + uSeedS*3.3 + vec3(202.0), 3);
-  float mo3 = 0.5+0.5*fbm(sN*38.0 + uSeedS*1.5 + vec3(303.0), 2);
   alb = mix(alb, bareC,  ss(0.46,0.63,mo1)*0.80*(1.0-0.75*ss(0.52,0.70,moist)));
   alb = mix(alb, denseC, ss(0.45,0.62,mo2)*0.70*ss(0.34,0.55,moist)*(1.0-droughtHard));
   alb *= 0.80 + 0.42*mo3;
 
-  /* реки и озёра */
+  /* Riparian vegetation is an ecological response to water geometry, not a
+     square Weather Core cell. It stays irregular because river/lake corridors
+     are intersected with the pre-existing fine vegetation fields. */
+  float riparian = hydroWet*ss(0.18,0.58,moist)*(0.68+0.32*mo2)*(1.0-droughtHard);
+  vec3 riparianC = mix(GRAS,mix(FORS,JUNG,ss(0.62,0.96,temp)),ss(0.36,0.70,moist));
+  alb = mix(alb,riparianC,riparian*0.48);
+
+  /* реки и озёра: geometry was computed before biome colouring and is reused
+     here, so adding river-fed greening costs no duplicate hydrology FBM. */
   float rv = 0.0;
   if(h > 0.0 && snowM < 0.85){
-    float rn = fbm(sN*5.2 + uSeedS*1.9 + 0.5*vec3(fbm(sN*3.1+uSeedS,3), fbm(sN*3.1+uSeedS+vec3(7.7),3), 0.0), 4);
-    float wVar = 0.45 + 1.15*(0.5+0.5*fbm(sN*19.0 + uSeedS + vec3(71.0), 3));
-    float wReal = mix(0.013, 0.0030, ss(0.02,0.22,h)) * wVar;
-    float wPix = tHit*uPixA*1.6;
-    float w = max(wReal, wPix);
-    float riv = 1.0 - ss(w*0.82, w*1.06, abs(rn) + 0.0016*fbm(sN*260.0+uSeedS,2));
+    float riv = riverGeom;
     riv *= clamp(wReal/wPix*0.8, 0.0, 1.0);
-    riv *= ss(0.30,0.48,moist) * (1.0-ss(0.16,0.30,h));
-    float lakeN = fbm(sN*3.4 + uSeedS*3.7 + vec3(53.0), 4);
-    float lth = mix(0.46, 0.20, uLake);
-    float lake = ss(lth, lth+0.07, lakeN) * (1.0-ss(0.05,0.14,h)) * ss(0.22,0.38,moist);
-    lake *= ss(0.02,0.10,uLake);
+    riv *= ss(0.24,0.44,moist) * (1.0-ss(0.16,0.30,h));
+    float lake = lakeGeom * ss(0.20,0.38,moist);
     rv = clamp(riv + lake, 0.0, 1.0) * (1.0 - snowM*0.9);
     alb = mix(alb, mix(vec3(0.022,0.062,0.090), vec3(0.045,0.135,0.155), ss(0.30,0.85,temp)), rv*0.90);
   }
