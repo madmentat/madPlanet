@@ -77,13 +77,9 @@ vec3 tectonicBelt(vec3 sN){
   /* Вклад считается по всем парам плит сразу, а не по выбранной паре
      «ближайший + второй». 0.5.76 также убирает последний скрытый hard-min из
      весов: прежде dmin входил в REACH/fade и потому его излом НЕ сокращался
-     нормировкой num/den. Именно этот остаточный излом мог печатать границу
-     ячейки Вороного в finite-difference normal как тонкую тёмную дугу. */
+     нормировкой num/den. */
   /* uPlateP[i].w — «вес» плиты. С ним мозаика превращается из обычной
-     Вороного в степенную: ячейки получаются очень разного размера, как
-     Тихоокеанская против плиты Хуан-де-Фука. Без веса все ячейки выходили
-     сопоставимыми, стыки сходились по три под ровные 120°, и хребты
-     складывались в правильные звёзды и треугольники. */
+     Вороного в степенную: ячейки получаются очень разного размера. */
   float dmin = 1e9;
   float dRef = -dot(sN, uPlateP[0].xyz) - uPlateP[0].w;
   vec3 nearSite = uPlateP[0].xyz;
@@ -92,19 +88,20 @@ vec3 tectonicBelt(vec3 sN){
     if(i>0) dRef=tectonicSmoothMin(dRef,d);
     if(d < dmin){ dmin = d; nearSite = uPlateP[i].xyz; }
   }
-  /* Hard nearest identity is diagnostic only; uPlatesOn=0 means this value can
-     never affect relief, normals, volcanism or climate. */
+  /* Hard nearest identity is diagnostic only. */
   gPlateTint = fract(nearSite*vec3(13.71, 7.39, 21.17) + 0.5);
   gSeamNear = 1e9; gSeamConv = 0.0;
-  /* Пар всего 66, но осмысленны лишь несколько ближайших: вес остальных
-     исчезающе мал. Он гасится до нуля плавно на пороге REACH, поэтому
-     пропуск дальних пар точен и поле остаётся непрерывным — а работы на
-     пиксель становится в разы меньше. */
   const float REACH = 0.62;
   float num = 0.0, den = 1e-6, leeNum = 0.0, seamNum = 0.0;
-  /* Границы циклов берутся из юниформы. Пар всего 66 при максимальных 12
-     плитах; динамическая граница не заставляет мобильный компилятор разворачивать
-     всё тело в огромную статическую программу. */
+  /* 0.5.77: gSeamNear used to choose one pair with
+       if(seam < gSeamNear)
+     even though the physical relief itself was already a smooth sum. That hard
+     identity leaked into volcanic colouring (and into finite-difference calls
+     that overwrite the global), producing the remaining isolated black/white
+     dotted arcs. Build the display seam from the same continuous pair field.
+     Polynomial falloff is used instead of another exp so terrain() stays cheap. */
+  float seamVisNum=0.0, seamVisDen=1e-6, seamConvNum=0.0;
+
   for(int i=0;i<uPlateN;i++){
     vec3 pi = uPlateP[i].xyz;
     float di = -dot(sN, pi) - uPlateP[i].w - dRef;
@@ -123,21 +120,12 @@ vec3 tectonicBelt(vec3 sN){
       vec3 dbT = db - sN*dot(db, sN);
       float dbTl = length(dbT);
       vec3 bdir = dbT/max(dbTl, 1e-4);
-      /* Касательная часть базы вырождается там, где пара плит смотрит по
-         радиусу: направление шва тогда бессмысленно и всё от него гасится. */
       float bValid = ss(0.06, 0.32, dbTl);
       float conv = dot(cross(uPlateW[i].xyz - uPlateW[j].xyz, sN), bdir)*bValid;
-      /* Быстрое столкновение расплющивает пояс вширь — так получаются
-         нагромождения вроде Тибета, а вялое оставляет одиночную гряду. */
       float convC = clamp(conv*2.4, -1.0, 1.0);
       float bwEff = bw*(0.62 + 1.05*abs(convC));
       float sb = seam/bwEff;
       float band = exp(-sb*sb);
-      /* Схождение несимметрично. Одна плита уходит под другую, и в разрезе
-         это жёлоб на уходящей стороне, а за ним — вулканическая дуга и
-         хребет на надвигающейся. Кто кого передавит, решает вес: более
-         крупная и толстая плита остаётся сверху. Расхождение, наоборот,
-         симметрично — рифт раскрывается в обе стороны одинаково. */
       float over = (uPlateP[i].w >= uPlateP[j].w) ? 1.0 : -1.0;
       float sS = seamS*over;
       float su = (sS - 0.40*bwEff)/bwEff;
@@ -145,25 +133,25 @@ vec3 tectonicBelt(vec3 sN){
       float arc = exp(-su*su);
       float trench = exp(-st*st);
 
-      /* Сторона шва — плавная: у самого гребня она обнуляется, поэтому
-         смена знака не создаёт разрыва. */
       float side = clamp(seamS/0.03, -1.0, 1.0);
-      /* Тень нужна именно за хребтом: у самого гребня она ещё не набрана,
-         а поперёк ветра её нет вовсе. */
       float lee = max(conv, 0.0) * ss(0.10, 0.70, dot(bdir*side, -windS))
                 * exp(-seam/0.085);
 
-      /* На схему идёт только настоящая граница. Биссектриса есть у любой пары
-         плит, но у несоседних она проходит сквозь чужую ячейку: в рельефе её
-         давит вес (вклад падает раз в пятнадцать), а схема рисовала бы её
-         наравне с настоящими — отсюда и мнимые «звёзды» из пяти лучей. */
-      if(wgt > 0.30 && seam < gSeamNear){ gSeamNear = seam; gSeamConv = convC; }
+      float seamVisW=wgt*(1.0-ss(0.018,0.115,seam));
+      seamVisNum+=seamVisW*seam;
+      seamConvNum+=seamVisW*convC;
+      seamVisDen+=seamVisW;
+
       float contrib = (convC > 0.0) ? convC*(arc - 0.62*trench) : convC*band;
       num    += wgt*contrib;
       leeNum += wgt*lee;
       seamNum+= wgt*seam;
       den    += wgt;
     }
+  }
+  if(seamVisDen>1e-5){
+    gSeamNear=seamVisNum/seamVisDen;
+    gSeamConv=seamConvNum/seamVisDen;
   }
   return vec3(num/den, seamNum/den, clamp(leeNum/den, 0.0, 1.0));
 }
@@ -188,12 +176,7 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   leeOut = belt.z;
   if(uTect > 0.01 && abs(belt.x) > 0.004){
     if(belt.x > 0.0){
-      /* 0.5.75: the old fold term used cos(distance_to_seam*78), which
-         literally stamped evenly spaced dark/light ribbons across collision
-         belts. The screenshots exposed those as implausibly smooth black arcs.
-         Keep the broad tectonic envelope, but break the internal relief with
-         two non-periodic spherical ridge/noise fields. No screen-space or
-         latitude-aligned stripe generator remains. */
+      /* 0.5.75: no periodic cos(distance_to_seam) folds. */
       float peaks = ridged(sN*6.2 + uSeedS*1.9, 4);
       float foldWarp = 0.5 + 0.5*fbm(sN*8.4 + uSeedS*2.7 + vec3(337.0,61.0,19.0), 3);
       float foldA = ridged(sN*(9.5 + 4.0*foldWarp) + uSeedS*2.2 + vec3(97.0,13.0,251.0), 3);
@@ -202,19 +185,13 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
       float ramp = belt.x*belt.x;
       mountOut = uTect * ramp * (0.34 + 0.66*peaks) * (0.72 + 0.28*folds) * 1.45;
       rockOut = ramp * (0.28 + 0.72*peaks);
-      /* Под водой поднятие ниже: остаётся островная дуга, а не стена. */
       mountOut *= mix(0.40, 1.0, ss(-0.05, 0.03, h));
       h += mountOut;
     } else {
-      /* Растяжение: рифтовая долина на суше, жёлоб на дне. */
       h -= uTect * belt.x*belt.x * 0.16;
     }
   }
   if(h > -0.06) h += 0.02*fbm(sN*12.0+uSeedS,2);
-  /* Мелкий рельеф проявляется при приближении: без него вблизи нет ни
-     светотени, ни изрезанного берега — поверхность читается как заливка.
-     Гребневой шум, а не обычный: даёт сеть хребтов и долин вместо ряби,
-     и слабеет на равнинах, где эрозия всё сгладила. */
   float det = (uDraft > 0.5) ? 0.0 : 1.0-ss(1.7, 3.4, uCamDist);
   if(det > 0.02){
     float rough = 0.07 + 1.15*ss(0.0,0.30,rockOut) + 0.22*ss(0.10,0.40,h);
