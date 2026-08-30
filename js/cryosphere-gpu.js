@@ -1,4 +1,4 @@
-/* ============ 0.5.60 / 0.5.70: physical cryosphere -> GPU cubemap ============ */
+/* ============ 0.5.60 / 0.5.70 / 0.5.73: physical cryosphere -> GPU cubemap ============ */
 /*
    One RGBA8 cubemap carries both temporal endpoints to remain WebGL1-safe:
    R/G = previous land-cryosphere / sea-ice coverage,
@@ -7,15 +7,16 @@
 
    0.5.70 keeps the physical Weather Core coverage continuous for albedo,
    latent heat and H2O closure, but stops displaying that fraction literally as
-   translucent white fog. The render cubemap is a cheap 2x reconstruction of
-   the coarse physical grid. Bilinear reconstruction plus a narrow, slightly
-   irregular coverage threshold makes dense polar ice read as a solid sheet
-   with a crisp natural edge instead of a blurred cloud. Physics is untouched.
+   translucent white fog. 0.5.73 raises only the cheap render reconstruction to
+   3x and replaces the two broad sinusoidal edge waves with several unrelated
+   spherical scales. Transitional ice therefore breaks into bays, tongues and
+   peninsulas instead of exposing a rounded/coarse cubemap contour. Physics is
+   untouched: zero physical cover is still exactly zero visible ice.
 */
 
-const CRYO_GPU_MODEL=2;
+const CRYO_GPU_MODEL=3;
 const CRYO_TEX_UNIT=7;
-const CRYO_GPU_UPSCALE=2;
+const CRYO_GPU_UPSCALE=3;
 /* A nearly-one-second crossfade meant the ice edge was permanently in a
    translucent intermediate state because Weather Core publishes once/second.
    Keep enough interpolation to avoid popping, but let the edge spend most of
@@ -77,24 +78,31 @@ function cryoGpuBilerp(core,face,fx,fy,sea){
   const a=sample(core,face,x0,y0),b=sample(core,face,x1,y0),c=sample(core,face,x0,y1),d=sample(core,face,x1,y1);
   const ab=a+(b-a)*tx,cd=c+(d-c)*tx;return ab+(cd-ab)*ty;
 }
-/* A broad seamless perturbation breaks the visible contour without inventing
-   any new ice. It only moves the threshold inside cells where physical
-   coverage is already transitional. Using the spherical direction avoids cube
-   face seams and avoids the square vegetation problem in another disguise. */
+/* Seamless, seed-stable multi-scale perturbation. The old pair of broad sine
+   waves could make a polar transition look like a smooth circular cookie.
+   Four unrelated spherical frequencies produce large embayments, intermediate
+   tongues and small edge roughness without a latitude/pole special case. */
 function cryoGpuEdgeNoise(seed,face,x,y,N){
   if(typeof weatherFaceDir!=='function')return 0.5;
   const u=2*(x+0.5)/N-1,v=2*(y+0.5)/N-1,d=weatherFaceDir(face,u,v);
   const p=(seed|0)*0.000137;
-  const a=Math.sin(d[0]*14.3+d[1]*11.7+d[2]*17.9+p);
-  const b=Math.sin(d[0]*31.1-d[1]*23.7+d[2]*19.3-p*1.71);
-  return Math.max(0,Math.min(1,0.5+0.27*a+0.13*b));
+  const a=Math.sin(d[0]*10.7+d[1]*13.9+d[2]*17.3+p);
+  const b=Math.sin(d[0]*23.1-d[1]*31.7+d[2]*19.1-p*1.71);
+  const c=Math.sin(d[0]*47.3+d[1]*37.9-d[2]*53.1+p*2.37);
+  const e=Math.sin(d[0]*91.7-d[1]*73.3+d[2]*61.9-p*3.11);
+  return Math.max(0,Math.min(1,0.5+0.18*a+0.12*b+0.075*c+0.040*e));
 }
 function cryoGpuVisualCoverage(raw,edgeNoise,sea){
   raw=Math.max(0,Math.min(1,Number(raw)||0));
-  if(raw<=0.015)return 0;
-  if(raw>=0.82)return 1;
-  const shift=(edgeNoise-0.5)*(sea?0.11:0.13);
-  const lo=(sea?0.16:0.18)+shift,hi=(sea?0.48:0.46)+shift;
+  if(raw<=0.020)return 0;
+  /* Dense continental ice remains solid but gets a tiny coverage texture so
+     the underlying terrain lighting is not replaced by a perfectly flat white
+     decal. Sea ice stays fully opaque when physics says it is fully packed. */
+  if(raw>=0.86)return sea?1:(0.94+0.06*edgeNoise);
+  const shift=(edgeNoise-0.5)*(sea?0.14:0.22);
+  /* Land transition is intentionally narrow: fractional physical coverage is
+     represented as geographic patches, not translucent milk. */
+  const lo=(sea?0.18:0.32)+shift,hi=(sea?0.46:0.49)+shift;
   return cryoGpuSmooth(lo,hi,raw);
 }
 function cryoGpuReadCurrent(core){
@@ -104,7 +112,7 @@ function cryoGpuReadCurrent(core){
     for(let y=0;y<N;y++)for(let x=0;x<N;x++){
       const fx=(x+0.5)/scale-0.5,fy=(y+0.5)/scale-0.5;
       const rawLand=cryoGpuBilerp(core,face,fx,fy,false),rawSea=cryoGpuBilerp(core,face,fx,fy,true);
-      const needsNoise=(rawLand>0.03&&rawLand<0.78)||(rawSea>0.03&&rawSea<0.78);
+      const needsNoise=(rawLand>0.02)||(rawSea>0.03&&rawSea<0.80);
       const edge=needsNoise?cryoGpuEdgeNoise(seed,face,x,y,N):0.5;
       const dst=(N-1-y)*N+x;
       land[dst]=cryoGpuVisualCoverage(rawLand,edge,false);
