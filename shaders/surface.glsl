@@ -218,16 +218,22 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
      deeper centre. lakeN already defines the procedural basin, so reuse its
      distance-from-threshold as a cheap depth proxy rather than adding another
      texture/noise field. Rivers are treated separately because moving water
-     can remain open a little longer than sheltered lake margins. */
+     can remain open a little longer than sheltered lake margins.
+
+     0.5.74: under a dense land cryosphere this hydrology is subglacial and
+     must stop being a visible map of bright frozen loops/dark river threads.
+     Keep hydroWet above for ecology/physics, but fade the displayed water out
+     rapidly once the authoritative land-ice coverage becomes substantial. */
   float rv = 0.0;
   float inlandFreeze = 0.0;
   float inlandLiquid = 0.0;
-  if(h > 0.0 && snowM < 0.85){
+  float hydroReveal = 1.0-ss(0.18,0.62,landCryoPhys);
+  if(h > 0.0 && hydroReveal > 0.01){
     float riv = riverGeom;
     riv *= clamp(wReal/wPix*0.8, 0.0, 1.0);
     riv *= ss(0.24,0.44,moist) * (1.0-ss(0.16,0.30,h));
     float lake = lakeGeom * ss(0.20,0.38,moist);
-    float waterScale = 1.0-snowM*0.9;
+    float waterScale = hydroReveal*(1.0-ss(0.18,0.72,snowM));
     float riverM = clamp(riv,0.0,1.0)*waterScale;
     float lakeM = clamp(lake,0.0,1.0)*waterScale;
     rv = clamp(riverM+lakeM,0.0,1.0);
