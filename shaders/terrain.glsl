@@ -34,6 +34,18 @@ float continentH(vec3 dir){
 float gSeamNear, gSeamConv;
 vec3  gPlateTint;
 
+/* 0.5.76: a hard min() is continuous in value but has a derivative kink where
+   the identity of the nearest plate changes. terrain() is sampled several
+   times for finite-difference normals, so that kink can become a one-pixel
+   black/white arc even when the plate overlay is disabled. This polynomial
+   smooth-min is C1 at the blend boundary and costs no exp/log. The hard
+   nearest plate remains only for diagnostic plate tint, never for relief. */
+float tectonicSmoothMin(float a,float b){
+  const float k=0.12;
+  float h=max(k-abs(a-b),0.0)/k;
+  return min(a,b)-0.25*k*h*h;
+}
+
 vec3 tectonicBelt(vec3 sN){
   /* Мозаика Вороного сама по себе даёт границы-дуги — ровные и оттого
      мёртвые. У настоящих плит швы ломаные, со сдвигами по трансформным
@@ -63,24 +75,25 @@ vec3 tectonicBelt(vec3 sN){
   vec3 windS = normalize(cross(uRotS*uAxis, sN) + vec3(1e-6));
 
   /* Вклад считается по всем парам плит сразу, а не по выбранной паре
-     «ближайший + второй». Любой выбор рвёт поле там, где меняется личность
-     выбранного соседа: у тройных стыков плит от этого расходились прямые
-     борозды, потому что конвергенция скачком меняла знак. Сумма по парам
-     ни от какого выбора не зависит и непрерывна по построению, а у тройных
-     стыков пояса просто складываются — что и физично.
-     Веса нормируются, поэтому общий множитель от dmin сокращается вместе
-     со своим изломом. */
+     «ближайший + второй». 0.5.76 также убирает последний скрытый hard-min из
+     весов: прежде dmin входил в REACH/fade и потому его излом НЕ сокращался
+     нормировкой num/den. Именно этот остаточный излом мог печатать границу
+     ячейки Вороного в finite-difference normal как тонкую тёмную дугу. */
   /* uPlateP[i].w — «вес» плиты. С ним мозаика превращается из обычной
      Вороного в степенную: ячейки получаются очень разного размера, как
      Тихоокеанская против плиты Хуан-де-Фука. Без веса все ячейки выходили
      сопоставимыми, стыки сходились по три под ровные 120°, и хребты
      складывались в правильные звёзды и треугольники. */
   float dmin = 1e9;
+  float dRef = -dot(sN, uPlateP[0].xyz) - uPlateP[0].w;
   vec3 nearSite = uPlateP[0].xyz;
   for(int i=0;i<uPlateN;i++){
     float d = -dot(sN, uPlateP[i].xyz) - uPlateP[i].w;
+    if(i>0) dRef=tectonicSmoothMin(dRef,d);
     if(d < dmin){ dmin = d; nearSite = uPlateP[i].xyz; }
   }
+  /* Hard nearest identity is diagnostic only; uPlatesOn=0 means this value can
+     never affect relief, normals, volcanism or climate. */
   gPlateTint = fract(nearSite*vec3(13.71, 7.39, 21.17) + 0.5);
   gSeamNear = 1e9; gSeamConv = 0.0;
   /* Пар всего 66, но осмысленны лишь несколько ближайших: вес остальных
@@ -89,16 +102,16 @@ vec3 tectonicBelt(vec3 sN){
      пиксель становится в разы меньше. */
   const float REACH = 0.62;
   float num = 0.0, den = 1e-6, leeNum = 0.0, seamNum = 0.0;
-  /* Границы циклов берутся из юниформы. Пар всего 144, и при константной
-     границе компилятор разворачивает тело каждой: именно это раздувает
-     программу и съедает память при линковке. */
+  /* Границы циклов берутся из юниформы. Пар всего 66 при максимальных 12
+     плитах; динамическая граница не заставляет мобильный компилятор разворачивать
+     всё тело в огромную статическую программу. */
   for(int i=0;i<uPlateN;i++){
     vec3 pi = uPlateP[i].xyz;
-    float di = -dot(sN, pi) - uPlateP[i].w - dmin;
+    float di = -dot(sN, pi) - uPlateP[i].w - dRef;
     if(di > REACH) continue;
     for(int j=i+1;j<uPlateN;j++){
       vec3 pj = uPlateP[j].xyz;
-      float dj = -dot(sN, pj) - uPlateP[j].w - dmin;
+      float dj = -dot(sN, pj) - uPlateP[j].w - dRef;
       float sum2 = di + dj;
       if(sum2 > REACH) continue;
       float wgt = exp(-sum2*9.0) * ss(REACH, REACH*0.7, sum2);
