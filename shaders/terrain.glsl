@@ -175,12 +175,19 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   leeOut = belt.z;
   if(uTect > 0.01 && abs(belt.x) > 0.004){
     if(belt.x > 0.0){
-      /* Складчатость: параллельные гряды поперёк пояса плюс гребневой шум —
-         цепь с вершинами и продольными долинами, а не один вал. */
+      /* 0.5.75: the old fold term used cos(distance_to_seam*78), which
+         literally stamped evenly spaced dark/light ribbons across collision
+         belts. The screenshots exposed those as implausibly smooth black arcs.
+         Keep the broad tectonic envelope, but break the internal relief with
+         two non-periodic spherical ridge/noise fields. No screen-space or
+         latitude-aligned stripe generator remains. */
       float peaks = ridged(sN*6.2 + uSeedS*1.9, 4);
-      float folds = 0.5 + 0.5*cos(belt.y*78.0 + 5.5*peaks);
+      float foldWarp = 0.5 + 0.5*fbm(sN*8.4 + uSeedS*2.7 + vec3(337.0,61.0,19.0), 3);
+      float foldA = ridged(sN*(9.5 + 4.0*foldWarp) + uSeedS*2.2 + vec3(97.0,13.0,251.0), 3);
+      float foldB = 0.5 + 0.5*fbm(sN*18.0 + uSeedS*3.4 + vec3(181.0,317.0,43.0), 2);
+      float folds = clamp(0.58*foldA + 0.42*foldB, 0.0, 1.0);
       float ramp = belt.x*belt.x;
-      mountOut = uTect * ramp * (0.34 + 0.66*peaks) * (0.55 + 0.45*folds) * 1.45;
+      mountOut = uTect * ramp * (0.34 + 0.66*peaks) * (0.72 + 0.28*folds) * 1.45;
       rockOut = ramp * (0.28 + 0.72*peaks);
       /* Под водой поднятие ниже: остаётся островная дуга, а не стена. */
       mountOut *= mix(0.40, 1.0, ss(-0.05, 0.03, h));
