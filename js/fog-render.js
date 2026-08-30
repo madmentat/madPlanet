@@ -1,4 +1,13 @@
-/* ============ 0.5.56: bind physical fog cubemaps ============ */
+/* ============ 0.5.56 / 0.5.72 bind physical fog + render-only visibility ============ */
+/* New display switches are declared by the full shader after gl-init has
+   already adopted the compact program. Extend the shared uniform list here and
+   immediately rebind the current program; later full-program adoption will use
+   the same augmented list automatically. */
+for(const n of ['uFogOn','uLightningOn','uAtmoVisualOn']){
+  if(typeof UNIFORM_NAMES!=='undefined'&&!UNIFORM_NAMES.includes(n))UNIFORM_NAMES.push(n);
+}
+if(typeof prog!=='undefined'&&prog&&typeof bindUniforms==='function')bindUniforms(prog);
+
 let fogBoundProgram=null;
 function fogBindForFrame(){
   if(!prog||typeof fogGpuEnsureCurrent!=='function')return;
@@ -15,5 +24,12 @@ function fogBindForFrame(){
   }
   if(U.uFogBlend!==null&&U.uFogBlend!==undefined)gl.uniform1f(U.uFogBlend,fogGpuBlendAt(fogGpuNowMs()));
 }
+function atmosphereVisibilityBindForFrame(){
+  if(!prog)return;
+  gl.useProgram(prog);
+  if(U.uFogOn!==null&&U.uFogOn!==undefined)gl.uniform1f(U.uFogOn,state.fogOn===false?0:1);
+  if(U.uLightningOn!==null&&U.uLightningOn!==undefined)gl.uniform1f(U.uLightningOn,state.lightningOn===false?0:1);
+  if(U.uAtmoVisualOn!==null&&U.uAtmoVisualOn!==undefined)gl.uniform1f(U.uAtmoVisualOn,state.atmoVisualOn===false?0:1);
+}
 const drawFrameBeforeFogRender=drawFrame;
-drawFrame=function(now){fogBindForFrame();drawFrameBeforeFogRender(now);};
+drawFrame=function(now){fogBindForFrame();atmosphereVisibilityBindForFrame();drawFrameBeforeFogRender(now);};
