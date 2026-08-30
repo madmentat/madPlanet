@@ -47,10 +47,10 @@ void main(){
   /* 0.5.65: the physical strike is independent of Detail/Draft. cl0.a changes
      when the lower cloud volume uses one vs three samples, so multiplying the
      complete bolt by that alpha made a render-quality toggle appear to switch
-     lightning off. lightningGlow() itself uses cl0.a only for irregular cloud
-     illumination; the direct channel is not attenuated by cloud morphology. */
+     lightning off. 0.5.72 also gives direct lightning an independent visual
+     switch: hidden low clouds no longer prevent us from diagnosing the strike. */
   vec3 bolt = vec3(0.0);
-  if(uLowOn > 0.5 && uCloudLow > 0.015 && tLo > 0.0 && uCycB[0].y > 0.005)
+  if(uLightningOn > 0.5 && uCloudLow > 0.015 && tLo > 0.0 && uCycB[0].y > 0.005)
     bolt = lightningGlow(normalize(ro + rd*tLo), cl0.a);
 
   vec3 col;
@@ -79,20 +79,23 @@ void main(){
     col = mix(col, cl2.rgb, cl2.a);
     /* Воздушная перспектива по длине пути луча внутри оболочки, а не по углу
        к нормали: иначе с низкой орбиты весь кадр затягивает молочной пеленой,
-       хотя смотреть сквозь атмосферу приходится всего десяток километров. */
+       хотя смотреть сквозь атмосферу приходится всего десяток километров.
+       uAtmoVisualOn hides only this display contribution; physical pressure,
+       gases, cloud heights and Weather Core remain untouched. */
     float alit = ss(-0.3, 0.4, dot(n0, uSunDir));
     float tIn = iSphere(ro, rd, R_ATM);
     float pathA = max(tP - max(tIn, 0.0), 0.0) / max(R_ATM-1.0, 1e-4);
+    float visualAtmo = clamp(uAtmoVisualOn,0.0,1.0);
     /* Пропускание и рассеяние по отдельности. Раньше дымка подмешивалась
        как готовый яркий синий цвет и почти вдвое поднимала синий канал даже
        при взгляде в надир — зелень уходила в шалфейный. Степень 1.6 держит
        рассеяние малым вблизи надира и полным на лимбе. */
-    float trans = exp(-pathA * 0.30 * uAtmo);
+    float trans = exp(-pathA * 0.30 * uAtmo * visualAtmo);
     float scat  = pow(1.0 - trans, 1.6);
     col = col*trans + atmC * scat * 0.80 * alit;
     /* свечение атмосферы на ночном лимбе — окрашено составом и звездой */
     vec3 nightGlow = mix(atmC*0.5, uStarCol*0.3, 0.4);
-    col += nightGlow * pow(scat, 3.0) * (1.0-alit) * 0.35 * uAtmo;
+    col += nightGlow * pow(scat, 3.0) * (1.0-alit) * 0.35 * uAtmo * visualAtmo;
 
     /* кольца перед планетой */
     float tR;
@@ -119,9 +122,10 @@ void main(){
         float sunset = exp(-pow(litp*3.2, 2.0));
         vec3 sunsetWash = mix(vec3(1.0,0.42,0.16), uStarCol*1.1, 0.35);
         vec3 ac = mix(atmC, sunsetWash, sunset*0.7);
-        col += ac * g * (lit*2.0 + 0.015) * uAtmo * 1.25;
+        float visualAtmo = clamp(uAtmoVisualOn,0.0,1.0);
+        col += ac * g * (lit*2.0 + 0.015) * uAtmo * visualAtmo * 1.25;
         vec3 limbNight = mix(atmC*0.5, uStarCol*0.3, 0.3);
-        col += limbNight * exp(-pow((x-0.10)*7.0,2.0)) * (1.0-lit) * 0.30 * uAtmo;
+        col += limbNight * exp(-pow((x-0.10)*7.0,2.0)) * (1.0-lit) * 0.30 * uAtmo * visualAtmo;
       }
     }
     /* облака на лимбе + кольца, в порядке глубины */
