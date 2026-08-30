@@ -4,6 +4,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
 const src=fs.readFileSync(path.join(root,'js/cryosphere.js'),'utf8');
+const sub=fs.readFileSync(path.join(root,'js/cryosphere-sublimation.js'),'utf8');
 const gpu=fs.readFileSync(path.join(root,'js/cryosphere-gpu.js'),'utf8');
 const surface=fs.readFileSync(path.join(root,'shaders/surface.glsl'),'utf8');
 const header=fs.readFileSync(path.join(root,'shaders/header.glsl'),'utf8');
@@ -13,11 +14,12 @@ const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const m=version.match(/^VERSION\s+(\d+)\.(\d+)\.(\d+)\s*$/m);assert.ok(m);
 assert.ok(+m[1]>0||+m[2]>5||(+m[2]===5&&+m[3]>=60),'cryosphere requires 0.5.60+');
 function ordered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
-ordered(buildSh,['js/ocean-thermal.js','js/cryosphere.js','js/physical-fog.js'],'shell cryosphere order');
-ordered(buildPs,['js/ocean-thermal.js','js/cryosphere.js','js/physical-fog.js'],'PowerShell cryosphere order');
+ordered(buildSh,['js/ocean-thermal.js','js/cryosphere.js','js/cryosphere-sublimation.js','js/physical-fog.js'],'shell cryosphere order');
+ordered(buildPs,['js/ocean-thermal.js','js/cryosphere.js','js/cryosphere-sublimation.js','js/physical-fog.js'],'PowerShell cryosphere order');
 ordered(buildSh,['js/fog-gpu.js','js/cryosphere-gpu.js','js/planet-export.js'],'shell cryo GPU order');
 ordered(buildSh,['js/fog-render.js','js/cryosphere-render.js','js/screenshot-trigger.js'],'shell cryo render order');
 assert.ok(!/requestAnimationFrame|Math\.random/.test(src),'cryosphere physics must stay deterministic and off FPS');
+assert.ok(!/requestAnimationFrame|Math\.random/.test(sub),'seasonal freeze/sublimation must stay deterministic and off FPS');
 assert.ok(!/requestAnimationFrame/.test(gpu),'cryo texture uploads must not be render-driven');
 assert.match(header,/uniform samplerCube uCryosphereTex/);assert.match(header,/uniform float uCryosphereBlend/);
 assert.match(surface,/texture\(uCryosphereTex/);
@@ -27,17 +29,28 @@ assert.match(surface,/landCryoPhys/);assert.match(surface,/seaIcePhys/);
 assert.match(gpu,/R\/G = previous land-cryosphere \/ sea-ice coverage/);
 assert.match(gpu,/B\/A = current\s+land-cryosphere \/ sea-ice coverage/);
 
-/* 0.5.70 regression: physical fractional cover is not a mandate to render
-   translucent fog. The display map is reconstructed more densely and
-   sharpened only for rendering; the authoritative CPU fractions stay intact. */
-assert.match(gpu,/CRYO_GPU_MODEL=2/,'crisp cryosphere renderer must use GPU model v2');
-assert.match(gpu,/CRYO_GPU_UPSCALE=2/,'render cryosphere must reconstruct at 2x physical grid resolution');
-assert.match(gpu,/cryoGpuBilerp/,'2x display grid must interpolate the physical field before sharpening');
+/* 0.5.70/0.5.73 regression: physical fractional cover is not a mandate to
+   render translucent fog or a rounded cubemap cookie. The display map is
+   reconstructed more densely and sharpened only for rendering; authoritative
+   CPU fractions stay intact. */
+assert.match(gpu,/CRYO_GPU_MODEL=3/,'geographic cryosphere renderer must use GPU model v3');
+assert.match(gpu,/CRYO_GPU_UPSCALE=3/,'render cryosphere must reconstruct at 3x physical grid resolution');
+assert.match(gpu,/cryoGpuBilerp/,'display grid must interpolate the physical field before sharpening');
 assert.match(gpu,/cryoGpuVisualCoverage/,'fractional physical coverage must have a separate visual transfer curve');
 assert.match(gpu,/cryoGpuEdgeNoise/,'ice-sheet edge needs seamless irregular breakup instead of cube-cell geometry');
+assert.match(gpu,/47\.3/,'edge morphology must contain intermediate geographic scale, not only broad waves');
+assert.match(gpu,/91\.7/,'edge morphology must contain fine geographic scale for bays and tongues');
 assert.match(gpu,/weatherFaceDir\(face,u,v\)/,'edge breakup must be spherical/seamless across cubemap faces');
-assert.match(gpu,/CRYO_BLEND_DEFAULT_MS=360/,'ice crossfade must be much shorter than the one-second weather tick');
+assert.match(gpu,/raw<=0\.020\)return 0/,'render morphology may never invent ice from zero physical coverage');
+assert.match(gpu,/CRYO_BLEND_DEFAULT_MS=360/,'ice crossfade must stay much shorter than the one-second weather tick');
 assert.ok(!/cryoGpuEnsure\(core\.N\)/.test(gpu),'GPU texture must not fall back to coarse physical resolution');
+
+/* 0.5.73 regression: mildly freezing rain/runoff is seasonal surface ice,
+   not an instant persistent glacier. */
+assert.match(sub,/CRYO_LAND_SURFACE_FREEZE_MAX_KG_M2_DAY=18\.0/,'landed liquid freeze needs an explicit daily rate cap');
+assert.match(sub,/core\.surfaceSnowWater\[i\]\+=dm/,'frozen landed liquid must enter the seasonal surface store first');
+assert.doesNotMatch(sub,/core\.landIceWater\[i\]\+=dm;\s*T\+=dm\*CRYO_LATENT_HEAT_FUSION\/cap/,
+  'direct liquid-to-persistent-glacier conversion must not return');
 
 const makeCore=()=>({
   count:2,N:4,seed:7,ticks:0,
@@ -63,7 +76,7 @@ const ctx={
   precipAreaMeanStore:()=>0,precipScaleSurfaceStore:()=>{},
   h2oApplyEvaporation:()=>0,
 };
-vm.createContext(ctx);vm.runInContext(src,ctx,{filename:'cryosphere.js'});
+vm.createContext(ctx);vm.runInContext(src,ctx,{filename:'cryosphere.js'});vm.runInContext(sub,ctx,{filename:'cryosphere-sublimation.js'});
 const core=ctx.weatherCoreCreate();
 assert.equal(core.cryosphereModel,1);
 assert.equal(core.seaIceThicknessM[1],0,'cold startup must not paint an instant precomputed sea-ice cap');
@@ -87,9 +100,15 @@ assert.ok(core.surfaceSnowWater[0]<20,'warm land must melt snow');
 assert.ok(core.surfaceLiquidWater[0]>0,'snow melt must return water to landed liquid store');
 assert.ok(core.landSurfaceTemp[0]<=278,'latent melt must consume sensible heat');
 
-/* Persistent cold + a deep snowpack compacts slowly into land ice. This is a
-   separate scenario: remove meltwater from the previous warm-snow check so a
-   legitimate liquid->ice freeze is not mistaken for snow compaction. */
+/* Mild frost may freeze only a tiny seasonal skin per tick. It must not turn
+   an entire wet cell directly into persistent land ice. */
+core.surfaceSnowWater[0]=0;core.landIceWater[0]=0;core.surfaceLiquidWater[0]=100;core.landSurfaceTemp[0]=272.0;
+ctx.cryoStepLand(core,300);
+assert.equal(core.landIceWater[0],0,'marginal frost must not create persistent glacier ice directly');
+assert.ok(core.surfaceSnowWater[0]>0&&core.surfaceSnowWater[0]<0.10,'one five-minute mild-frost tick must freeze only a thin seasonal skin');
+assert.ok(core.surfaceLiquidWater[0]>99.9,'the bulk landed liquid must remain liquid after one mild-frost tick');
+
+/* Persistent cold + a deep snowpack compacts slowly into land ice. */
 core.surfaceSnowWater[0]=120;core.surfaceLiquidWater[0]=0;core.landSurfaceTemp[0]=260;core.landIceWater[0]=0;
 ctx.cryoStepLand(core,300);
 assert.ok(core.landIceWater[0]>0&&core.landIceWater[0]<1,'one tick may compact a little snow but never create an instant glacier');
