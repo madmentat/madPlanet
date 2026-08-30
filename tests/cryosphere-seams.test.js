@@ -4,6 +4,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
 const src=fs.readFileSync(path.join(root,'js/cryosphere-gpu.js'),'utf8');
+const surface=fs.readFileSync(path.join(root,'shaders/surface.glsl'),'utf8');
 
 assert.match(src,/function cryoGpuDirToIndex\(/,'cryosphere renderer needs a canonical direction -> cube-cell inverse');
 assert.match(src,/function cryoGpuProjectedSample\(/,'edge taps need direction-based projected sampling');
@@ -14,6 +15,16 @@ assert.doesNotMatch(bilerp,/Math\.max\(0,Math\.min\(N-1/,
   'bilerp must not clamp source corners to the current cube face');
 assert.equal((bilerp.match(/cryoGpuProjectedSample/g)||[]).length,4,
   'all four bilinear taps must use seam-aware projected sampling');
+
+/* Dense land ice may contain subglacial rivers/lakes physically, but the
+   procedural surface hydrology must stop painting bright loops/dark threads
+   through the visible ice sheet. */
+assert.match(surface,/float hydroReveal = 1\.0-ss\(0\.18,0\.62,landCryoPhys\)/,
+  'visible inland hydrology must be explicitly suppressed by authoritative land cryosphere');
+assert.match(surface,/float waterScale = hydroReveal\*\(1\.0-ss\(0\.18,0\.72,snowM\)\)/,
+  'snow and land ice must jointly bury displayed rivers/lakes');
+assert.doesNotMatch(surface,/if\(h > 0\.0 && snowM < 0\.85\)/,
+  'old permissive hydrology-through-ice threshold must not return');
 
 function norm3(x,y,z){const q=Math.hypot(x,y,z)||1;return [x/q,y/q,z/q];}
 function weatherFaceDir(face,u,v){
