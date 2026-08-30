@@ -53,6 +53,7 @@ tests=(
   tests/cloud-radiative-feedback.test.js
   tests/ocean-thermal.test.js
   tests/cryosphere.test.js
+  tests/cryosphere-seams.test.js
   tests/physical-fog.test.js
   tests/biome-state.test.js
   tests/weather-stabilization.test.js
