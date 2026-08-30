@@ -1,43 +1,57 @@
-/* ============ 0.5.66: explicit visual-only cloud visibility controls ============ */
+/* ============ 0.5.72: render-only atmospheric visibility diagnostics ============ */
 /*
-   The Weather panel already had lowOn/midOn/highOn switches, but they lived
-   below all sliders and looked like physics toggles. For surface inspection we
-   need an obvious, compact set of buttons next to the weather controls.
+   Surface/climate debugging must not require guessing whether a white patch is
+   snow, fog, cloud, lightning glow or aurora.  These switches control only
+   renderer visibility.  They never reset, create or step Weather Core and do
+   not change cloud amount, atmospheric inventory or any other physical state.
 
-   These flags are renderer visibility only. They never create/reset/step the
-   Weather Core and therefore hiding a deck cannot destroy fronts, humidity,
-   convection, cloud water or lightning diagnosis. When the layer is shown
-   again, the current physical weather is still there.
+   ui.js still creates the legacy low/mid/high checkboxes for backwards
+   compatibility.  This wrapper removes only those duplicate rows and replaces
+   them with one obvious diagnostic block at the top of the Weather panel.
 */
 
-const CLOUD_VISIBILITY_CONTROLS_MODEL=1;
-const CLOUD_VISIBILITY_LAYERS=[
-  {key:'lowOn', id:'cloudVisLow', label:'Нижние'},
-  {key:'midOn', id:'cloudVisMid', label:'Средние'},
-  {key:'highOn',id:'cloudVisHigh',label:'Верхние'},
+const CLOUD_VISIBILITY_CONTROLS_MODEL=2;
+
+/* New diagnostic flags are deliberately added here rather than to the old
+   positional state bootstrap.  This module runs before loadHash(), so named
+   v4/v6 links can persist them while old links simply keep these defaults. */
+if(typeof state.fogOn!=='boolean')state.fogOn=true;
+if(typeof state.lightningOn!=='boolean')state.lightningOn=true;
+if(typeof state.atmoVisualOn!=='boolean')state.atmoVisualOn=true;
+if(typeof FLAG_KEYS!=='undefined'){
+  for(const k of ['fogOn','lightningOn','atmoVisualOn'])if(!FLAG_KEYS.includes(k))FLAG_KEYS.push(k);
+}
+
+const ATMOSPHERE_VISIBILITY_LAYERS=[
+  {key:'lowOn',       id:'cloudVisLow',       label:'Нижние облака'},
+  {key:'midOn',       id:'cloudVisMid',       label:'Средние облака'},
+  {key:'highOn',      id:'cloudVisHigh',      label:'Верхние облака'},
+  {key:'fogOn',       id:'atmoVisFog',        label:'Туман / приземная дымка'},
+  {key:'lightningOn', id:'atmoVisLightning',  label:'Молнии'},
+  {key:'atmoVisualOn',id:'atmoVisScattering', label:'Атмосферная дымка / ореол'},
+  {key:'auroraOn',    id:'atmoVisAurora',     label:'Полярное сияние'},
 ];
 
-function cloudVisibilityButtonText(def){
-  return def.label+' '+(state[def.key]?'●':'○');
-}
-function refreshCloudVisibilityButtons(root=document){
+function refreshAtmosphereVisibilityControls(root=document){
   if(!root||typeof root.querySelector!=='function')return;
-  for(const def of CLOUD_VISIBILITY_LAYERS){
-    const b=root.querySelector('#'+def.id);if(!b)continue;
-    const on=!!state[def.key];
-    b.textContent=cloudVisibilityButtonText(def);
-    b.classList.toggle('active',on);
-    b.setAttribute('aria-pressed',on?'true':'false');
-    b.title=(on?'Скрыть ':'Показать ')+def.label.toLowerCase()+' облака только в рендере; физика погоды продолжает работать';
+  for(const def of ATMOSPHERE_VISIBILITY_LAYERS){
+    const inp=root.querySelector('#'+def.id);if(!inp)continue;
+    inp.checked=!!state[def.key];
+    inp.setAttribute('aria-checked',inp.checked?'true':'false');
   }
+}
+function setAtmosphereVisibility(def,on,root){
+  state[def.key]=!!on;
+  if(typeof markRenderUniformsDirty==='function')markRenderUniformsDirty();
+  refreshAtmosphereVisibilityControls(root||document);
+  if(typeof saveHash==='function')saveHash();
 }
 function installCloudVisibilityControls(el){
   if(!el||el.dataset.group!=='Погода'||el.querySelector('#cloudVisibilityBar'))return el;
   const body=el.querySelector('.p-body');if(!body)return el;
 
-  /* Remove the old duplicate layer switches created by ui.js. The state and
-     hash keys remain unchanged, so old links and renderer uniforms keep
-     working; only their presentation is replaced. */
+  /* Remove only the old cloud-layer rows.  The black-background switch remains
+     where ui.js created it because it is a sky/screenshot control, not weather. */
   for(const id of ['lowOn','midOn','highOn']){
     const old=el.querySelector('#'+id);const row=old&&old.closest('.row');if(row)row.remove();
   }
@@ -45,22 +59,41 @@ function installCloudVisibilityControls(el){
   const box=document.createElement('div');box.id='cloudVisibilityBar';
   box.style.cssText='margin:0 0 11px;padding:8px 0 10px;border-bottom:1px solid rgba(159,194,255,.10)';
   const title=document.createElement('div');
-  title.textContent='Видимость облаков · только рендер';
-  title.style.cssText='font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--mut);margin-bottom:7px';
-  const buttons=document.createElement('div');
-  buttons.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px';
-  for(const def of CLOUD_VISIBILITY_LAYERS){
-    const b=document.createElement('button');b.type='button';b.id=def.id;b.className='act-btn';
-    b.style.cssText='padding:7px 4px;min-width:0;font-size:9px';
+  title.textContent='Видимость атмосферы · только рендер';
+  title.style.cssText='font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--mut);margin-bottom:3px';
+  const note=document.createElement('div');
+  note.textContent='Физика продолжает работать';
+  note.style.cssText='font-size:9px;color:var(--mut);opacity:.68;margin-bottom:8px';
+  box.append(title,note);
+
+  for(const def of ATMOSPHERE_VISIBILITY_LAYERS){
+    const row=document.createElement('div');row.className='row';
+    row.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:7px';
+    const lbl=document.createElement('label');lbl.htmlFor=def.id;lbl.textContent=def.label;
+    lbl.style.cssText='font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--mut);line-height:1.25';
+    const wrap=document.createElement('label');wrap.className='tg';
+    const inp=document.createElement('input');inp.type='checkbox';inp.id=def.id;inp.checked=!!state[def.key];
+    const slider=document.createElement('i');wrap.append(inp,slider);row.append(lbl,wrap);box.appendChild(row);
+    inp.addEventListener('change',e=>setAtmosphereVisibility(def,e.target.checked,el));
+  }
+
+  const actions=document.createElement('div');
+  actions.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:9px';
+  const makeAction=(text,on)=>{
+    const b=document.createElement('button');b.type='button';b.className='act-btn';b.textContent=text;
+    b.style.cssText='padding:6px 5px;min-width:0;font-size:9px';
     b.addEventListener('click',()=>{
-      state[def.key]=!state[def.key];
+      for(const def of ATMOSPHERE_VISIBILITY_LAYERS)state[def.key]=on;
       if(typeof markRenderUniformsDirty==='function')markRenderUniformsDirty();
-      refreshCloudVisibilityButtons(el);
+      refreshAtmosphereVisibilityControls(el);
       if(typeof saveHash==='function')saveHash();
     });
-    buttons.appendChild(b);
-  }
-  box.append(title,buttons);body.prepend(box);refreshCloudVisibilityButtons(el);return el;
+    return b;
+  };
+  actions.append(makeAction('Скрыть всё',false),makeAction('Показать всё',true));
+  box.appendChild(actions);
+
+  body.prepend(box);refreshAtmosphereVisibilityControls(el);return el;
 }
 
 if(typeof createPanel==='function'){
@@ -72,5 +105,5 @@ if(typeof createPanel==='function'){
 }
 if(typeof syncUI==='function'){
   const syncUIBeforeCloudVisibilityControls=syncUI;
-  syncUI=function(){const out=syncUIBeforeCloudVisibilityControls();refreshCloudVisibilityButtons();return out;};
+  syncUI=function(){const out=syncUIBeforeCloudVisibilityControls();refreshAtmosphereVisibilityControls();return out;};
 }
