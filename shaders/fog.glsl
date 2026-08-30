@@ -1,14 +1,17 @@
-/* ============ 0.5.56 / 0.5.60 hotfix: physical near-surface fog ============ */
+/* ============ 0.5.56 / 0.5.72 physical near-surface fog ============ */
 /*
    Fog geography comes only from the persistent Weather Core state. The GPU
    interpolates previous/current fixed-tick cubemaps and may only *erode* or
    texture an existing optical field; noise is never allowed to create fog in
    a physically clear region.
 
-   0.5.60 hotfix removes the old optical<0.002 binary contour. With an RGBA8
+   0.5.60 removed the old optical<0.002 binary contour. With an RGBA8
    low-resolution cubemap that cutoff exposed the finite support of a single
    bilinear texel as a rectangle/cross. Weak fog now fades continuously and a
    low-frequency subtractive erosion breaks residual grid-shaped edges.
+
+   0.5.72 gives fog its own render-only switch. Hiding low clouds must no longer
+   also hide fog, and hiding fog must not touch physical condensation/state.
 */
 
 vec4 physicalFogSample(vec3 dir){
@@ -25,7 +28,7 @@ vec4 physicalFogSample(vec3 dir){
 }
 
 vec3 fogLayer(vec3 dir,float foot){
-  if(uLowOn<0.5)return vec3(0.0);
+  if(uFogOn<0.5)return vec3(0.0);
   vec4 phys=physicalFogSample(dir);
   float optical=clamp(phys.r,0.0,1.0);
   if(optical<=0.0)return vec3(0.0);
