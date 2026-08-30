@@ -27,6 +27,18 @@ assert.match(surface,/landCryoPhys/);assert.match(surface,/seaIcePhys/);
 assert.match(gpu,/R\/G = previous land-cryosphere \/ sea-ice coverage/);
 assert.match(gpu,/B\/A = current\s+land-cryosphere \/ sea-ice coverage/);
 
+/* 0.5.70 regression: physical fractional cover is not a mandate to render
+   translucent fog. The display map is reconstructed more densely and
+   sharpened only for rendering; the authoritative CPU fractions stay intact. */
+assert.match(gpu,/CRYO_GPU_MODEL=2/,'crisp cryosphere renderer must use GPU model v2');
+assert.match(gpu,/CRYO_GPU_UPSCALE=2/,'render cryosphere must reconstruct at 2x physical grid resolution');
+assert.match(gpu,/cryoGpuBilerp/,'2x display grid must interpolate the physical field before sharpening');
+assert.match(gpu,/cryoGpuVisualCoverage/,'fractional physical coverage must have a separate visual transfer curve');
+assert.match(gpu,/cryoGpuEdgeNoise/,'ice-sheet edge needs seamless irregular breakup instead of cube-cell geometry');
+assert.match(gpu,/weatherFaceDir\(face,u,v\)/,'edge breakup must be spherical/seamless across cubemap faces');
+assert.match(gpu,/CRYO_BLEND_DEFAULT_MS=360/,'ice crossfade must be much shorter than the one-second weather tick');
+assert.ok(!/cryoGpuEnsure\(core\.N\)/.test(gpu),'GPU texture must not fall back to coarse physical resolution');
+
 const makeCore=()=>({
   count:2,N:4,seed:7,ticks:0,
   surfaceTemp:new Float32Array([268,268]),
