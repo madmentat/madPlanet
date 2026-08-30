@@ -1,4 +1,4 @@
-/* ============ 0.5.60 / 0.5.70 / 0.5.73: physical cryosphere -> GPU cubemap ============ */
+/* ============ 0.5.60 / 0.5.70 / 0.5.73 / 0.5.74: physical cryosphere -> GPU cubemap ============ */
 /*
    One RGBA8 cubemap carries both temporal endpoints to remain WebGL1-safe:
    R/G = previous land-cryosphere / sea-ice coverage,
@@ -10,8 +10,16 @@
    translucent white fog. 0.5.73 raises only the cheap render reconstruction to
    3x and replaces the two broad sinusoidal edge waves with several unrelated
    spherical scales. Transitional ice therefore breaks into bays, tongues and
-   peninsulas instead of exposing a rounded/coarse cubemap contour. Physics is
-   untouched: zero physical cover is still exactly zero visible ice.
+   peninsulas instead of exposing a rounded/coarse cubemap contour.
+
+   0.5.74 fixes the remaining long curved seam artifacts. The old bilinear
+   reconstruction clamped all four source taps to the current cube face. At an
+   edge it therefore repeated the last row/column instead of sampling the
+   physically adjacent face. Every projected cube edge could become a dark or
+   bright great-circle arc on the planet. Corner taps may now leave the source
+   face: their extended face coordinate is converted to a 3-D direction and
+   mapped back onto the canonical cubed sphere before the source cell is read.
+   Physics remains untouched: zero physical cover is still exactly zero ice.
 */
 
 const CRYO_GPU_MODEL=3;
@@ -61,21 +69,53 @@ function cryoGpuEnsure(N){
   for(let f=0;f<6;f++)gl.texImage2D(cryoGpuFaceTarget(f),0,gl.RGBA,N,N,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);cryoGpuHasFrame=false;cryoGpuLastSeed=NaN;
 }
-function cryoGpuSourceLand(core,face,x,y){
-  const N=core.N,base=face*N*N,i=base+y*N+x;
+function cryoGpuSourceLandIndex(core,i){
   return Math.max(Number(core.snowCoverFraction?.[i])||0,Number(core.landIceCoverFraction?.[i])||0);
 }
-function cryoGpuSourceSea(core,face,x,y){
-  const N=core.N,base=face*N*N,i=base+y*N+x;
+function cryoGpuSourceSeaIndex(core,i){
   return Math.max(0,Math.min(1,Number(core.seaIceConcentration?.[i])||0));
 }
-function cryoGpuBilerp(core,face,fx,fy,sea){
+function cryoGpuSourceLand(core,face,x,y){
+  const N=core.N;return cryoGpuSourceLandIndex(core,face*N*N+y*N+x);
+}
+function cryoGpuSourceSea(core,face,x,y){
+  const N=core.N;return cryoGpuSourceSeaIndex(core,face*N*N+y*N+x);
+}
+/* Inverse of weatherFaceDir(). Keeping this orientation in one canonical
+   helper matters: a projected tap that crosses +X must arrive at exactly the
+   same +Z/-Z/+Y/-Y cell that the Weather Core itself uses for that direction. */
+function cryoGpuDirToIndex(core,dx,dy,dz){
+  const ax=Math.abs(dx),ay=Math.abs(dy),az=Math.abs(dz);let face,u,v,a;
+  if(ax>=ay&&ax>=az){
+    if(dx>=0){face=0;a=Math.max(1e-12,dx);u=-dz/a;v=dy/a;}
+    else{face=1;a=Math.max(1e-12,-dx);u=dz/a;v=dy/a;}
+  }else if(ay>=az){
+    if(dy>=0){face=2;a=Math.max(1e-12,dy);u=dx/a;v=-dz/a;}
+    else{face=3;a=Math.max(1e-12,-dy);u=dx/a;v=dz/a;}
+  }else{
+    if(dz>=0){face=4;a=Math.max(1e-12,dz);u=dx/a;v=dy/a;}
+    else{face=5;a=Math.max(1e-12,-dz);u=-dx/a;v=dy/a;}
+  }
   const N=core.N;
-  const x0=Math.max(0,Math.min(N-1,Math.floor(fx))),y0=Math.max(0,Math.min(N-1,Math.floor(fy)));
-  const x1=Math.max(0,Math.min(N-1,x0+1)),y1=Math.max(0,Math.min(N-1,y0+1));
+  const x=Math.max(0,Math.min(N-1,Math.floor((u+1)*0.5*N)));
+  const y=Math.max(0,Math.min(N-1,Math.floor((v+1)*0.5*N)));
+  return face*N*N+y*N+x;
+}
+/* x/y are deliberately allowed outside [0,N-1]. weatherFaceDir() turns that
+   extended face coordinate into a real sphere direction; cryoGpuDirToIndex()
+   then selects the adjacent canonical face. This is the CPU equivalent of
+   seamless cubemap filtering and removes the long projected face arcs without
+   blurring the geographic ice edge itself. */
+function cryoGpuProjectedSample(core,face,x,y,sea){
+  const N=core.N,u=2*(x+0.5)/N-1,v=2*(y+0.5)/N-1;
+  const d=weatherFaceDir(face,u,v),i=cryoGpuDirToIndex(core,d[0],d[1],d[2]);
+  return sea?cryoGpuSourceSeaIndex(core,i):cryoGpuSourceLandIndex(core,i);
+}
+function cryoGpuBilerp(core,face,fx,fy,sea){
+  const x0=Math.floor(fx),y0=Math.floor(fy),x1=x0+1,y1=y0+1;
   const tx=Math.max(0,Math.min(1,fx-x0)),ty=Math.max(0,Math.min(1,fy-y0));
-  const sample=sea?cryoGpuSourceSea:cryoGpuSourceLand;
-  const a=sample(core,face,x0,y0),b=sample(core,face,x1,y0),c=sample(core,face,x0,y1),d=sample(core,face,x1,y1);
+  const a=cryoGpuProjectedSample(core,face,x0,y0,sea),b=cryoGpuProjectedSample(core,face,x1,y0,sea);
+  const c=cryoGpuProjectedSample(core,face,x0,y1,sea),d=cryoGpuProjectedSample(core,face,x1,y1,sea);
   const ab=a+(b-a)*tx,cd=c+(d-c)*tx;return ab+(cd-ab)*ty;
 }
 /* Seamless, seed-stable multi-scale perturbation. The old pair of broad sine
