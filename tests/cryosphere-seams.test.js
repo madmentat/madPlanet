@@ -10,7 +10,7 @@ assert.match(src,/function cryoGpuDirToIndex\(/,'cryosphere renderer needs a can
 assert.match(src,/function cryoGpuProjectedSample\(/,'edge taps need direction-based projected sampling');
 assert.match(src,/const x0=Math\.floor\(fx\),y0=Math\.floor\(fy\),x1=x0\+1,y1=y0\+1/,
   'bilinear corners must be allowed to leave the current face');
-const bilerp=src.slice(src.indexOf('function cryoGpuBilerp'),src.indexOf('/* Seamless, seed-stable multi-scale perturbation'));
+const bilerp=src.slice(src.indexOf('function cryoGpuBilerp'),src.indexOf('/* Seed-stable seamless sub-cell geography'));
 assert.doesNotMatch(bilerp,/Math\.max\(0,Math\.min\(N-1/,
   'bilerp must not clamp source corners to the current cube face');
 assert.equal((bilerp.match(/cryoGpuProjectedSample/g)||[]).length,4,
@@ -53,9 +53,6 @@ for(let face=0;face<6;face++)for(let y=0;y<N;y++)for(let x=0;x<N;x++,i++){
   core.snowCoverFraction[i]=value;core.seaIceConcentration[i]=value;
 }
 
-/* Every off-face corner direction must land on the physically adjacent cube
-   face instead of repeating the border cell of its origin face. Use edge
-   midpoints rather than corners so the dominant face is unambiguous. */
 const mid=Math.floor(N/2);
 for(let face=0;face<6;face++){
   for(const [x,y] of [[-1,mid],[N,mid],[mid,-1],[mid,N]]){
@@ -68,9 +65,6 @@ for(let face=0;face<6;face++){
   }
 }
 
-/* A bilinear sample just inside an edge must blend one neighbour-face corner
-   with one current-face corner. This is the exact case that used to produce
-   the long dark/bright great-circle seam in the rendered polar cap. */
 const fx=-0.25,fy=mid-0.37,x0=Math.floor(fx),y0=Math.floor(fy),x1=x0+1,y1=y0+1;
 const tx=fx-x0,ty=fy-y0;
 const a=ctx.cryoGpuProjectedSample(core,0,x0,y0,false),b=ctx.cryoGpuProjectedSample(core,0,x1,y0,false);
