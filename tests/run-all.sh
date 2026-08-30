@@ -25,6 +25,7 @@ tests=(
   tests/build-integrity.test.js
   tests/performance-guards.test.js
   tests/visual-regressions.test.js
+  tests/tectonic-morphology.test.js
   tests/param-model.test.js
   tests/star-orbit.test.js
   tests/planet-physics.test.js
