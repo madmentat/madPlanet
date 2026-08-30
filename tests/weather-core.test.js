@@ -4,13 +4,14 @@ const path=require('node:path');
 const vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
 const src=fs.readFileSync(path.join(root,'js/weather-core.js'),'utf8');
+const tempDiag=fs.readFileSync(path.join(root,'js/temperature-diagnostics.js'),'utf8');
 const version=fs.readFileSync(path.join(root,'VERSION.txt'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 
 assert.match(version,/^VERSION\s+\d+\.\d+\.\d+\s*$/m,'Weather Core test must see a semantic version');
 function assertOrdered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
-const order=['js/stellar-weather-coupling.js','js/weather-core.js','js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/render.js'];
+const order=['js/stellar-weather-coupling.js','js/weather-core.js','js/temperature-diagnostics.js','js/local-energy-balance.js','js/baric-field.js','js/wind-dynamics.js','js/render.js'];
 assertOrdered(buildPs,order,'PowerShell Weather Core order');
 assertOrdered(buildSh,order,'shell Weather Core order');
 
@@ -20,6 +21,7 @@ const ctx={console,Math,Number,Date,Float32Array,state,
   matchMedia:()=>({matches:false}),climateModel:fakeClimate,world:{axis:[0,1,0]}};
 vm.createContext(ctx);
 vm.runInContext(src,ctx,{filename:'weather-core.js'});
+vm.runInContext(tempDiag,ctx,{filename:'temperature-diagnostics.js'});
 
 const climate=fakeClimate();
 const axis=[0,1,0];
@@ -41,6 +43,19 @@ for(const i of [0,31,1024,4095,6143]){
   assert.ok(a.pressure[i]>0,'Earth-like cell pressure must stay positive');
   assert.ok(a.humidity[i]>=0&&a.humidity[i]<=1,'humidity must stay bounded');
 }
+
+/* 0.5.69: one global thermometer is not enough to diagnose frozen worlds. */
+const bands=ctx.planetTemperatureBands(a,axis);
+assert.ok(Number.isFinite(bands.equator)&&Number.isFinite(bands.temperate)&&Number.isFinite(bands.polar),
+  'latitude temperature diagnostics must resolve all broad bands');
+assert.ok(bands.equator>bands.polar+20,'Earth-like target must expose a materially warmer equator than poles');
+assert.ok(bands.min<=bands.polar&&bands.max>=bands.equator,'reported min/max must enclose latitude means');
+assert.equal(ctx.planetTempCText(273.15),'0 °C','temperature diagnostics must display Celsius');
+assert.match(tempDiag,/Экватор ±15°/,'Planet panel must expose an equatorial thermometer');
+assert.match(tempDiag,/Широты 30–60°/,'Planet panel must expose temperate latitudes');
+assert.match(tempDiag,/Полюса >75°/,'Planet panel must expose polar temperature');
+assert.match(tempDiag,/Орографическое охлаждение/,'legacy snowAlt must no longer masquerade as a metre-valued snow line');
+assert.ok(!/requestAnimationFrame\s*\(/.test(tempDiag),'temperature diagnostics must not update at render FPS');
 
 const s1=ctx.weatherCoreCreate(99,16,climate,axis);
 const s2=ctx.weatherCoreCreate(99,16,climate,axis);
