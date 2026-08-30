@@ -51,6 +51,12 @@ assert.match(sub,/CRYO_LAND_SURFACE_FREEZE_MAX_KG_M2_DAY=18\.0/,'landed liquid f
 assert.match(sub,/core\.surfaceSnowWater\[i\]\+=dm/,'frozen landed liquid must enter the seasonal surface store first');
 assert.doesNotMatch(sub,/core\.landIceWater\[i\]\+=dm;\s*T\+=dm\*CRYO_LATENT_HEAT_FUSION\/cap/,
   'direct liquid-to-persistent-glacier conversion must not return');
+/* 0.5.77: metres of sea ice may thicken slowly, but exposed surface area must
+   close rapidly under deep supercooling. */
+assert.match(sub,/CRYO_SEA_SKIN_START_K=271\.35/,'surface skin must start at the physical seawater phase boundary');
+assert.match(sub,/CRYO_SEA_SKIN_FULL_K=258\.15/,'deep cold must force a closed sea-ice skin');
+assert.match(sub,/function cryoSeaColdSkinCover\(/,'sea surface closure needs its own temperature response');
+assert.match(sub,/skin>core\.seaIceConcentration\[i\]/,'temperature skin may only raise, never erase, physical ice coverage');
 
 const makeCore=()=>({
   count:2,N:4,seed:7,ticks:0,
@@ -79,16 +85,30 @@ const ctx={
 vm.createContext(ctx);vm.runInContext(src,ctx,{filename:'cryosphere.js'});vm.runInContext(sub,ctx,{filename:'cryosphere-sublimation.js'});
 const core=ctx.weatherCoreCreate();
 assert.equal(core.cryosphereModel,1);
-assert.equal(core.seaIceThicknessM[1],0,'cold startup must not paint an instant precomputed sea-ice cap');
+assert.equal(core.seaIceThicknessM[1],0,'cold startup must not paint an instant metres-thick precomputed sea-ice cap');
 assert.equal(core.landIceWater[0],0,'cold startup must not paint an instant land-ice cap');
+/* At 268 K the sea is already substantially supercooled. A thin surface skin
+   should close part of the area even though bulk thickness remains tiny. */
+assert.ok(core.seaIceConcentration[1]>0.05&&core.seaIceConcentration[1]<0.5,
+  'supercooled startup needs partial surface closure without fake bulk thickness');
 
 ctx.weatherCoreStep(core,300,{},[0,1,0]);
-assert.ok(core.seaIceThicknessM[1]>0&&core.seaIceThicknessM[1]<0.001,'one cold tick must grow only a sub-mm sea-ice layer');
-assert.ok(core.seaIceConcentration[1]>0&&core.seaIceConcentration[1]<0.02,'first cold tick must not create a giant opaque polar cap');
+assert.ok(core.seaIceThicknessM[1]>0&&core.seaIceThicknessM[1]<0.001,'one cold tick must grow only a sub-mm bulk sea-ice layer');
+assert.ok(core.seaIceConcentration[1]>0.05,'thin cold skin must remain visible while bulk thickness grows slowly');
+
+/* At -46 C and especially -160 C, visible open Earth-like sea surface is not
+   acceptable. The underlying ocean mass may remain liquid beneath the skin. */
+core.seaIceThicknessM[1]=0.0001;core.seaSurfaceTemp[1]=227.15;
+ctx.cryoRefreshCovers(core);
+assert.ok(core.seaIceConcentration[1]>0.999,'-46 C sea surface must be effectively closed by ice');
+core.seaIceThicknessM[1]=0.0001;core.seaSurfaceTemp[1]=113.15;
+ctx.cryoRefreshCovers(core);
+assert.ok(core.seaIceConcentration[1]>0.999,'-160 C sea surface cannot remain visibly liquid');
 
 core.seaIceThicknessM[1]=0.20;core.seaSurfaceTemp[1]=276;
-ctx.cryoStepSea(core,300);
+ctx.cryoStepSea(core,300);ctx.cryoRefreshCovers(core);
 assert.ok(core.seaIceThicknessM[1]<0.20&&core.seaIceThicknessM[1]>0.19,'warm tick must melt sea ice gradually, not erase it');
+assert.ok(core.seaIceConcentration[1]<1,'warm surface must not be held closed by the cold-skin floor');
 
 core.surfaceSnowWater[0]=20;core.landSurfaceTemp[0]=278;core.surfaceLiquidWater[0]=0;
 ctx.cryoStepLand(core,300);
