@@ -28,6 +28,16 @@ assert.ok(camera.includes('e.button === 2'),
   'desktop right-button sun rotation must remain available');
 assert.ok(camera.includes('function setOrbitControlMode'),
   'touch UI must have a public mode setter');
+/* 0.5.77 regression: the planet canvas owns its touch/pen gesture. Android
+   Chromium must never pan the visual viewport/toolbars together with orbit. */
+assert.ok(camera.includes("canvas.style.touchAction='none'"),
+  'runtime camera setup must explicitly disable browser touch panning');
+assert.ok(camera.includes("canvas.style.overscrollBehavior='none'"),
+  'canvas drag must not chain into viewport overscroll');
+assert.match(camera,/function ownCanvasPointer\(e\)[\s\S]*e\.preventDefault\(\)/,
+  'touch/pen pointer events on the canvas must cancel native browser motion');
+assert.ok((camera.match(/\{passive:false\}/g)||[]).length>=5,
+  'canvas pointer and wheel listeners must be explicitly non-passive');
 
 assert.ok(ux.includes('scrollbar-width:none'),
   'panel scrollbar must be visually removed');
