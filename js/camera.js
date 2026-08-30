@@ -14,8 +14,20 @@ const SPIN = reduceMotion ? 0.004 : 0.02;             // рад/с вращен�
 
 const pointers = new Map();
 let pinchD = 0;
+/* 0.5.77: Chromium/Android can still try to hand a PointerEvent gesture to
+   browser panning/visual-viewport movement if the event path is not cancelled,
+   even though #gl declares touch-action:none in CSS. The canvas is a game/map
+   surface: while a touch or pen pointer belongs to it, the app owns the whole
+   gesture. Keep this explicit at runtime as well as in CSS so dragging the
+   planet can never shove the document, toolbar or panel sideways. */
+canvas.style.touchAction='none';
+canvas.style.overscrollBehavior='none';
+function ownCanvasPointer(e){
+  if((e.pointerType==='touch'||e.pointerType==='pen')&&e.cancelable)e.preventDefault();
+}
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('pointerdown', e => {
+  ownCanvasPointer(e);
   canvas.setPointerCapture(e.pointerId);
   const rotateSun = e.button === 2 || (e.button === 0 && orbitControlMode === 'sun');
   pointers.set(e.pointerId, {x:e.clientX, y:e.clientY, sun:rotateSun});
@@ -25,9 +37,10 @@ canvas.addEventListener('pointerdown', e => {
   }
   cam.vyaw = cam.vpitch = 0;
   canvas.classList.add('grab');
-});
+},{passive:false});
 canvas.addEventListener('pointermove', e => {
   if(!pointers.has(e.pointerId)) return;
+  ownCanvasPointer(e);
   const p = pointers.get(e.pointerId);
   const dx = e.clientX - p.x, dy = e.clientY - p.y;
   p.x = e.clientX; p.y = e.clientY;
@@ -50,14 +63,15 @@ canvas.addEventListener('pointermove', e => {
     if(pinchD > 0) cam.tDist = clampDist(cam.tDist * pinchD/d);
     pinchD = d;
   }
-});
+},{passive:false});
 function endPointer(e){
+  ownCanvasPointer(e);
   pointers.delete(e.pointerId);
   if(pointers.size < 2) pinchD = 0;
   if(pointers.size === 0) canvas.classList.remove('grab');
 }
-canvas.addEventListener('pointerup', endPointer);
-canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('pointerup', endPointer,{passive:false});
+canvas.addEventListener('pointercancel', endPointer,{passive:false});
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
   cam.tDist = clampDist(cam.tDist * Math.exp(e.deltaY*0.0011));
