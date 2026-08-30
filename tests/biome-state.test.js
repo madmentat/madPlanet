@@ -41,6 +41,17 @@ assert.match(surface,/STRAW=vec3/);assert.match(surface,/DRYSOIL=vec3/);
 assert.match(surface,/droughtMild/);assert.match(surface,/droughtHard/);assert.match(surface,/droughtExtreme/);
 assert.match(surface,/float riparian = hydroWet/,'riparian vegetation response missing');
 
+/* 0.5.69: water is only potential habitability. Local physical temperature
+   must suppress green cover before snow/ice has had time to accumulate. */
+assert.match(surface,/float ecologyK = surfaceK \+ \(ecoPatch-0\.5\)\*5\.0/,'fine thermal breakup must hide coarse Weather Core cell edges');
+assert.match(surface,/float bioThermal = ss\(268\.0,285\.0,ecologyK\)/,'living green cover needs a cold-stress gate');
+assert.match(surface,/float deepFreeze = 1\.0-ss\(245\.0,265\.0,ecologyK\)/,'deep-freeze surface state missing');
+assert.match(surface,/float riparian = [^\n]*\*bioThermal/,'wet river banks must not stay summer-green through deep frost');
+assert.match(surface,/WINTER=vec3/);assert.match(surface,/FROST=vec3/);
+assert.match(surface,/float inlandFreeze = 1\.0-ss\(270\.0,274\.0,ecologyK\)/,'procedural inland water needs a local freezing phase');
+assert.match(surface,/vec3 inlandIce=/,'frozen rivers/lakes need an ice colour');
+assert.match(surface,/rv\*land\*0\.40\*\(1\.0-inlandFreeze\)/,'frozen inland water must lose liquid-water specular highlights');
+
 /* Hydrology noise is moved before biome colour and reused later. Do not pay
    twice for river/lake FBM just to green the banks. */
 assert.equal((surface.match(/float rn = fbm\(/g)||[]).length,1,'river geometry should be evaluated once');
@@ -51,10 +62,12 @@ const biome=surface.indexOf('/* биомы */');
 assert.ok(hydro>=0&&hydro<drought&&drought<biome,'hydrology must disaggregate coarse moisture before biome colour selection');
 
 const dense=surface.indexOf('alb = mix(alb, denseC');
-const river=surface.indexOf('alb = mix(alb, mix(vec3(0.022,0.062,0.090)');
+const inlandWater=surface.indexOf('vec3 inlandWater=');
+const inlandIce=surface.indexOf('vec3 inlandIce=');
 const snow=surface.indexOf('alb = mix(alb, snowC, snowM);');
 const volcano=surface.indexOf('/* ---- вулканизм ----');
-assert.ok(dense>=0&&river>dense&&snow>river,'cryosphere must be composited after vegetation and hydrology');
+assert.ok(dense>=0&&inlandWater>dense&&inlandIce>inlandWater&&snow>inlandIce,
+  'cryosphere must be composited after vegetation and both liquid/frozen inland hydrology');
 assert.ok(volcano>snow,'active volcanic surface may break through final snow layer, not be buried by later biome paint');
 assert.equal(surface.lastIndexOf('alb = mix(alb, snowC, snowM);'),snow,'snow overlay must occur exactly once and at final land-state stage');
 
