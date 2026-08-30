@@ -1,4 +1,4 @@
-/* ============ 0.5.60 hotfix: land snow/ice sublimation ============ */
+/* ============ 0.5.60 / 0.5.73: land snow/ice sublimation + seasonal freeze ============ */
 /*
    Precipitation can move atmospheric H2O into surfaceSnowWater/landIceWater.
    Before this hotfix the cold branch had no vapour return path unless the
@@ -10,6 +10,14 @@
    a cold surface, is rate-limited, wind-assisted, and consumes latent heat
    from the land skin. No water is created and sea ice is deliberately not
    included because its bulk mass belongs to the unresolved ocean reservoir.
+
+   0.5.73 also repairs the opposite phase path. Previously ANY landed liquid
+   below 0 C could be converted directly into persistent landIceWater in one
+   five-minute tick, limited only by the whole land skin heat capacity. Mild
+   polar frost could therefore turn tens of kg/m2 of rain/runoff into a glacier
+   almost instantly. Landed liquid now freezes at a daily rate cap into the
+   seasonal surfaceSnowWater store. Only sustained deep snow can later compact
+   slowly into persistent land ice through the existing glacier path.
 */
 
 const CRYO_SUBLIMATION_MODEL=1;
@@ -20,6 +28,7 @@ const CRYO_SUBLIMATION_SNOW_MAX_KG_M2_S=2.0e-5;
 const CRYO_SUBLIMATION_ICE_MAX_KG_M2_S=4.0e-6;
 const CRYO_SUBLIMATION_LATENT_J_KG=2.83e6;
 const CRYO_SUBLIMATION_LAND_CAP_J_M2_K=1.6e7;
+const CRYO_LAND_SURFACE_FREEZE_MAX_KG_M2_DAY=18.0;
 
 function cryoSubClamp(x,a,b){return Math.max(a,Math.min(b,Number(x)||0));}
 function cryoSubSmooth(a,b,x){
@@ -38,6 +47,48 @@ function cryoSubWind(core,i){
   const v=Number((core.windStateV||core.windV)?.[i])||0;
   return Math.hypot(u,v);
 }
+
+/* Replace only the landed-liquid freeze branch of cryoStepLand. Melt and slow
+   snow->glacier compaction retain the authoritative 0.5.60 equations. The
+   rate cap is deliberately comparable to centimetres of pond ice per day,
+   not tens of kilograms in one five-minute physics tick. */
+if(typeof cryoStepLand==='function'){
+  cryoStepLand=function(core,dtSec){
+    const dt=Math.max(0,Number(dtSec)||0),cap=1.6e7;
+    let snowMelt=0,iceMelt=0;
+    for(let i=0;i<core.count;i++){
+      const land=cryoLandFraction(core,i);if(land<0.001)continue;
+      let T=Number(core.landSurfaceTemp?.[i]??core.surfaceTemp[i])||CRYO_FREEZE_K;
+      if(T>CRYO_FREEZE_K&&(core.surfaceSnowWater[i]>0||core.landIceWater[i]>0)){
+        const warmE=cap*(T-CRYO_FREEZE_K);
+        const m=cryoMeltLand(core,i,warmE);snowMelt+=m.snow*land;iceMelt+=m.ice*land;
+        T=CRYO_FREEZE_K+m.left/cap;
+      }
+      if(T<CRYO_FREEZE_K&&core.surfaceLiquidWater[i]>0){
+        const coldE=cap*(CRYO_FREEZE_K-T);
+        const cold=cryoSubClamp((CRYO_FREEZE_K-T)/12.0,0,1);
+        const daily=CRYO_LAND_SURFACE_FREEZE_MAX_KG_M2_DAY*(0.20+0.80*Math.sqrt(cold));
+        const rateCap=daily*dt/86400;
+        const dm=Math.min(core.surfaceLiquidWater[i],coldE/CRYO_LATENT_HEAT_FUSION,rateCap);
+        if(dm>0){
+          core.surfaceLiquidWater[i]-=dm;
+          core.surfaceSnowWater[i]+=dm;
+          T+=dm*CRYO_LATENT_HEAT_FUSION/cap;
+        }
+      }
+      const snow=Math.max(0,core.surfaceSnowWater[i]);
+      if(snow>CRYO_LAND_ICE_COMPACT_MIN_SNOW&&T<270.5){
+        const cold=1-cryoSmooth(266.5,271.5,T);
+        const frac=(1-Math.exp(-dt/CRYO_LAND_ICE_COMPACT_TAU_SEC))*cold;
+        const dm=Math.min(snow-CRYO_LAND_ICE_COMPACT_MIN_SNOW*0.35,snow*frac);
+        if(dm>0){core.surfaceSnowWater[i]-=dm;core.landIceWater[i]+=dm;}
+      }
+      if(core.landSurfaceTemp)core.landSurfaceTemp[i]=cryoClamp(T,80,1600);
+    }
+    core.cryoSnowMeltKg=snowMelt;core.cryoLandIceMeltKg=iceMelt;
+  };
+}
+
 function cryoSublimationStep(core,dtSec,climate){
   if(!core?.vaporColumn||!core?.surfaceSnowWater)return core;
   cryoSubEnsure(core);
