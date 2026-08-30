@@ -48,9 +48,23 @@ assert.match(surface,/float bioThermal = ss\(268\.0,285\.0,ecologyK\)/,'living g
 assert.match(surface,/float deepFreeze = 1\.0-ss\(245\.0,265\.0,ecologyK\)/,'deep-freeze surface state missing');
 assert.match(surface,/float riparian = [^\n]*\*bioThermal/,'wet river banks must not stay summer-green through deep frost');
 assert.match(surface,/WINTER=vec3/);assert.match(surface,/FROST=vec3/);
-assert.match(surface,/float inlandFreeze = 1\.0-ss\(270\.0,274\.0,ecologyK\)/,'procedural inland water needs a local freezing phase');
-assert.match(surface,/vec3 inlandIce=/,'frozen rivers/lakes need an ice colour');
-assert.match(surface,/rv\*land\*0\.40\*\(1\.0-inlandFreeze\)/,'frozen inland water must lose liquid-water specular highlights');
+
+/* 0.5.71: lake freeze morphology follows basin depth. The low lakeN edge
+   must freeze at a warmer threshold than the high-lakeN interior, while
+   moving rivers retain their own slightly colder freezing response. */
+assert.match(surface,/float lakeInterior = ss\(lth\+0\.045,lth\+0\.16,lakeN\)/,'lake basin needs a shore-to-interior proxy');
+assert.match(surface,/float lakeFreezeLo = mix\(272\.2,268\.5,lakeInterior\)/,'shallow lake margins must receive the warmer freeze threshold');
+assert.match(surface,/float lakeFreezeHi = mix\(273\.9,271\.8,lakeInterior\)/,'deep lake centre must lag the shore during initial freeze-up');
+assert.match(surface,/float riverFreeze = 1\.0-ss\(268\.8,272\.2,ecologyK\)/,'moving rivers need a separate later freeze response');
+assert.match(surface,/float inlandLiquid = 0\.0/,'liquid inland-water fraction must be tracked separately from ice');
+assert.match(surface,/alb = mix\(alb, inlandIce, frozenRv\*0\.96\)/,'inland ice colour must use the spatial frozen fraction');
+assert.match(surface,/inlandLiquid\*land\*0\.40/,'only liquid inland water may retain liquid-water specular');
+
+/* Ocean pack ice stays physically gated. Shore bias is allowed only inside
+   partially frozen physical cells and must mathematically vanish at f=0/1. */
+assert.match(surface,/float coastalShallow = 1\.0-ss\(0\.03,0\.24,depth\)/,'ocean edge morphology needs a bathymetric shallow-water proxy');
+assert.match(surface,/float seaTransition = 4\.0\*seaIcePhys\*\(1\.0-seaIcePhys\)/,'shore bias must vanish at zero and complete physical sea-ice cover');
+assert.match(surface,/float shoreBiasedSea = clamp\(seaIcePhys \+ \(coastalShallow-0\.38\)\*0\.22\*seaTransition/,'partial pack ice should preferentially occupy shallow coastal water');
 
 /* Hydrology noise is moved before biome colour and reused later. Do not pay
    twice for river/lake FBM just to green the banks. */
