@@ -96,40 +96,60 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float lowlandWet = coastal*coastal*(0.30+0.70*soilMoistPhys);
   float hydroWet = clamp(max(floodplain*0.92,lakeMargin*0.82)+0.18*lowlandWet,0.0,1.0);
 
+  /* 0.5.69: water availability is only potential habitability. A wet river
+     valley cannot remain summer-green at -40 C just because soil moisture is
+     high. Reuse the fine ecological field as a few-kelvin perturbation so the
+     low-resolution thermal cubemap still cannot print square cold boundaries. */
+  float ecologyK = surfaceK + (ecoPatch-0.5)*5.0;
+  float bioThermal = ss(268.0,285.0,ecologyK);
+  float coldStress = 1.0-bioThermal;
+  float deepFreeze = 1.0-ss(245.0,265.0,ecologyK);
+
   /* Static climate says what biome can exist here. Low-resolution physical
      soil water only bends that potential up/down; local ecological texture and
      hydrology decide where living cover actually concentrates inside a cell. */
   float soilGreen = ss(0.08,0.72,soilMoistPhys);
   float soilDry = 1.0-ss(0.16,0.58,soilMoistPhys);
   float heatStress = ss(289.0,315.0,surfaceK);
-  float localWetGain = mix(0.82,1.16,soilGreen) * mix(0.90,1.10,ecoPatch);
+  float localWetGain = mix(0.82,1.16,soilGreen*bioThermal) * mix(0.90,1.10,ecoPatch);
   moist = clamp(moist*localWetGain + 0.34*hydroWet,0.0,1.0);
   float localDryBreakup = mix(1.12,0.72,ecoPatch);
   float drought = clamp(soilDry*(0.30+0.70*heatStress)*localDryBreakup*land,0.0,1.0);
   drought *= 1.0-0.82*hydroWet;
   moist = clamp(moist*(1.0-0.38*drought),0.0,1.0);
-  moist = clamp(moist + 0.20*ss(0.0004, 0.040, uCO2)*(1.0-max(arid,drought)), 0.0, 1.0);
+  moist = clamp(moist + 0.20*ss(0.0004, 0.040, uCO2)*(1.0-max(arid,drought))*bioThermal, 0.0, 1.0);
 
   /* биомы */
   vec3 SAND=vec3(0.42,0.36,0.25), REDR=vec3(0.31,0.19,0.12), STEP=vec3(0.25,0.23,0.13),
        GRAS=vec3(0.15,0.22,0.09), FORS=vec3(0.070,0.125,0.060), JUNG=vec3(0.050,0.115,0.050),
        TUND=vec3(0.26,0.245,0.20), ROCK=vec3(0.25,0.22,0.19), SNOW=vec3(0.78,0.81,0.86),
-       STRAW=vec3(0.30,0.265,0.135), DRYSOIL=vec3(0.285,0.225,0.155);
+       STRAW=vec3(0.30,0.265,0.135), DRYSOIL=vec3(0.285,0.225,0.155),
+       WINTER=vec3(0.285,0.285,0.270), FROST=vec3(0.66,0.70,0.74);
   float rocky = 0.5+0.5*fbm(sN*3.7+uSeedS+vec3(27.0),3);
   vec3 hot  = mix(mix(SAND,REDR,ss(0.35,0.75,rocky)), JUNG, ss(0.48,0.75,moist));
   vec3 midc = mix(STEP, mix(GRAS,FORS,ss(0.35,0.7,moist)), ss(0.15,0.48,moist));
-  vec3 cold = mix(TUND, FORS*0.8+vec3(0.02), ss(0.5,0.8,moist));
-  vec3 alb = mix(cold, midc, ss(0.02,0.3,temp));
-  alb = mix(alb, hot, ss(0.55,0.95,temp));
+  vec3 cold = mix(TUND, FORS*0.8+vec3(0.02), ss(0.5,0.8,moist)*bioThermal);
+  vec3 alb = mix(cold, midc, ss(0.02,0.3,temp)*bioThermal);
+  alb = mix(alb, hot, ss(0.55,0.95,temp)*bioThermal);
+
+  /* Cold stress changes living colour before snow arrives. Dry frozen ground
+     is grey/olive rather than magically snowy; moist deep-freeze terrain can
+     acquire a pale frost veil, while actual snow/land ice still comes later
+     from the physical cryosphere texture and remains authoritative. */
+  vec3 winterGround=mix(WINTER,TUND,0.32+0.28*rocky);
+  alb=mix(alb,winterGround,coldStress*(0.72+0.18*(1.0-ecoPatch))*land);
+  float frostWet=max(soilMoistPhys,hydroWet);
+  float frostVeil=deepFreeze*ss(0.10,0.62,frostWet)*land;
+  alb=mix(alb,FROST,frostVeil*(0.50+0.26*deepFreeze));
 
   /* Drought progression is not one brown overlay. Mild stress yellows living
      cover, stronger stress exposes dull soil, and only hot prolonged extreme
      dryness approaches sand/red-rock colours. Fine ecological breakup is now
      reused here, so coarse Weather Core cells cannot define the patch edge. */
   float dryPatch=0.58+0.42*(0.56*mo1+0.44*mo2);
-  float droughtMild=ss(0.10,0.45,drought);
-  float droughtHard=ss(0.42,0.78,drought);
-  float droughtExtreme=ss(0.74,0.96,drought)*heatStress;
+  float droughtMild=ss(0.10,0.45,drought)*bioThermal;
+  float droughtHard=ss(0.42,0.78,drought)*bioThermal;
+  float droughtExtreme=ss(0.74,0.96,drought)*heatStress*bioThermal;
   vec3 wither=mix(STRAW,DRYSOIL,0.22+0.42*rocky);
   alb=mix(alb,wither,droughtMild*(1.0-0.70*droughtHard)*0.72*dryPatch);
   vec3 severe=mix(DRYSOIL,mix(SAND,REDR,ss(0.42,0.78,rocky)),droughtExtreme);
@@ -175,35 +195,39 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
 
   float beach = ss(0.0,0.0014,h)*(1.0-ss(0.002,0.0055,h));
   beach *= 0.35+0.65*(0.5+0.5*fbm(sN*21.0+uSeedS+vec3(43.0),2));
-  beach *= ss(0.22,0.65,temp)*(1.0-0.75*ss(0.55,0.85,moist));
+  beach *= ss(0.22,0.65,temp)*(1.0-0.75*ss(0.55,0.85,moist))*bioThermal;
   alb = mix(alb, SAND*1.02, beach*0.55*(1.0-snowM));
   float veg = fbm(sN*7.5 + uSeedS*4.0, 3);
   /* Vegetation texture belongs below the cryosphere. It may vary the living
      biome, but it must never repaint physical snow green afterwards. */
-  alb *= 1.0 + 0.18*veg*(1.0-0.72*drought);
+  alb *= 1.0 + 0.18*veg*(1.0-0.72*drought)*mix(0.25,1.0,bioThermal);
   vec3 bareC  = mix(vec3(0.20,0.165,0.115), REDR, ss(0.40,0.92,temp));
   vec3 denseC = FORS*0.82;
   alb = mix(alb, bareC,  ss(0.46,0.63,mo1)*0.80*(1.0-0.75*ss(0.52,0.70,moist)));
-  alb = mix(alb, denseC, ss(0.45,0.62,mo2)*0.70*ss(0.34,0.55,moist)*(1.0-droughtHard));
+  alb = mix(alb, denseC, ss(0.45,0.62,mo2)*0.70*ss(0.34,0.55,moist)*(1.0-droughtHard)*bioThermal);
   alb *= 0.80 + 0.42*mo3;
 
   /* Riparian vegetation is an ecological response to water geometry, not a
-     square Weather Core cell. It stays irregular because river/lake corridors
-     are intersected with the pre-existing fine vegetation fields. */
-  float riparian = hydroWet*ss(0.18,0.58,moist)*(0.68+0.32*mo2)*(1.0-droughtHard);
+     square Weather Core cell. Water controls potential richness, while local
+     temperature decides whether that richness can be visibly green now. */
+  float riparian = hydroWet*ss(0.18,0.58,moist)*(0.68+0.32*mo2)*(1.0-droughtHard)*bioThermal;
   vec3 riparianC = mix(GRAS,mix(FORS,JUNG,ss(0.62,0.96,temp)),ss(0.36,0.70,moist));
   alb = mix(alb,riparianC,riparian*0.48);
 
   /* реки и озёра: geometry was computed before biome colouring and is reused
      here, so adding river-fed greening costs no duplicate hydrology FBM. */
   float rv = 0.0;
+  float inlandFreeze = 1.0-ss(270.0,274.0,ecologyK);
   if(h > 0.0 && snowM < 0.85){
     float riv = riverGeom;
     riv *= clamp(wReal/wPix*0.8, 0.0, 1.0);
     riv *= ss(0.24,0.44,moist) * (1.0-ss(0.16,0.30,h));
     float lake = lakeGeom * ss(0.20,0.38,moist);
     rv = clamp(riv + lake, 0.0, 1.0) * (1.0 - snowM*0.9);
-    alb = mix(alb, mix(vec3(0.022,0.062,0.090), vec3(0.045,0.135,0.155), ss(0.30,0.85,temp)), rv*0.90);
+    vec3 inlandWater=mix(vec3(0.022,0.062,0.090), vec3(0.045,0.135,0.155), ss(0.30,0.85,temp));
+    vec3 inlandIce=vec3(0.76,0.82,0.88)*(0.90+0.10*mo3);
+    alb = mix(alb, inlandWater, rv*0.90);
+    alb = mix(alb, inlandIce, rv*inlandFreeze*0.96);
   }
 
   /* 0.5.66: the cryosphere is a surface state, not a biome. Apply it after
@@ -274,7 +298,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec3 col = albF * dif * shad * sunC;
 
   /* блик солнца на воде */
-  float waterM = max((1.0-land)*(1.0-ice), rv*land*0.40);
+  float waterM = max((1.0-land)*(1.0-ice), rv*land*0.40*(1.0-inlandFreeze));
   if(waterM > 0.01){
     vec3 hv = normalize(uSunDir - rd);
     float cosH = max(dot(nS, hv), 0.0);
