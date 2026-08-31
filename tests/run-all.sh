@@ -28,6 +28,7 @@ tests=(
   tests/visual-regressions.test.js
   tests/tectonic-morphology.test.js
   tests/tectonic-cell-seams.test.js
+  tests/tectonic-surface-seam-routing.test.js
   tests/param-model.test.js
   tests/star-orbit.test.js
   tests/planet-physics.test.js
