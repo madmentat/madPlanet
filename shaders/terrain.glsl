@@ -2,11 +2,6 @@
 float contFreq(){ return mix(0.7, 2.6, uCont); }
 float seaLvl(){ return mix(-0.25, 0.34, uSea); }
 
-/* Только макроконтур материков: ни островов, ни среднего масштаба, ни
-   хребтов. Это втрое дешевле terrain() и ровно то, что нужно карте влаги —
-   знать, над океаном или над материком шёл воздух. Начало намеренно
-   повторяет terrain(): удешевление здесь важнее, чем общий код, потому что
-   поле берётся несколькими отсчётами на каждый пиксель. */
 float continentH(vec3 dir){
   vec3 sN = uRotS * dir;
   vec3 p = sN*contFreq() + uSeedS;
@@ -17,14 +12,10 @@ float continentH(vec3 dir){
 }
 
 /* ---------- тектоника ----------
-   Плиты по-прежнему задают крупный каркас орогенеза, но их аналитическая
-   power-Voronoi граница больше не должна быть непосредственно видимой как
-   идеальная сферическая дуга. В 0.5.84 локальная координата каждого шва
-   дополнительно коробится уже ПОСЛЕ вычисления пары плит, то есть даже
-   остаточная математическая дуга не может пережить domain warp как ровная
-   траншея/полоса. Расходящиеся границы стали шире, мельче и прерывистее;
-   сходящиеся больше не рисуют обязательную параллельную тёмную траншею на
-   любой поверхности. */
+   0.5.84: the weighted-Voronoi plate network remains only the macro-scale
+   organiser. The actual seam coordinate is displaced after a plate pair is
+   known, so the analytic spherical arc cannot survive as a visible terrain
+   stripe. Long belts are further broken by a 3-D rupture field. */
 float gSeamNear, gSeamConv;
 vec3  gPlateTint;
 
@@ -62,9 +53,6 @@ vec3 tectonicBelt(vec3 sN){
   const float REACH = 0.62;
   float num = 0.0, den = 1e-6, leeNum = 0.0, seamNum = 0.0;
   float seamVisNum=0.0, seamVisDen=1e-6, seamConvNum=0.0;
-  /* One broad breakup field is shared by all pairs. It is intentionally not a
-     latitude/screen/cubemap function, so a plate boundary cannot acquire a
-     globally coherent stripe direction. */
   float ruptureField = clamp(0.52*seg + 0.28*orogN + 0.20*(0.5+0.5*wv2.z),0.0,1.0);
   float rupture = 0.18 + 0.82*ss(0.26,0.66,ruptureField);
 
@@ -86,10 +74,6 @@ vec3 tectonicBelt(vec3 sN){
       vec3 bdir = dbT/max(dbTl, 1e-4);
       float bValid = ss(0.06, 0.32, dbTl);
 
-      /* The raw weighted-Voronoi coordinate is an analytic spherical arc.
-         Displace that coordinate itself with the already-computed 3-D warp,
-         projected onto this particular pair's boundary normal. This costs no
-         extra noise calls in the O(N²) pair loop and destroys the exact arc. */
       float seamS = (dj - di)/base;
       float seamWarp = 0.052*dot(wv2,bdir) + 0.020*dot(wv,bdir);
       seamS += seamWarp;
@@ -104,6 +88,10 @@ vec3 tectonicBelt(vec3 sN){
       float sS = seamS*over;
       float su = (sS - 0.36*bwEff)/bwEff;
       float arc = exp(-su*su);
+      /* A real subduction system may still contain a trench, but this one is
+         weak and uses the same broken field as the margin. It must never be a
+         compulsory clean parallel line across an entire plate boundary. */
+      float trench = band*rupture;
 
       float side = clamp(seamS/0.04, -1.0, 1.0);
       float lee = max(conv, 0.0) * ss(0.10, 0.70, dot(bdir*side, -windS))
@@ -114,12 +102,8 @@ vec3 tectonicBelt(vec3 sN){
       seamConvNum+=seamVisW*convC;
       seamVisDen+=seamVisW;
 
-      /* Convergence makes an uplift belt; do not engrave a compulsory dark
-         parallel trench across continents. Divergent rifts remain possible,
-         but are deliberately shallow/broken rather than a planet-spanning
-         mathematically perfect groove. */
       float contrib = (convC > 0.0)
-        ? convC*arc*(0.56+0.44*rupture)
+        ? convC*(arc*(0.56+0.44*rupture) - 0.035*trench*rupture)
         : convC*band*(0.16+0.44*rupture);
       num    += wgt*contrib;
       leeNum += wgt*lee;
@@ -134,8 +118,6 @@ vec3 tectonicBelt(vec3 sN){
   return vec3(num/den, seamNum/den, clamp(leeNum/den, 0.0, 1.0));
 }
 
-/* rockOut  — «скалистость» 0..1 для альбедо и выбора текстуры.
-   mountOut — собственно орогенная прибавка к высоте. */
 float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut){
   vec3 sN = uRotS * dir;
   vec3 p = sN*contFreq() + uSeedS;
@@ -151,10 +133,6 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   mountOut = 0.0;
   leeOut = 0.0;
 
-  /* tectonicBelt() is one of the most expensive parts of terrain(): 9–12
-     plates imply dozens of candidate pairs, and surface normals sample
-     terrain several times per fragment. Do not pay that cost at all when
-     tectonic relief and the diagnostic plate overlay are both disabled. */
   gSeamNear=1e9; gSeamConv=0.0; gPlateTint=vec3(0.5);
   vec3 belt=vec3(0.0);
   if(uTect > 0.01 || uPlatesOn > 0.5){
@@ -164,9 +142,6 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
 
   if(uTect > 0.01 && abs(belt.x) > 0.004){
     if(belt.x > 0.0){
-      /* 0.5.84: replace the old 12-octave secondary ridge/fold stack with a
-         cheaper five-noise breakup. The plate field supplies macro-scale
-         placement; detail noise only roughens and fragments the mountain chain. */
       float peaks = ridged(sN*6.6 + uSeedS*1.9, 3);
       float foldA = 0.5 + 0.5*noise3(sN*13.5 + uSeedS*2.2 + vec3(97.0,13.0,251.0));
       float foldB = 0.5 + 0.5*noise3(sN*27.0 + uSeedS*3.4 + vec3(181.0,317.0,43.0));
@@ -177,8 +152,6 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
       mountOut *= mix(0.40, 1.0, ss(-0.05, 0.03, h));
       h += mountOut;
     } else {
-      /* Rifts are broad depressions, not ink lines. Most of their visual
-         structure is already in the warped/broken belt field above. */
       h -= uTect * belt.x*belt.x * 0.075;
     }
   }
