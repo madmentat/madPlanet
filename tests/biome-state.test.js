@@ -7,29 +7,36 @@ const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const gpu=read('js/fog-gpu.js');
 const surface=read('shaders/surface.glsl');
 
-assert.match(gpu,/FOG_GPU_MODEL=2/,'surface-state packing must use fog GPU model v2');
+assert.match(gpu,/FOG_GPU_MODEL=3/,'surface-state packing must use the extreme-temperature-aware fog GPU model');
 assert.match(gpu,/fogGpuSoilWetness/,'soil wetness encoder missing');
 assert.match(gpu,/soilMoisture/);assert.match(gpu,/soilCapacity/);
-assert.match(gpu,/SURFACE_TEMP_GPU_MIN_K=180/);assert.match(gpu,/SURFACE_TEMP_GPU_MAX_K=380/);
+assert.match(gpu,/SURFACE_TEMP_GPU_COLD_MIN_K=80/);
+assert.match(gpu,/SURFACE_TEMP_GPU_NORMAL_MIN_K=180/);
+assert.match(gpu,/SURFACE_TEMP_GPU_NORMAL_MAX_K=380/);
+assert.match(gpu,/SURFACE_TEMP_GPU_HOT_MAX_K=1000/);
 assert.ok(!/requestAnimationFrame\s*\(/.test(gpu),'biome surface-state publication must stay fixed-tick, not FPS driven');
 
 const ctx={console,Math,Number,Uint8Array,Array,Date,UNIFORM_NAMES:[],
   weatherCoreCreate(){return null;},weatherCoreStep(core){return core;},weatherCoreEnsure(){return null;}};
 vm.createContext(ctx);vm.runInContext(gpu,ctx,{filename:'fog-gpu.js'});
 const core={
-  surfaceWaterFraction:new Float32Array([0,0,1]),
-  soilCapacity:new Float32Array([100,100,0]),
-  soilMoisture:new Float32Array([12,74,0]),
-  surfaceTemp:new Float32Array([286,313,295])
+  surfaceWaterFraction:new Float32Array([0,0,1,0,0]),
+  soilCapacity:new Float32Array([100,100,0,100,100]),
+  soilMoisture:new Float32Array([12,74,0,0,0]),
+  surfaceTemp:new Float32Array([286,313,295,113,900])
 };
 assert.ok(Math.abs(ctx.fogGpuSoilWetness(core,0)-0.12)<1e-6,'dry land wetness must come from soil reservoir');
 assert.ok(Math.abs(ctx.fogGpuSoilWetness(core,1)-0.74)<1e-6,'wet land wetness must come from soil reservoir');
 assert.equal(ctx.fogGpuSoilWetness(core,2),1,'ocean must publish saturated surface wetness');
 assert.ok(ctx.fogGpuSurfaceTemp01(core,1)>ctx.fogGpuSurfaceTemp01(core,0),'hotter physical surface must encode a larger thermal state');
+assert.ok(ctx.fogGpuSurfaceTemp01(core,3)<0.05,'-160 C must survive as an explicit deep-cold tail, not clip to 180 K');
+assert.ok(ctx.fogGpuSurfaceTemp01(core,4)>0.90,'+627 C must survive as an explicit hot tail, not clip to 380 K');
 
 assert.match(surface,/vec4 surfaceWx = physicalFogSample\(n0\)/,'surface must consume interpolated Weather Core surface state');
 assert.match(surface,/float soilMoistPhys = clamp\(surfaceWx\.b/,'surface drought must use physical soil moisture');
-assert.match(surface,/float surfaceK = mix\(180\.0,380\.0/,'surface drought must use physical surface temperature');
+assert.match(surface,/float tempCode = clamp\(surfaceWx\.a/,'surface must decode the physical temperature channel');
+assert.match(surface,/mix\(80\.0,180\.0,tempCode\/0\.05\)/,'surface must decode the deep-cold temperature tail');
+assert.match(surface,/mix\(380\.0,1000\.0,\(tempCode-0\.90\)\/0\.10\)/,'surface must decode the extreme-hot temperature tail');
 assert.match(surface,/float floodplain = 1\.0-ss\(/,'river floodplain wetness must exist');
 assert.match(surface,/float lakeMargin = ss\(/,'lake-adjacent wetness must exist');
 assert.match(surface,/float hydroWet = clamp\(/,'hydrology must feed ecological wetness');
@@ -41,30 +48,38 @@ assert.match(surface,/STRAW=vec3/);assert.match(surface,/DRYSOIL=vec3/);
 assert.match(surface,/droughtMild/);assert.match(surface,/droughtHard/);assert.match(surface,/droughtExtreme/);
 assert.match(surface,/float riparian = hydroWet/,'riparian vegetation response missing');
 
-/* 0.5.69: water is only potential habitability. Local physical temperature
-   must suppress green cover before snow/ice has had time to accumulate. */
+/* Water is only potential habitability. Local physical temperature must
+   suppress green cover at both deep frost and extreme heat. */
 assert.match(surface,/float ecologyK = surfaceK \+ \(ecoPatch-0\.5\)\*5\.0/,'fine thermal breakup must hide coarse Weather Core cell edges');
-assert.match(surface,/float bioThermal = ss\(268\.0,285\.0,ecologyK\)/,'living green cover needs a cold-stress gate');
+assert.match(surface,/float bioCold = ss\(268\.0,285\.0,ecologyK\)/,'living green cover needs a cold-stress gate');
+assert.match(surface,/float bioHeat = 1\.0-ss\(308\.0,333\.0,ecologyK\)/,'living green cover needs a high-temperature kill gate');
+assert.match(surface,/float bioThermal = bioCold\*bioHeat/,'thermal habitability must require both cold and heat support');
 assert.match(surface,/float deepFreeze = 1\.0-ss\(245\.0,265\.0,ecologyK\)/,'deep-freeze surface state missing');
-assert.match(surface,/float riparian = [^\n]*\*bioThermal/,'wet river banks must not stay summer-green through deep frost');
+assert.match(surface,/float riparian = [^\n]*\*bioThermal/,'wet river banks must not stay green outside thermal habitability');
 assert.match(surface,/WINTER=vec3/);assert.match(surface,/FROST=vec3/);
+assert.match(surface,/alb=mix\(alb,heatGround,heatSterile\*land\)/,'extreme heat must replace living biome colours with sterile ground');
 
-/* 0.5.71: lake freeze morphology follows basin depth. The low lakeN edge
-   must freeze at a warmer threshold than the high-lakeN interior, while
-   moving rivers retain their own slightly colder freezing response. */
+/* Lake freeze morphology follows basin depth near the phase boundary, while a
+   deep-cold local floor closes sub-grid hydrology that the coarse physics grid
+   cannot resolve. */
 assert.match(surface,/float lakeInterior = ss\(lth\+0\.045,lth\+0\.16,lakeN\)/,'lake basin needs a shore-to-interior proxy');
 assert.match(surface,/float lakeFreezeLo = mix\(272\.2,268\.5,lakeInterior\)/,'shallow lake margins must receive the warmer freeze threshold');
 assert.match(surface,/float lakeFreezeHi = mix\(273\.9,271\.8,lakeInterior\)/,'deep lake centre must lag the shore during initial freeze-up');
-assert.match(surface,/float riverFreeze = 1\.0-ss\(268\.8,272\.2,ecologyK\)/,'moving rivers need a separate later freeze response');
+assert.match(surface,/float lakeFreeze = max\(deepColdIce,1\.0-ss\(lakeFreezeLo,lakeFreezeHi,ecologyK\)\)/,'deep cold must close lakes regardless of sub-grid mapping');
+assert.match(surface,/float riverFreeze = max\(deepColdIce,1\.0-ss\(268\.8,272\.2,ecologyK\)\)/,'deep cold must close moving rivers too');
 assert.match(surface,/float inlandLiquid = 0\.0/,'liquid inland-water fraction must be tracked separately from ice');
+assert.match(surface,/inlandLiquid = [^;]*\*hotLiquidGate/,'inland liquid water must disappear above the boiling/critical regime');
 assert.match(surface,/alb = mix\(alb, inlandIce, frozenRv\*0\.96\)/,'inland ice colour must use the spatial frozen fraction');
 assert.match(surface,/inlandLiquid\*land\*0\.40/,'only liquid inland water may retain liquid-water specular');
 
-/* Ocean pack ice stays physically gated. Shore bias is allowed only inside
-   partially frozen physical cells and must mathematically vanish at f=0/1. */
+/* Ocean pack ice stays physically gated near freezing. The local deep-cold
+   floor only repairs the sub-grid coastline mismatch, and shore bias still
+   vanishes at zero/complete effective cover. */
+assert.match(surface,/float seaCover=max\(seaIcePhys,deepColdIce\)/,'effective sea cover must combine physical ice with deep-cold sub-grid closure');
 assert.match(surface,/float coastalShallow = 1\.0-ss\(0\.03,0\.24,depth\)/,'ocean edge morphology needs a bathymetric shallow-water proxy');
-assert.match(surface,/float seaTransition = 4\.0\*seaIcePhys\*\(1\.0-seaIcePhys\)/,'shore bias must vanish at zero and complete physical sea-ice cover');
-assert.match(surface,/float shoreBiasedSea = clamp\(seaIcePhys \+ \(coastalShallow-0\.38\)\*0\.22\*seaTransition/,'partial pack ice should preferentially occupy shallow coastal water');
+assert.match(surface,/float seaTransition = 4\.0\*seaCover\*\(1\.0-seaCover\)/,'shore bias must vanish at zero and complete effective sea-ice cover');
+assert.match(surface,/float shoreBiasedSea = clamp\(seaCover \+ \(coastalShallow-0\.38\)\*0\.22\*seaTransition/,'partial pack ice should preferentially occupy shallow coastal water');
+assert.match(surface,/oc=mix\(dryBed,oc,hotLiquidGate\)/,'hot ocean geometry must render a dry basin rather than blue liquid');
 
 /* Hydrology noise is moved before biome colour and reused later. Do not pay
    twice for river/lake FBM just to green the banks. */
