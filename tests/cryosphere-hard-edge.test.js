@@ -4,6 +4,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
 const src=fs.readFileSync(path.join(root,'js/cryosphere-edge-display.js'),'utf8');
+const surface=fs.readFileSync(path.join(root,'shaders/surface.glsl'),'utf8');
 
 assert.match(src,/CRYOSPHERE_EDGE_DISPLAY_MODEL=3/,'hard-edge display model must stay active');
 assert.doesNotMatch(src,/const feather=/,'polar ice must not regain an optical feather');
@@ -11,6 +12,23 @@ assert.match(src,/raw>=edgeNoise\?1:0/,'fractional physical coverage must resolv
 assert.match(src,/raw<0\.15/,'very sparse sea ice must not become a milky coherent fringe');
 assert.match(src,/gl\.TEXTURE_MIN_FILTER,gl\.NEAREST/,'linear cubemap filtering must not blur the binary ice mask');
 assert.match(src,/cryoGpuBlendAt=function\(\)\{return 1;\}/,'temporal crossfade must not create translucent ice between updates');
+
+/* 0.5.82: a second, shader-local cold closure used to bypass all of the hard
+   cryosphere rules above. deepColdIce was a smooth 0..1 mask from 258..271 K,
+   then mixed directly into ocean colour. That produced the large grey polar
+   disc even with every atmospheric effect disabled. The emergency sub-grid
+   closure may remain, but it must be a binary phase decision and sea-ice
+   opacity itself must stay binary. */
+assert.match(surface,/float deepColdIce = \(ecologyK < 258\.15\) \? 1\.0 : 0\.0;/,
+  'deep-cold sub-grid closure must be a binary phase decision');
+assert.doesNotMatch(surface,/deepColdIce\s*=\s*1\.0-ss\(/,
+  'deep-cold correction must not regain a smooth translucent temperature lens');
+assert.match(surface,/float seaCover=max\(seaIcePhys,deepColdIce\);\s*\n\s*float ice=seaCover;/,
+  'surface sea-ice opacity must come directly from binary coverage');
+assert.doesNotMatch(surface,/shoreBiasedSea\*iceMicro/,
+  'surface shader must not turn binary sea ice back into fractional opacity');
+assert.match(surface,/if\(ice > 0\.5\)\{[\s\S]*?oc = iceCol;/,
+  'an ice-covered ocean sample must receive an opaque ice surface colour');
 
 const ctx={console,Math,Number,
   weatherFaceDir(face,u,v){
