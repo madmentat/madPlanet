@@ -15,23 +15,30 @@ ordered(buildPs,['js/render.js','js/cryosphere-render.js','js/smooth-motion-ui.j
 
 /* Landscape coarse-pointer tablets must not run the desktop Weather Core. */
 assert.match(smooth,/matchMedia\('\(pointer: coarse\)'\)\.matches/,'coarse pointer must classify tablet physics');
-assert.match(smooth,/return \(uaMobile \|\| coarse \|\| compact\) \? WEATHER_CORE_DRAFT_N : WEATHER_CORE_DESKTOP_N/,
-  'mobile/coarse devices must use the intended compact Weather Core');
+assert.match(smooth,/SMOOTH_MOBILE_WEATHER_N = deviceMemory <= 4 \? 24 : 28/,
+  'mobile Weather Core must be smaller than the old 32-cell face');
+assert.match(smooth,/return \(uaMobile \|\| coarse \|\| compact\) \? SMOOTH_MOBILE_WEATHER_N : WEATHER_CORE_DESKTOP_N/,
+  'mobile/coarse devices must use the tuned compact Weather Core');
 
-/* Motion-first mobile policy: stay close enough to the 60 Hz frame budget not
-   to fall into an avoidable every-other-vsync cadence, and never resize the
-   framebuffer underneath an active drag. */
+/* Motion-first mobile policy: stay near the 60 Hz budget and allow quality to
+   react while pinch/drag increases fragment cost. */
 assert.match(smooth,/SMOOTH_MOBILE_FRAME_MS = 18\.0/,'mobile renderer should target roughly 50-60 fps');
-assert.match(smooth,/SMOOTH_MOBILE_SCALE_MIN = deviceMemory <= 4 \? 0\.62 : 0\.70/,
-  'mobile renderer needs enough resolution headroom to recover frame pacing');
-assert.match(smooth,/pointers\.size>0\)return/,'dynamic resolution must pause during active pointer interaction');
-assert.match(smooth,/qualityCooldown=120/,'quality recovery should be slow enough to avoid resize oscillation');
+assert.match(smooth,/SMOOTH_MOBILE_SCALE_MIN = deviceMemory <= 4 \? 0\.60 : 0\.68/,
+  'mobile renderer needs enough scale headroom to recover close-zoom frame pacing');
+assert.doesNotMatch(smooth,/pointers\.size>0\)return/,
+  'adaptive quality must not freeze exactly while the user is pinching/dragging');
+assert.match(smooth,/const interacting=/,'interaction-aware degradation policy expected');
+assert.match(smooth,/qualityCooldown=interacting\?72:45/,
+  'interaction downscale must be controlled rather than oscillating every sample');
+assert.match(smooth,/qualityCooldown=120/,'quality recovery should stay slow');
 
-/* The ice texture may interpolate spatially again, but only into a scalar edge
-   field. The fragment shader resolves a ~one-pixel material contour so LINEAR
-   sampling cannot recreate the old kilometre-wide translucent polar wash. */
+/* The ice texture may interpolate spatially and temporally only as a scalar
+   boundary field; the shader resolves it into opaque material coverage. */
 assert.match(smooth,/gl\.TEXTURE_MIN_FILTER,gl\.LINEAR/,'cryosphere source must no longer expose NEAREST texel stairs');
 assert.match(smooth,/0\.5\+\(raw-edgeNoise\)\*slope/,'transitional cryosphere must publish a signed edge field');
+assert.match(smooth,/SMOOTH_MOBILE_CRYO_PUBLISH_MS = 2400/,
+  'mobile must not rebuild the expensive 4x cryosphere display cubemap every second');
+assert.match(smooth,/base\*5\.0/,'cryosphere edge motion must interpolate between slow visual publishes');
 assert.match(prelude,/vec4 cryoSurfaceTextureAA/,'surface cryosphere AA helper missing');
 assert.match(prelude,/fwidth\(q\)\*0\.72/,'cryosphere edge must use screen-space derivative width');
 assert.match(prelude,/#define texture\(TEX,COORD\) cryoSurfaceTextureAA/,'AA helper must intercept only the surface texture read');
