@@ -33,4 +33,12 @@ assert.doesNotMatch(terrain,/foldWarp/,
 assert.match(terrain,/h -= uTect \* belt\.x\*belt\.x \* 0\.075/,
   'rift relief must stay materially shallower than the old engraved groove');
 
+/* 0.5.85 regression: do not create a second perfectly smooth contour around
+   an otherwise noisy tectonic belt by hard-switching relief at |belt.x|=c.
+   The squared belt amplitude is already a continuous fade to zero. */
+assert.doesNotMatch(terrain,/abs\s*\(\s*belt\.x\s*\)\s*>\s*0\.004/,
+  'tectonic relief must not switch on at a fixed spatial belt contour');
+assert.match(terrain,/if\(uTect > 0\.01\)\{[\s\S]*?if\(belt\.x > 0\.0\)/,
+  'tectonic terrain should remain globally enabled while the signed belt amplitude fades continuously');
+
 console.log('tectonic-morphology.test.js: OK');
