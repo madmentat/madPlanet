@@ -18,9 +18,10 @@ assert.match(smooth,/matchMedia\('\(pointer: coarse\)'\)\.matches/,'coarse point
 assert.match(smooth,/return \(uaMobile \|\| coarse \|\| compact\) \? WEATHER_CORE_DRAFT_N : WEATHER_CORE_DESKTOP_N/,
   'mobile/coarse devices must use the intended compact Weather Core');
 
-/* Motion-first mobile policy: materially above the old ~32 fps target, and
-   framebuffer reallocations may not happen underneath an active drag. */
-assert.match(smooth,/SMOOTH_MOBILE_FRAME_MS = 20\.5/,'mobile renderer should target roughly 45-50 fps');
+/* Motion-first mobile policy: stay close enough to the 60 Hz frame budget not
+   to fall into an avoidable every-other-vsync cadence, and never resize the
+   framebuffer underneath an active drag. */
+assert.match(smooth,/SMOOTH_MOBILE_FRAME_MS = 18\.0/,'mobile renderer should target roughly 50-60 fps');
 assert.match(smooth,/SMOOTH_MOBILE_SCALE_MIN = deviceMemory <= 4 \? 0\.62 : 0\.70/,
   'mobile renderer needs enough resolution headroom to recover frame pacing');
 assert.match(smooth,/pointers\.size>0\)return/,'dynamic resolution must pause during active pointer interaction');
