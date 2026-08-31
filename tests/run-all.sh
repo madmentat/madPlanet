@@ -58,6 +58,7 @@ tests=(
   tests/cryosphere-seams.test.js
   tests/physical-fog.test.js
   tests/biome-state.test.js
+  tests/extreme-surface-phase.test.js
   tests/weather-stabilization.test.js
   tests/weather-audit-diagnostics.test.js
   tests/lightning-weather.test.js
