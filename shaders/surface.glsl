@@ -40,7 +40,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     float h1 = terrain(normalize(n0 + tg*eps), rr1, mm1, ll1);
     float h2 = terrain(normalize(n0 + bt*eps), rr2, mm2, ll2);
     gradH = length(vec2(h1-h, h2-h))/eps;
-    float bmp = (0.03 + 0.095*uTect) * (1.0 + 1.3*(1.0-ss(1.7, 3.4, uCamDist)));
+    /* 0.5.87: reduced Tectonics coefficient (0.095 -> 0.055) so residual
+       micro-height from non-competitive plate pairs is no longer amplified
+       into visible curved stripes far from real boundaries. */
+    float bmp = (0.03 + 0.055*uTect) * (1.0 + 1.3*(1.0-ss(1.7, 3.4, uCamDist)));
     nS = normalize(n0 - (tg*(h1-h) + bt*(h2-h)) * (bmp/eps));
   }
 

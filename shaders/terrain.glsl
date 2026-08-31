@@ -28,7 +28,14 @@ float continentH(vec3 dir){
    bisectors can cross inside an unrelated plate, exactly matching the reported
    smooth intersecting arcs. The visible plate boundary is now derived from the
    first/second nearest weighted sites, while relief from every all-pair term is
-   smoothly attenuated unless BOTH members are locally competitive. */
+   smoothly attenuated unless BOTH members are locally competitive.
+
+   0.5.87: residual faint arcs still appeared at high uTect because the
+   pairCompetitive gate (exp(-130*...)) left enough micro-height for the
+   Tectonics-scaled finite-difference bump to amplify into visible stripes
+   far from real plate edges. Raise the exponent to 280 and reduce the
+   bump coefficient in surface.glsl so only genuinely competitive pairs
+   produce noticeable relief. */
 float gSeamNear, gSeamConv;
 vec3  gPlateTint;
 
@@ -107,7 +114,7 @@ vec3 tectonicBelt(vec3 sN){
          pairwise bisector is then NOT a physical plate boundary. Keep the
          differentiable all-pair reference, but suppress that ghost relief in
          amplitude (not in den, where normalisation would cancel the gate). */
-      float pairCompetitive = exp(-130.0*(di*di + dj*dj));
+      float pairCompetitive = exp(-280.0*(di*di + dj*dj));
 
       vec3 db = pj - pi;
       float base = max(length(db), 1e-4);

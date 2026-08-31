@@ -41,8 +41,8 @@ assert.doesNotMatch(src,/seamVisNum|seamVisDen|seamConvNum|seamVisW/,
    members are not both locally competitive must lose amplitude. Crucially the
    gate is applied to contrib/lee rather than den so normalisation cannot undo
    the suppression. */
-assert.match(pairLoop,/float pairCompetitive = exp\(-130\.0\*\(di\*di \+ dj\*dj\)\)/,
-  'non-neighbour plate pairs need a smooth local-competition gate');
+assert.match(pairLoop,/float pairCompetitive = exp\(-280\.0\*\(di\*di \+ dj\*dj\)\)/,
+  'non-neighbour plate pairs need a stronger smooth local-competition gate (0.5.87)');
 assert.match(pairLoop,/contrib \*= pairCompetitive/,
   'ghost-pair relief must be attenuated before accumulation');
 assert.match(pairLoop,/\* rupture \* pairCompetitive/,

@@ -1,10 +1,10 @@
-VERSION 0.5.86
-Base: 0.5.85
-Changes: Removed the intersecting smooth tectonic arcs that could run through the interior of a displayed plate. The new screenshots exposed the real root cause: tectonicBelt() blended every pair of plates, so even two non-neighbouring sites had their own mathematical pairwise bisector. Those ghost bisectors can cross one another inside a third plate and were reused both by relief and by the optional plate/seam diagnostic.
-Plate diagnostic fix: visible plate borders are now derived only from the nearest and second-nearest weighted Voronoi sites. The border field is the normalized gap between those two competitors, so a diagnostic line can occur only where the displayed nearest-plate identity can actually change. Convergence colour uses the same real competing pair. The former seamVis all-pair average is removed.
-Relief fix: the differentiable all-pair reference is retained to avoid hard nearest-pair popping, but every pair contribution now receives pairCompetitive = exp(-130*(di^2+dj^2)). This suppresses a pair unless BOTH of its plates are locally competitive. The gate is applied to relief/lee amplitude rather than the normalization denominator, so normalization cannot resurrect a remote pair's ghost bisector. Triple-junction neighbourhoods still blend naturally.
-Regression: tectonic-cell-seams.test.js now forbids all-pair display seam averaging, requires nearest/second-nearest diagnostic boundaries, and guards smooth ghost-pair suppression in the physical relief path.
-Validation: confirm visible stamp v0.5.86. Use seed 90636862 from the supplied comparison, enable Plates, zoom into the same island and sweep Tectonics 0% -> 100%. Plate lines must coincide with actual colour boundaries and must not cross inside a single coloured plate. With Plates hidden, raising Tectonics may strengthen real terrain but must not reveal those long intersecting mathematical arcs.
-Retained: 0.5.85 continuous outer tectonic envelope; 0.5.84 tablet cadence/adaptive-resolution work; 0.5.83 live FPS/T/star/AU HUD; 0.5.82 no grey Arctic lens; 0.5.81 opaque cryosphere; 0.5.80 gradual/irreversible volatile loss; 0.5.79 uncapped hot equilibrium; 0.5.78 phase/biology gating.
-Snapshots: snapshot/0.5.85 remains the rollback point before this ghost-pair fix. Create snapshot/0.5.86 only after the final release head passes CI.
+VERSION 0.5.87
+Base: 0.5.86
+Changes: Residual faint curved stripes still appeared at high Tectonics values far from real plate boundaries and mountain systems. Root cause: the pairCompetitive gate exp(-130*(di^2+dj^2)) left enough micro-height variation for the Tectonics-dependent finite-difference bump gain (0.03 + 0.095*uTect) to amplify into visible dark/light arcs.
+Relief gate: raised pairCompetitive exponent from 130 to 280 so only truly local competing plate pairs contribute meaningful height.
+Bump gain: reduced the Tectonics coefficient in surface.glsl from 0.095 to 0.055.
+Regression: tectonic-cell-seams.test.js now requires the stronger 280 gate.
+Validation: seed 90636862, enable Plates, zoom to the previously marked island and sweep Tectonics 0% -> 100%. Long intersecting mathematical arcs inside a single plate colour must not reappear; real plate boundaries and genuine orographic belts remain.
+Snapshots: snapshot/0.5.86 is the pre-fix rollback point. Create snapshot/0.5.87 after CI passes.
+Retained: all 0.5.86 nearest/second-nearest diagnostic logic and continuous outer tectonic envelope.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
