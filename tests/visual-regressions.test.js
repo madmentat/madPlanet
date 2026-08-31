@@ -99,7 +99,8 @@ assert.match(surface, /float capEdge = /, 'polar cap edge must be perturbed at c
 assert.match(surface, /float steepBare = /, 'ridges must lose snow on steep faces');
 
 assert.match(terrainSrc, /uPlateP\[i\]\.w/, 'plates need a size weight: equal cells look artificial');
-assert.match(terrainSrc, /wgt > 0\.30 && seam < gSeamNear/, 'the schematic must show real neighbours only, not every bisector');
+assert.match(terrainSrc, /float seamVisW=wgt\*/, 'tectonic seam display must come from the continuous neighbour field');
+assert.ok(!/seam < gSeamNear/.test(terrainSrc), 'hard single-pair seam selection recreates razor-thin Voronoi artifacts');
 assert.match(surface, /if\(uPlatesOn > 0\.5\)/, 'plate schematic overlay missing');
 assert.match(surface, /float volc = /, 'volcanism missing');
 assert.match(surface, /uLava > 0\.01/, 'lava glow missing');
