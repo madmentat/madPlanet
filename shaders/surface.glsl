@@ -130,9 +130,12 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float boilK = clamp(1.0/max(0.001,boilDen),285.0,620.0);
   float hotLiquidGate = (1.0-ss(boilK-4.0,boilK+14.0,ecologyK))
                       * (1.0-ss(635.0,647.0,ecologyK));
-  /* This local thermal closure also covers sub-grid bays where the coarse
-     cryosphere cubemap and procedural coastline disagree by one physics cell. */
-  float deepColdIce = 1.0-ss(258.15,271.35,ecologyK);
+  /* Local deep-cold correction exists only to close sub-grid bays that the
+     coarse Weather Core can miss. It is a PHASE decision, not an optical
+     opacity: below -15 C the exposed water sample is solid ice, otherwise the
+     physical sea-ice field decides. A smooth 0..1 value here created the large
+     grey translucent polar "lens" even with every atmospheric effect off. */
+  float deepColdIce = (ecologyK < 258.15) ? 1.0 : 0.0;
   hydroWet *= mix(0.08,1.0,hotLiquidGate);
 
   /* Static climate says what biome can exist here. Low-resolution physical
@@ -330,18 +333,15 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec3 dryBed=mix(dryBedShallow,vec3(0.10,0.085,0.075),ss(0.15,0.85,depth));
   oc=mix(dryBed,oc,hotLiquidGate);
 
-  /* Physical sea ice remains authoritative near the freezing point. Deep cold
-     adds a local thermal floor so sub-grid bays cannot leak blue water merely
-     because the coarse cubemap labels the neighbouring cell as land. */
+  /* Physical sea ice is already resolved to opaque ice/open-water patches by
+     the cryosphere display map. The deep-cold local correction is binary too:
+     it only closes genuinely frigid sub-grid bays. Never multiply ice colour
+     by a fractional phase value here; that was the grey Arctic fog-disc. */
   float seaCover=max(seaIcePhys,deepColdIce);
-  float coastalShallow = 1.0-ss(0.03,0.24,depth);
-  float seaTransition = 4.0*seaCover*(1.0-seaCover);
-  float shoreBiasedSea = clamp(seaCover + (coastalShallow-0.38)*0.22*seaTransition,0.0,1.0);
-  float iceMicro = 0.92 + 0.08*(0.5+0.5*fbm(sN*18.0+uSeedS+vec3(3.0),2));
-  float ice = max(deepColdIce,clamp(shoreBiasedSea*iceMicro,0.0,1.0));
-  if(ice > 0.01){
+  float ice=seaCover;
+  if(ice > 0.5){
     vec3 iceCol = vec3(0.80,0.86,0.92)*(0.86+0.24*(0.5+0.5*fbm(sN*30.0+uSeedS,2)));
-    oc = mix(oc, iceCol, ice);
+    oc = iceCol;
   }
   vec3 albF = mix(oc, alb, land);
 
