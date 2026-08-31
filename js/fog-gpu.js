@@ -1,28 +1,40 @@
-/* ============ 0.5.56 / 0.5.66: physical fog + surface state -> GPU cubemaps ============ */
+/* ============ 0.5.56 / 0.5.66 / 0.5.78: physical fog + surface state -> GPU cubemaps ============ */
 /*
    Double-buffered RGBA8 cubemaps mirror low-resolution Weather Core state.
    R = fog optical depth, G = normalized fog depth.
 
    0.5.66 repurposes the previously renderer-unused B/A diagnostic channels:
    B = physical soil wetness (soilMoisture / soilCapacity, ocean=1),
-   A = Weather Core surface temperature mapped from 180..380 K to 0..1.
-   CPU fog formation/dissipation diagnostics remain available in their arrays;
-   they simply no longer consume scarce WebGL1 texture channels. This gives the
-   surface shader dynamic drought/freeze context without allocating a ninth
-   fragment texture unit on implementations that expose only the WebGL1 minimum.
+   A = Weather Core surface temperature.
 
-   Fixed ticks publish targets; render interpolates previous -> current
-   continuously so fog and biome-state colours cannot jump at weather cadence.
+   0.5.78 repairs a serious phase/biome bug in that A channel. The old linear
+   180..380 K mapping silently clipped every hotter world to 380 K and every
+   colder world to 180 K. A +627 C surface therefore reached surface.glsl as
+   merely 107 C, and the shader had no way to distinguish an extreme furnace
+   from an ordinary hot climate. Keep almost all 8-bit precision in the
+   biologically/meteorologically important 180..380 K interval, but reserve
+   small cold/hot tails for 80..180 K and 380..1000 K. Values beyond those
+   tails saturate deliberately: phase rendering only needs to know that they
+   are already far beyond the liquid-water/biology limits.
+
+   CPU fog formation/dissipation diagnostics remain available in their arrays;
+   they simply no longer consume scarce WebGL1 texture channels. Fixed ticks
+   publish targets; render interpolates previous -> current continuously so fog
+   and biome-state colours cannot jump at weather cadence.
 */
 
-const FOG_GPU_MODEL=2;
+const FOG_GPU_MODEL=3;
 const FOG_TEX_UNIT=5;
 const FOG_TEX_PREV_UNIT=6;
 const FOG_BLEND_DEFAULT_MS=900;
 const FOG_BLEND_MIN_MS=250;
 const FOG_BLEND_MAX_MS=1200;
-const SURFACE_TEMP_GPU_MIN_K=180;
-const SURFACE_TEMP_GPU_MAX_K=380;
+const SURFACE_TEMP_GPU_COLD_MIN_K=80;
+const SURFACE_TEMP_GPU_NORMAL_MIN_K=180;
+const SURFACE_TEMP_GPU_NORMAL_MAX_K=380;
+const SURFACE_TEMP_GPU_HOT_MAX_K=1000;
+const SURFACE_TEMP_GPU_COLD_EDGE=0.05;
+const SURFACE_TEMP_GPU_HOT_EDGE=0.90;
 
 if(typeof UNIFORM_NAMES!=='undefined'){
   for(const n of ['uFogTex','uFogTexPrev','uFogBlend'])if(!UNIFORM_NAMES.includes(n))UNIFORM_NAMES.push(n);
@@ -72,9 +84,18 @@ function fogGpuSoilWetness(core,i){
   return Math.max(0,Math.min(1,(Number(core.soilMoisture?.[i])||0)/cap));
 }
 function fogGpuSurfaceTemp01(core,i){
-  const T=Number(core.surfaceTemp?.[i]);
-  const k=Number.isFinite(T)?T:273.15;
-  return Math.max(0,Math.min(1,(k-SURFACE_TEMP_GPU_MIN_K)/(SURFACE_TEMP_GPU_MAX_K-SURFACE_TEMP_GPU_MIN_K)));
+  const raw=Number(core.surfaceTemp?.[i]);
+  const T=Number.isFinite(raw)?raw:273.15;
+  if(T<SURFACE_TEMP_GPU_NORMAL_MIN_K){
+    const q=Math.max(0,Math.min(1,(T-SURFACE_TEMP_GPU_COLD_MIN_K)/(SURFACE_TEMP_GPU_NORMAL_MIN_K-SURFACE_TEMP_GPU_COLD_MIN_K)));
+    return SURFACE_TEMP_GPU_COLD_EDGE*q;
+  }
+  if(T<=SURFACE_TEMP_GPU_NORMAL_MAX_K){
+    const q=(T-SURFACE_TEMP_GPU_NORMAL_MIN_K)/(SURFACE_TEMP_GPU_NORMAL_MAX_K-SURFACE_TEMP_GPU_NORMAL_MIN_K);
+    return SURFACE_TEMP_GPU_COLD_EDGE+(SURFACE_TEMP_GPU_HOT_EDGE-SURFACE_TEMP_GPU_COLD_EDGE)*Math.max(0,Math.min(1,q));
+  }
+  const q=Math.max(0,Math.min(1,(T-SURFACE_TEMP_GPU_NORMAL_MAX_K)/(SURFACE_TEMP_GPU_HOT_MAX_K-SURFACE_TEMP_GPU_NORMAL_MAX_K)));
+  return SURFACE_TEMP_GPU_HOT_EDGE+(1-SURFACE_TEMP_GPU_HOT_EDGE)*q;
 }
 function fogGpuPackFace(core,face){
   const N=core.N,pix=fogGpuFaces[face],base=face*N*N;
@@ -135,6 +156,5 @@ weatherCoreStep=function(core,dtSec,climate,axis){
 function fogGpuEnsureCurrent(){
   const core=(typeof weatherCoreEnsure==='function')?weatherCoreEnsure():null;
   if(!core)return null;
-  if(!fogGpuTex||!fogGpuTexPrev||fogGpuN!==core.N||fogGpuLastSeed!==(core.seed|0))fogGpuUpload(core);
-  return core;
+  if(!fogGpuTex||!fogGpuTexPrev||fogGpuN!==core.N||fogGpuLastSeed!==(core.seed|0))fogGpuUpload(core);return core;
 }
