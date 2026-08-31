@@ -5,5 +5,5 @@ Fix: tectonic relief is now globally enabled whenever the Tectonics control is a
 Regression: tectonic-morphology.test.js now forbids reintroducing a fixed abs(belt.x)>0.004 spatial gate and requires the continuous signed-belt path.
 Validation: confirm visible stamp v0.5.85. On a seed where the artefact is obvious, zoom close and sweep Tectonics from minimum to maximum. Mountain relief should strengthen, but a thin smooth contour surrounding the tectonic region should no longer appear or darken with the slider.
 Retained: 0.5.84 tablet cadence/adaptive-resolution work and cheaper tectonic detail; 0.5.83 live FPS/T/star/AU HUD; 0.5.82 no grey Arctic lens; 0.5.81 opaque cryosphere phase logic; 0.5.80 gradual/irreversible volatile loss; 0.5.79 uncapped hot equilibrium; 0.5.78 phase/biology gating.
-Snapshots: snapshot/0.5.84 remains the rollback point before this targeted contour fix. Create snapshot/0.5.85 only after the release head passes CI.
+Snapshots: snapshot/0.5.85 was created from the green 0.5.85 code/test head after the contour fix. snapshot/0.5.84 remains the rollback point before this targeted change; older snapshots remain retained.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
