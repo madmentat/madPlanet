@@ -28,8 +28,8 @@ for(const build of [sh,ps]){
     'surface-only tectonic pigment guard must end immediately after surface.glsl');
 }
 assert.match(extreme,/EXTREME_CLIMATE_MAX_K=2200/,'the accidental 900 K climate ceiling must stay retired');
-assert.match(extreme,/stellarHeavyAtmosRetentionTarget/);
-assert.match(extreme,/stellarWaterRetentionTarget/);
+assert.match(extreme,/stellarHeavyAtmosRetention/);
+assert.match(extreme,/stellarWaterRetention/);
 assert.match(extreme,/escaped volatiles never grow back/,'volatile loss must be irreversible inside one world history');
 assert.match(extreme,/escapeKMS/,'retention target must depend on escape velocity');
 assert.match(extreme,/ageGyr/,'retention target must integrate exposure over planet age');
@@ -124,7 +124,14 @@ assert.ok(cctx.cryoGpuVisualCoverage(0.35,0.80,true)<0.05,'the same concentratio
 const n0=cctx.cryoGpuEdgeNoise(123,0,20,20,64),n1=cctx.cryoGpuEdgeNoise(123,0,21,20,64);
 assert.ok(n0>=0&&n0<=1&&n1>=0&&n1<=1&&Math.abs(n0-n1)<0.5,'3-D ice field should be bounded and spatially coherent');
 
-assert.match(surfPre,/#define gSeamNear mix\(/,'surface pigment must no longer read exact one-pixel tectonic seam distance');
-assert.match(surfPost,/#undef gSeamNear/,'tectonic pigment macro must not leak beyond surface shading');
+/* 0.5.88: the old 0.5.80 mount-derived gSeamNear macro became the artifact.
+   Real nearest/second-nearest plate seams are now safe and must reach surface
+   shading unchanged; only the unrelated cryosphere texture wrapper remains. */
+assert.doesNotMatch(surfPre,/#define\s+gSeamNear\b/,
+  'surface prelude must not manufacture tectonic contour lines from mount');
+assert.doesNotMatch(surfPost,/#undef\s+gSeamNear\b/,
+  'postlude must not treat the real terrain seam global as a temporary macro');
+assert.match(surfPre,/#define\s+texture\(TEX,COORD\)\s+cryoSurfaceTextureAA/,
+  'cryosphere material-edge wrapper must remain after retiring the seam macro');
 
 console.log('extreme-orbit-regressions.test.js: OK');
