@@ -72,13 +72,16 @@ assert.match(surface,/inlandLiquid = [^;]*\*hotLiquidGate/,'inland liquid water 
 assert.match(surface,/alb = mix\(alb, inlandIce, frozenRv\*0\.96\)/,'inland ice colour must use the spatial frozen fraction');
 assert.match(surface,/inlandLiquid\*land\*0\.40/,'only liquid inland water may retain liquid-water specular');
 
-/* Ocean pack ice stays physically gated near freezing. The local deep-cold
-   floor only repairs the sub-grid coastline mismatch, and shore bias still
-   vanishes at zero/complete effective cover. */
+/* Ocean bathymetry still exists for shallow/deep colour and dry-basin phase
+   rendering, but ice opacity itself is now deliberately binary. A previous
+   shore-bias path multiplied partial pack-ice concentration back into opacity
+   and recreated the grey Arctic disc that the hard cryosphere map had already
+   eliminated. */
+assert.match(surface,/float depth = clamp\(dRaw\*46\.0, 0\.0, 1\.0\)/,'ocean rendering must retain explicit bathymetric depth');
 assert.match(surface,/float seaCover=max\(seaIcePhys,deepColdIce\)/,'effective sea cover must combine physical ice with deep-cold sub-grid closure');
-assert.match(surface,/float coastalShallow = 1\.0-ss\(0\.03,0\.24,depth\)/,'ocean edge morphology needs a bathymetric shallow-water proxy');
-assert.match(surface,/float seaTransition = 4\.0\*seaCover\*\(1\.0-seaCover\)/,'shore bias must vanish at zero and complete effective sea-ice cover');
-assert.match(surface,/float shoreBiasedSea = clamp\(seaCover \+ \(coastalShallow-0\.38\)\*0\.22\*seaTransition/,'partial pack ice should preferentially occupy shallow coastal water');
+assert.match(surface,/float ice=seaCover/,'surface sea-ice opacity must stay binary after cryosphere spatial resolution');
+assert.doesNotMatch(surface,/shoreBiasedSea\*iceMicro/,'bathymetry must not be converted back into fractional ice opacity');
+assert.match(surface,/if\(ice > 0\.5\)\{[\s\S]*?oc = iceCol;/,'covered ocean samples must receive solid ice colour');
 assert.match(surface,/oc=mix\(dryBed,oc,hotLiquidGate\)/,'hot ocean geometry must render a dry basin rather than blue liquid');
 
 /* Hydrology noise is moved before biome colour and reused later. Do not pay
