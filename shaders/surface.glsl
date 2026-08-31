@@ -4,17 +4,30 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec3 atmC = atmoColor();
   float ridge, mount, lee;
   float h = terrain(n0, ridge, mount, lee);
+  /* terrain() also publishes tectonic display diagnostics through globals.
+     Finite-difference normal samples below call terrain() again at neighbouring
+     directions, so snapshot the centre point now. Using the last offset sample
+     for volcanism/plate display was one remaining source of thin dark seams. */
+  float seamNearCenter = gSeamNear;
+  float seamConvCenter = gSeamConv;
+  vec3 plateTintCenter = gPlateTint;
   vec3 sN = uRotS*n0;
   vec4 cryoTex = texture(uCryosphereTex, normalize(sN));
   float landCryoPhys = mix(cryoTex.r, cryoTex.b, uCryosphereBlend);
   float seaIcePhys = mix(cryoTex.g, cryoTex.a, uCryosphereBlend);
-  /* 0.5.66: B/A of the existing double-buffered fog/weather texture carry
-     coarse physical soil wetness and Weather Core surface temperature. 0.5.67
-     deliberately treats these as a broad envelope only: direct thresholding
-     of the low-resolution cubemap painted its cubed-sphere cells onto biomes. */
+  /* 0.5.78: A keeps near-Earth precision but also carries real extreme cold
+     and heat. fog-gpu reserves 0..0.05 for 80..180 K, 0.05..0.90 for the
+     high-precision 180..380 K band, and 0.90..1 for 380..1000 K. */
   vec4 surfaceWx = physicalFogSample(n0);
   float soilMoistPhys = clamp(surfaceWx.b,0.0,1.0);
-  float surfaceK = mix(180.0,380.0,clamp(surfaceWx.a,0.0,1.0));
+  float tempCode = clamp(surfaceWx.a,0.0,1.0);
+  float surfaceK;
+  if(tempCode < 0.05)
+    surfaceK = mix(80.0,180.0,tempCode/0.05);
+  else if(tempCode < 0.90)
+    surfaceK = mix(180.0,380.0,(tempCode-0.05)/0.85);
+  else
+    surfaceK = mix(380.0,1000.0,(tempCode-0.90)/0.10);
 
   /* нормали по конечным разностям (только у суши/мелководья) */
   vec3 nS = n0;
@@ -96,14 +109,31 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float lowlandWet = coastal*coastal*(0.30+0.70*soilMoistPhys);
   float hydroWet = clamp(max(floodplain*0.92,lakeMargin*0.82)+0.18*lowlandWet,0.0,1.0);
 
-  /* 0.5.69: water availability is only potential habitability. A wet river
-     valley cannot remain summer-green at -40 C just because soil moisture is
-     high. Reuse the fine ecological field as a few-kelvin perturbation so the
-     low-resolution thermal cubemap still cannot print square cold boundaries. */
+  /* 0.5.78: biology needs BOTH a cold and hot limit. The old bioThermal only
+     rose above freezing and never fell again, so 900 K was treated as fully
+     biologically active. Keep a generous upper envelope: stress starts around
+     35 C and visible terrestrial vegetation is gone by about 60 C. */
   float ecologyK = surfaceK + (ecoPatch-0.5)*5.0;
-  float bioThermal = ss(268.0,285.0,ecologyK);
-  float coldStress = 1.0-bioThermal;
+  float bioCold = ss(268.0,285.0,ecologyK);
+  float bioHeat = 1.0-ss(308.0,333.0,ecologyK);
+  float bioThermal = bioCold*bioHeat;
+  float coldStress = 1.0-bioCold;
+  float heatSterile = 1.0-bioHeat;
   float deepFreeze = 1.0-ss(245.0,265.0,ecologyK);
+
+  /* Approximate pressure-dependent surface boiling using Clausius-Clapeyron.
+     state.atmo maps to about 0.10..1.65 Earth atmosphere columns. Above the
+     647 K critical region no ordinary liquid-water surface exists regardless
+     of pressure, so the second factor is a hard thermodynamic backstop. */
+  float pAtm = max(0.03,0.10+1.55*uAtmo);
+  float boilDen = 1.0/373.15 - 0.0002042*log(pAtm);
+  float boilK = clamp(1.0/max(0.001,boilDen),285.0,620.0);
+  float hotLiquidGate = (1.0-ss(boilK-4.0,boilK+14.0,ecologyK))
+                      * (1.0-ss(635.0,647.0,ecologyK));
+  /* This local thermal closure also covers sub-grid bays where the coarse
+     cryosphere cubemap and procedural coastline disagree by one physics cell. */
+  float deepColdIce = 1.0-ss(258.15,271.35,ecologyK);
+  hydroWet *= mix(0.08,1.0,hotLiquidGate);
 
   /* Static climate says what biome can exist here. Low-resolution physical
      soil water only bends that potential up/down; local ecological texture and
@@ -141,6 +171,13 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float frostWet=max(soilMoistPhys,hydroWet);
   float frostVeil=deepFreeze*ss(0.10,0.62,frostWet)*land;
   alb=mix(alb,FROST,frostVeil*(0.50+0.26*deepFreeze));
+
+  /* The hot limit is not drought. Above biological tolerance the living
+     palette must disappear even if the coarse soil-water channel still holds
+     old moisture. Extreme heat exposes mineral/rock colours instead. */
+  vec3 heatGround=mix(DRYSOIL,mix(REDR,ROCK,0.58),ss(340.0,520.0,ecologyK));
+  heatGround*=mix(1.0,0.72,ss(600.0,900.0,ecologyK));
+  alb=mix(alb,heatGround,heatSterile*land);
 
   /* Drought progression is not one brown overlay. Mild stress yellows living
      cover, stronger stress exposes dull soil, and only hot prolonged extreme
@@ -241,10 +278,11 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     float lakeInterior = ss(lth+0.045,lth+0.16,lakeN);
     float lakeFreezeLo = mix(272.2,268.5,lakeInterior);
     float lakeFreezeHi = mix(273.9,271.8,lakeInterior);
-    float lakeFreeze = 1.0-ss(lakeFreezeLo,lakeFreezeHi,ecologyK);
-    float riverFreeze = 1.0-ss(268.8,272.2,ecologyK);
+    float lakeFreeze = max(deepColdIce,1.0-ss(lakeFreezeLo,lakeFreezeHi,ecologyK));
+    float riverFreeze = max(deepColdIce,1.0-ss(268.8,272.2,ecologyK));
     float frozenRv = clamp(lakeM*lakeFreeze + riverM*riverFreeze,0.0,1.0);
-    inlandLiquid = clamp(lakeM*(1.0-lakeFreeze) + riverM*(1.0-riverFreeze),0.0,1.0);
+    inlandLiquid = clamp(lakeM*(1.0-lakeFreeze) + riverM*(1.0-riverFreeze),0.0,1.0)*hotLiquidGate;
+    rv = clamp(frozenRv+inlandLiquid,0.0,1.0);
     inlandFreeze = (rv>1.0e-4) ? clamp(frozenRv/rv,0.0,1.0) : 0.0;
 
     vec3 inlandWater=mix(vec3(0.022,0.062,0.090), vec3(0.045,0.135,0.155), ss(0.30,0.85,temp));
@@ -263,10 +301,14 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
      layer; emissive lava is added later in lighting space as before. */
   float volc = 0.0;
   if(uVolcano > 0.01){
-    float arc = 1.0 - ss(0.008, 0.075, gSeamNear);
+    /* Do not ink an entire tectonic boundary black. Real volcanic arcs are
+       clustered/segmented; combine the continuous centre-point seam field with
+       a broad independent province mask before the small vent mask. */
+    float arc = 1.0 - ss(0.012, 0.105, seamNearCenter);
+    float arcPatch = ss(0.46,0.67,0.5+0.5*fbm(sN*7.2+uSeedS*3.8+vec3(193.0,47.0,311.0),3));
     float hotspot = ss(0.575, 0.655, 0.5+0.5*fbm(sN*3.3+uSeedS*4.1+vec3(521.0,19.0,67.0),3));
     float vents = ss(0.520, 0.600, 0.5+0.5*fbm(sN*44.0+uSeedS*2.9+vec3(83.0,151.0,7.0),3));
-    volc = clamp((arc*1.05 + hotspot*0.85)*vents*uVolcano*1.35, 0.0, 1.0);
+    volc = clamp((arc*0.58*arcPatch + hotspot*0.85)*vents*uVolcano*1.35, 0.0, 1.0);
     alb = mix(alb, vec3(0.052,0.048,0.047), volc*0.88*land);
   }
 
@@ -280,18 +322,26 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float chop = 1.0-ss(1.5,3.0,uCamDist);
   if(chop > 0.02)
     oc *= 1.0 + chop*0.13*fbm(sN*420.0 + vec3(uTime*0.35, 0.0, uTime*0.2), 3);
-  /* Physical sea-ice concentration still comes only from SST/latent heat. In
-     partially frozen cells, redistribute the visual edge slightly toward
-     shallow coastal water; the 4*f*(1-f) factor makes this exactly zero when
-     physical coverage is either 0 or 1, so shoreline bias cannot invent ice. */
+
+  /* Above the pressure-dependent boiling region, exposed blue ocean is not a
+     valid surface phase. Show the mineral basin instead; at >647 K ordinary
+     liquid water is impossible even before considering evaporation history. */
+  vec3 dryBedShallow=mix(vec3(0.28,0.22,0.15),vec3(0.21,0.15,0.11),ss(0.25,0.85,rocky));
+  vec3 dryBed=mix(dryBedShallow,vec3(0.10,0.085,0.075),ss(0.15,0.85,depth));
+  oc=mix(dryBed,oc,hotLiquidGate);
+
+  /* Physical sea ice remains authoritative near the freezing point. Deep cold
+     adds a local thermal floor so sub-grid bays cannot leak blue water merely
+     because the coarse cubemap labels the neighbouring cell as land. */
+  float seaCover=max(seaIcePhys,deepColdIce);
   float coastalShallow = 1.0-ss(0.03,0.24,depth);
-  float seaTransition = 4.0*seaIcePhys*(1.0-seaIcePhys);
-  float shoreBiasedSea = clamp(seaIcePhys + (coastalShallow-0.38)*0.22*seaTransition,0.0,1.0);
+  float seaTransition = 4.0*seaCover*(1.0-seaCover);
+  float shoreBiasedSea = clamp(seaCover + (coastalShallow-0.38)*0.22*seaTransition,0.0,1.0);
   float iceMicro = 0.92 + 0.08*(0.5+0.5*fbm(sN*18.0+uSeedS+vec3(3.0),2));
-  float ice = clamp(shoreBiasedSea*iceMicro,0.0,1.0);
+  float ice = max(deepColdIce,clamp(shoreBiasedSea*iceMicro,0.0,1.0));
   if(ice > 0.01){
     vec3 iceCol = vec3(0.80,0.86,0.92)*(0.86+0.24*(0.5+0.5*fbm(sN*30.0+uSeedS,2)));
-    oc = mix(oc, iceCol, ice*0.95);
+    oc = mix(oc, iceCol, ice);
   }
   vec3 albF = mix(oc, alb, land);
 
@@ -326,8 +376,8 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec3 sunC = uStarCol * 1.25 * clamp(0.34 + 0.66*sqrt(max(uStarFlux,0.0)), 0.22, 1.65);
   vec3 col = albF * dif * shad * sunC;
 
-  /* блик солнца на воде */
-  float waterM = max((1.0-land)*(1.0-ice), inlandLiquid*land*0.40);
+  /* блик солнца только на действительно жидкой воде */
+  float waterM = max((1.0-land)*(1.0-ice)*hotLiquidGate, inlandLiquid*land*0.40);
   if(waterM > 0.01){
     vec3 hv = normalize(uSunDir - rd);
     float cosH = max(dot(nS, hv), 0.0);
@@ -345,7 +395,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
 
   /* ночь: огни городов */
   float nightF = 1.0 - dayF;
-  if(nightF > 0.01 && uCity > 0.01 && land > 0.01){
+  if(nightF > 0.01 && uCity > 0.01 && land > 0.01 && bioThermal > 0.01){
     float pop = 0.5+0.5*fbm(sN*9.0 + uSeedS*2.7 + vec3(41.0), 4);
     float th = mix(0.66, 0.42, uCity);
     float gate = ss(th, th+0.26, pop);
@@ -364,7 +414,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
       }
       float quarters = clamp(0.55 + 0.9*fbm(sN*mix(16.0, 85.0, fine) + uSeedS*4.3, 3), 0.15, 1.6);
       float urban = clamp(gate*habit*quarters*(0.30 + 1.0*web), 0.0, 1.0);
-      float mask = land*(1.0-snowM)*(1.0 - ss(0.02, 0.22, volc));
+      float mask = land*(1.0-snowM)*(1.0 - ss(0.02, 0.22, volc))*bioThermal;
       vec3 pts = vec3(0.0);
       float limb = 1.0-abs(dot(n0,-rd));
       float twA = 0.04 + 0.11*limb;
@@ -411,9 +461,9 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   /* ---- схема литосферных плит ---- */
   if(uPlatesOn > 0.5){
     float w = max(tHit*uPixA*1.4, 0.0022);
-    float line = 1.0 - ss(w*0.7, w*2.2, gSeamNear);
-    vec3 lc = (gSeamConv > 0.0) ? vec3(1.00,0.36,0.18) : vec3(0.28,0.72,1.00);
-    vec3 tint = mix(vec3(dot(gPlateTint, vec3(0.33))), gPlateTint, 0.75);
+    float line = 1.0 - ss(w*0.7, w*2.2, seamNearCenter);
+    vec3 lc = (seamConvCenter > 0.0) ? vec3(1.00,0.36,0.18) : vec3(0.28,0.72,1.00);
+    vec3 tint = mix(vec3(dot(plateTintCenter, vec3(0.33))), plateTintCenter, 0.75);
     col = mix(col, tint*0.62 + 0.12, 0.13);
     col = mix(col, lc, line*0.92);
   }
