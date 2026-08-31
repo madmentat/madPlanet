@@ -34,16 +34,22 @@ assert.match(surface,/bioThermal > 0\.01/,
   'city lights must disappear with the thermal biosphere');
 
 /* Liquid water must respect both boiling/critical temperature and deep freeze.
-   The local cold floor deliberately supplements the coarse cryosphere cubemap
-   so a one-cell coast mismatch cannot expose blue water at -160 C. */
+   The emergency local cold closure supplements the coarse cryosphere cubemap
+   only at genuinely deep cold. It must be binary: a smooth 0..1 temperature
+   mask used as opacity creates a fake translucent Arctic disc. */
 assert.match(surface,/float boilK = clamp/);
 assert.match(surface,/1\.0-ss\(635\.0,647\.0,ecologyK\)/,
   'critical water temperature backstop missing');
-assert.match(surface,/float deepColdIce = 1\.0-ss\(258\.15,271\.35,ecologyK\)/);
+assert.match(surface,/float deepColdIce = \(ecologyK < 258\.15\) \? 1\.0 : 0\.0;/,
+  'deep-cold fallback must be a binary phase closure');
+assert.doesNotMatch(surface,/deepColdIce\s*=\s*1\.0-ss\(/,
+  'deep-cold fallback must not become fractional optical opacity');
 assert.match(surface,/inlandLiquid = [^;]*\*hotLiquidGate/,
   'hot inland lakes/rivers must not stay liquid');
 assert.match(surface,/float seaCover=max\(seaIcePhys,deepColdIce\)/,
   'deep-cold local phase closure must cover sub-grid bays');
+assert.match(surface,/float ice=seaCover/,
+  'resolved ocean ice must stay binary in the surface shader');
 assert.match(surface,/oc=mix\(dryBed,oc,hotLiquidGate\)/,
   'superheated ocean basins must stop rendering as blue liquid');
 assert.match(surface,/\(1\.0-land\)\*\(1\.0-ice\)\*hotLiquidGate/,
