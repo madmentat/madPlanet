@@ -33,7 +33,9 @@ $(cat "$DIR/shaders/atmosphere.glsl")
 $(cat "$DIR/shaders/rings.glsl")
 $(cat "$DIR/shaders/fog.glsl")
 $(cat "$DIR/shaders/lightning.glsl")
+$(cat "$DIR/shaders/surface-artifact-prelude.glsl")
 $(cat "$DIR/shaders/surface.glsl")
+$(cat "$DIR/shaders/surface-artifact-postlude.glsl")
 $(cat "$DIR/shaders/sphere.glsl")
 $(cat "$DIR/shaders/main.glsl")"
 COMPAT_FRAG="#version 300 es
