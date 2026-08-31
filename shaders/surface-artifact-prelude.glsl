@@ -1,23 +1,25 @@
-/* 0.5.80 / 0.5.83 surface-only guards.
-   0.5.80: surface.glsl used the exact tectonic seam distance as a pigment mask
-   for volcanic vents. On a smooth hot barren world that became a one-pixel
-   dotted arc drawn across the globe. During surface shading only, replace the
-   seam read with a broad orographic support derived from mount. terrain.glsl
-   itself was already parsed before this macro and keeps the real tectonic
-   geometry.
+/* Surface-only guards.
+   0.5.83: the cryosphere display texture is LINEAR-filtered so its reconstructed
+   cubemap does not expose every texel as a square staircase. This helper turns
+   the filtered scalar field back into a material boundary with roughly one
+   pixel of screen-space antialiasing. Fractional values here are raster edge
+   coverage, not kilometres of semi-transparent ice.
 
-   0.5.83: the cryosphere display texture is now LINEAR-filtered again so its
-   5x/4x reconstruction cannot expose every texel as a square staircase. This
-   helper converts the filtered scalar field into a material boundary with a
-   screen-space anti-alias only about one pixel wide. The fractional values are
-   therefore edge coverage for rasterisation, not semi-transparent kilometres
-   of ice. Define the texture macro only after the helper so its own built-in
-   texture() call is not recursively rewritten. surface.glsl has exactly one
-   direct texture() call here: uCryosphereTex. */
+   0.5.88: IMPORTANT — do not redefine gSeamNear here. A legacy 0.5.80
+   workaround replaced the real tectonic seam with a function of mount while
+   surface.glsl was being preprocessed. After 0.5.86 terrain.glsl already
+   publishes the true nearest/second-nearest weighted-Voronoi boundary, but the
+   old macro silently discarded it inside surface shading. That manufactured
+   smooth mount contours which could cross a single displayed plate and were
+   then reused by both volcanism and the Plates diagnostic. The real terrain
+   global must now pass through untouched.
+
+   Define the texture macro only after the helper so its own built-in texture()
+   call is not recursively rewritten. surface.glsl has one direct cryosphere
+   texture() read which this wrapper intentionally intercepts. */
 vec4 cryoSurfaceTextureAA(samplerCube tex, vec3 dir){
   vec4 q=texture(tex,dir);
   vec4 w=max(fwidth(q)*0.72,vec4(0.0035));
   return smoothstep(vec4(0.5)-w,vec4(0.5)+w,q);
 }
 #define texture(TEX,COORD) cryoSurfaceTextureAA(TEX,COORD)
-#define gSeamNear mix(0.145,0.052,ss(0.010,0.095,mount))
