@@ -27,13 +27,13 @@ assert.match(extreme,/stellarWaterRetention/);
 assert.match(extreme,/escapeKMS/,'volatile retention must depend on escape velocity');
 assert.match(extreme,/ageGyr/,'volatile retention must integrate exposure over planet age');
 
-/* Exercise the evolutionary proxy without loading the browser app. */
+/* Exercise the evolutionary proxy without loading the browser app. Keep the
+   changing fixture values in an explicit object captured by arrow functions;
+   host-created object methods use host `this` semantics inside vm.Context and
+   are not a reliable way to mutate a synthetic global between assertions. */
 const ectx={
   console,Math,Number,
-  state:{distance:0.5,waterTotal:0.5,atmo:0.6},
-  currentS:1,currentAge:4.54,currentEscape:11.186,
-  distanceInfo(){return {S:this.currentS};},
-  planetPhysics(){return {ageGyr:this.currentAge,escapeKMS:this.currentEscape,gravityEarth:1};},
+  state:{distance:1,waterTotal:0.5,atmo:0.6,ageTest:4.54,escapeTest:11.186},
   GAS_KEYS:['gasN2','gasO2','gasH2O','gasCO2','gasSO2','gasCH4','gasHHe'],
   WATER_EOW_TO_ATM_INV:261.3,EARTH_ATM_BAR:1.01325,
   atmosphereGravityEarth(){return 1;},
@@ -45,13 +45,15 @@ const ectx={
   climateWaterAvailability(x){return Math.max(0,Math.min(1,x));},
   climateIceArea(){return 0;},
   climateClassify(){return 'temperate';},climateRegimeLabel(){return 'умеренный';},
-  climateModel(){return {T:900,C:626.85,S:this.currentS,A:0.30,tau:0,pressureBar:1,waterEow:1,waterAvail:1,iceArea:0,ASR:0,OLR:0};},
   settleWaterEquilibriumImmediate(){return null;}
 };
+ectx.distanceInfo=()=>({S:ectx.state.distance});
+ectx.planetPhysics=()=>({ageGyr:ectx.state.ageTest,escapeKMS:ectx.state.escapeTest,gravityEarth:1});
+ectx.climateModel=()=>({T:900,C:626.85,S:ectx.state.distance,A:0.30,tau:0,pressureBar:1,waterEow:1,waterAvail:1,iceArea:0,ASR:0,OLR:0});
 vm.createContext(ectx);vm.runInContext(extreme,ectx,{filename:'extreme-orbit-physics.js'});
 assert.ok(ectx.stellarHeavyAtmosRetention()>0.999,'Earth-flux heavy atmosphere should not be erased');
 assert.ok(ectx.stellarWaterRetention()>0.999,'Earth-flux water should not be erased');
-ectx.currentS=233.68;ectx.currentAge=6.6;ectx.currentEscape=11.186;
+ectx.state.distance=233.68;ectx.state.ageTest=6.6;ectx.state.escapeTest=11.186;
 const er=ectx.extremeOrbitDiagnostics();
 assert.ok(er.atmosphereRetention<0.01,'old Earth-gravity world at ~234 Searth should be strongly volatile-depleted');
 assert.ok(er.waterRetention<1e-4,'old Earth-gravity world at ~234 Searth should not keep an Earth ocean');
@@ -61,13 +63,12 @@ assert.ok(ectx.waterTotalEowFromSlider(0.5)<1e-4,'water budget must consume reta
 
 /* A major BASE-forcing jump rebuilds weather once; ordinary tuning does not. */
 const wctx={console,Math,Number,state:{seed:7},
-  climate:{T:288,S:1,pressureBar:1},
-  weatherCore:{id:1},nextId:1,
-  weatherCoreEnsure(){return this.weatherCore;},
-  weatherCoreClimateSnapshot(){return {...this.climate};},
-  weatherCoreRequestedResolution(){return 32;},weatherCoreAxis(){return [0,1,0];},
-  weatherCoreCreate(){return {id:++this.nextId};}
-};
+  climate:{T:288,S:1,pressureBar:1},weatherCore:{id:1},nextId:1};
+wctx.weatherCoreEnsure=()=>wctx.weatherCore;
+wctx.weatherCoreClimateSnapshot=()=>({...wctx.climate});
+wctx.weatherCoreRequestedResolution=()=>32;
+wctx.weatherCoreAxis=()=>[0,1,0];
+wctx.weatherCoreCreate=()=>({id:++wctx.nextId});
 vm.createContext(wctx);vm.runInContext(rebase,wctx,{filename:'weather-regime-rebase.js'});
 const a=wctx.weatherCoreEnsure();
 wctx.climate={T:300,S:1.1,pressureBar:0.9};
