@@ -17,29 +17,17 @@ float continentH(vec3 dir){
 }
 
 /* ---------- тектоника ----------
-   Раньше горы были ridged-шумом, размазанным по всей суше широкими поясами:
-   выходили случайные бугры без направления. Теперь рельеф рождается там,
-   где ему и положено, — на швах между плитами.
-
-   Плиты заданы мозаикой Вороного, у каждой свой вектор Эйлера, так что
-   скорость её точки равна w x r. На шве берётся относительная скорость
-   соседей вдоль нормали к шву: сходятся — растёт хребет, расходятся —
-   проседает рифт. Отсюда протяжённые цепи с осью и подветренной стороной.
-
-   Возвращает: x — знаковая сила пояса (>0 сжатие, <0 растяжение),
-               y — расстояние до шва,
-               z — дождевая тень: хребет с наветренной стороны. */
-/* Данные для схемы плит: расстояние до ближайшего шва, знак движения на нём
-   и цвет ячейки. Пишутся попутно, отдельного прохода не требуют. */
+   Плиты по-прежнему задают крупный каркас орогенеза, но их аналитическая
+   power-Voronoi граница больше не должна быть непосредственно видимой как
+   идеальная сферическая дуга. В 0.5.84 локальная координата каждого шва
+   дополнительно коробится уже ПОСЛЕ вычисления пары плит, то есть даже
+   остаточная математическая дуга не может пережить domain warp как ровная
+   траншея/полоса. Расходящиеся границы стали шире, мельче и прерывистее;
+   сходящиеся больше не рисуют обязательную параллельную тёмную траншею на
+   любой поверхности. */
 float gSeamNear, gSeamConv;
 vec3  gPlateTint;
 
-/* 0.5.76: a hard min() is continuous in value but has a derivative kink where
-   the identity of the nearest plate changes. terrain() is sampled several
-   times for finite-difference normals, so that kink can become a one-pixel
-   black/white arc even when the plate overlay is disabled. This polynomial
-   smooth-min is C1 at the blend boundary and costs no exp/log. The hard
-   nearest plate remains only for diagnostic plate tint, never for relief. */
 float tectonicSmoothMin(float a,float b){
   const float k=0.12;
   float h=max(k-abs(a-b),0.0)/k;
@@ -47,39 +35,19 @@ float tectonicSmoothMin(float a,float b){
 }
 
 vec3 tectonicBelt(vec3 sN){
-  /* Мозаика Вороного сама по себе даёт границы-дуги — ровные и оттого
-     мёртвые. У настоящих плит швы ломаные, со сдвигами по трансформным
-     разломам, поэтому коробится сама точка, по которой ищутся плиты:
-     крупные октавы гнут границу целиком, мелкие дают зазубрины. Смещение
-     задаётся тремя компонентами, а не в касательной рамке: любая рамка от
-     фиксированной оси вырождается на её полюсах, и оттуда веером расходятся
-     разрывы. Радиальную часть смещения убирает normalize. */
   vec3 wv = vec3(fbm(sN*1.9 + uSeedS*1.9 + vec3(59.0,13.0,101.0), 3),
                  fbm(sN*1.9 + uSeedS*1.9 + vec3(163.0,71.0,29.0), 3),
                  fbm(sN*1.9 + uSeedS*1.9 + vec3(233.0,37.0,89.0), 3));
-  /* Второй масштаб — мелкие изломы. Без него шов гнулся плавной дугой и
-     хребет читался как ровно вытянутая насыпь; настоящая цепь виляет и на
-     масштабе отдельных отрогов. */
   vec3 wv2 = vec3(noise3(sN*7.5 + uSeedS*2.6 + vec3(17.0)),
                   noise3(sN*7.5 + uSeedS*2.6 + vec3(83.0)),
                   noise3(sN*7.5 + uSeedS*2.6 + vec3(149.0)));
-  sN = normalize(sN + wv*0.26 + wv2*0.045);
+  sN = normalize(sN + wv*0.28 + wv2*0.060);
 
-  /* Ширина пояса меняется дважды. Крупный масштаб задаёт регионы: где-то
-     орогенез вялый и остаётся узкая гряда, где-то целая область смятия.
-     Мелкий рвёт цепь на отрезки разной толщины. Дальше к этому добавится
-     зависимость от силы столкновения самой пары плит. */
   float orogN = 0.5 + 0.5*fbm(sN*1.15 + uSeedS*3.1 + vec3(311.0,43.0,7.0), 2);
   float seg   = 0.5 + 0.5*fbm(sN*2.6 + uSeedS*2.7 + vec3(211.0,17.0,53.0), 3);
-  float bw = 0.070*(0.45 + 1.15*seg)*(0.60 + 1.15*orogN);
+  float bw = 0.073*(0.45 + 1.15*seg)*(0.60 + 1.15*orogN);
   vec3 windS = normalize(cross(uRotS*uAxis, sN) + vec3(1e-6));
 
-  /* Вклад считается по всем парам плит сразу, а не по выбранной паре
-     «ближайший + второй». 0.5.76 также убирает последний скрытый hard-min из
-     весов: прежде dmin входил в REACH/fade и потому его излом НЕ сокращался
-     нормировкой num/den. */
-  /* uPlateP[i].w — «вес» плиты. С ним мозаика превращается из обычной
-     Вороного в степенную: ячейки получаются очень разного размера. */
   float dmin = 1e9;
   float dRef = -dot(sN, uPlateP[0].xyz) - uPlateP[0].w;
   vec3 nearSite = uPlateP[0].xyz;
@@ -88,19 +56,17 @@ vec3 tectonicBelt(vec3 sN){
     if(i>0) dRef=tectonicSmoothMin(dRef,d);
     if(d < dmin){ dmin = d; nearSite = uPlateP[i].xyz; }
   }
-  /* Hard nearest identity is diagnostic only. */
   gPlateTint = fract(nearSite*vec3(13.71, 7.39, 21.17) + 0.5);
   gSeamNear = 1e9; gSeamConv = 0.0;
+
   const float REACH = 0.62;
   float num = 0.0, den = 1e-6, leeNum = 0.0, seamNum = 0.0;
-  /* 0.5.77: gSeamNear used to choose one pair with
-       if(seam < gSeamNear)
-     even though the physical relief itself was already a smooth sum. That hard
-     identity leaked into volcanic colouring (and into finite-difference calls
-     that overwrite the global), producing the remaining isolated black/white
-     dotted arcs. Build the display seam from the same continuous pair field.
-     Polynomial falloff is used instead of another exp so terrain() stays cheap. */
   float seamVisNum=0.0, seamVisDen=1e-6, seamConvNum=0.0;
+  /* One broad breakup field is shared by all pairs. It is intentionally not a
+     latitude/screen/cubemap function, so a plate boundary cannot acquire a
+     globally coherent stripe direction. */
+  float ruptureField = clamp(0.52*seg + 0.28*orogN + 0.20*(0.5+0.5*wv2.z),0.0,1.0);
+  float rupture = 0.18 + 0.82*ss(0.26,0.66,ruptureField);
 
   for(int i=0;i<uPlateN;i++){
     vec3 pi = uPlateP[i].xyz;
@@ -115,34 +81,46 @@ vec3 tectonicBelt(vec3 sN){
 
       vec3 db = pj - pi;
       float base = max(length(db), 1e-4);
-      float seamS = (dj - di)/base;      /* знак: >0 — ближе плита i */
-      float seam = abs(seamS);
       vec3 dbT = db - sN*dot(db, sN);
       float dbTl = length(dbT);
       vec3 bdir = dbT/max(dbTl, 1e-4);
       float bValid = ss(0.06, 0.32, dbTl);
+
+      /* The raw weighted-Voronoi coordinate is an analytic spherical arc.
+         Displace that coordinate itself with the already-computed 3-D warp,
+         projected onto this particular pair's boundary normal. This costs no
+         extra noise calls in the O(N²) pair loop and destroys the exact arc. */
+      float seamS = (dj - di)/base;
+      float seamWarp = 0.052*dot(wv2,bdir) + 0.020*dot(wv,bdir);
+      seamS += seamWarp;
+      float seam = abs(seamS);
+
       float conv = dot(cross(uPlateW[i].xyz - uPlateW[j].xyz, sN), bdir)*bValid;
       float convC = clamp(conv*2.4, -1.0, 1.0);
-      float bwEff = bw*(0.62 + 1.05*abs(convC));
+      float bwEff = bw*(0.66 + 1.00*abs(convC));
       float sb = seam/bwEff;
       float band = exp(-sb*sb);
       float over = (uPlateP[i].w >= uPlateP[j].w) ? 1.0 : -1.0;
       float sS = seamS*over;
-      float su = (sS - 0.40*bwEff)/bwEff;
-      float st = (sS + 0.80*bwEff)/(bwEff*0.5);
+      float su = (sS - 0.36*bwEff)/bwEff;
       float arc = exp(-su*su);
-      float trench = exp(-st*st);
 
-      float side = clamp(seamS/0.03, -1.0, 1.0);
+      float side = clamp(seamS/0.04, -1.0, 1.0);
       float lee = max(conv, 0.0) * ss(0.10, 0.70, dot(bdir*side, -windS))
-                * exp(-seam/0.085);
+                * exp(-seam/0.095) * rupture;
 
-      float seamVisW=wgt*(1.0-ss(0.018,0.115,seam));
+      float seamVisW=wgt*(1.0-ss(0.018,0.125,seam))*rupture;
       seamVisNum+=seamVisW*seam;
       seamConvNum+=seamVisW*convC;
       seamVisDen+=seamVisW;
 
-      float contrib = (convC > 0.0) ? convC*(arc - 0.62*trench) : convC*band;
+      /* Convergence makes an uplift belt; do not engrave a compulsory dark
+         parallel trench across continents. Divergent rifts remain possible,
+         but are deliberately shallow/broken rather than a planet-spanning
+         mathematically perfect groove. */
+      float contrib = (convC > 0.0)
+        ? convC*arc*(0.56+0.44*rupture)
+        : convC*band*(0.16+0.44*rupture);
       num    += wgt*contrib;
       leeNum += wgt*lee;
       seamNum+= wgt*seam;
@@ -157,8 +135,7 @@ vec3 tectonicBelt(vec3 sN){
 }
 
 /* rockOut  — «скалистость» 0..1 для альбедо и выбора текстуры.
-   mountOut — собственно орогенная прибавка к высоте: по ней считается
-   снеговая линия, поэтому плоскогорья снежных шапок не получают. */
+   mountOut — собственно орогенная прибавка к высоте. */
 float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut){
   vec3 sN = uRotS * dir;
   vec3 p = sN*contFreq() + uSeedS;
@@ -172,23 +149,37 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   float h = c*0.95 + uIsle*0.6*max(isl-0.22,0.0) - seaLvl();
   rockOut = 0.0;
   mountOut = 0.0;
-  vec3 belt = tectonicBelt(sN);
-  leeOut = belt.z;
+  leeOut = 0.0;
+
+  /* tectonicBelt() is one of the most expensive parts of terrain(): 9–12
+     plates imply dozens of candidate pairs, and surface normals sample
+     terrain several times per fragment. Do not pay that cost at all when
+     tectonic relief and the diagnostic plate overlay are both disabled. */
+  gSeamNear=1e9; gSeamConv=0.0; gPlateTint=vec3(0.5);
+  vec3 belt=vec3(0.0);
+  if(uTect > 0.01 || uPlatesOn > 0.5){
+    belt = tectonicBelt(sN);
+    if(uTect > 0.01) leeOut = belt.z;
+  }
+
   if(uTect > 0.01 && abs(belt.x) > 0.004){
     if(belt.x > 0.0){
-      /* 0.5.75: no periodic cos(distance_to_seam) folds. */
-      float peaks = ridged(sN*6.2 + uSeedS*1.9, 4);
-      float foldWarp = 0.5 + 0.5*fbm(sN*8.4 + uSeedS*2.7 + vec3(337.0,61.0,19.0), 3);
-      float foldA = ridged(sN*(9.5 + 4.0*foldWarp) + uSeedS*2.2 + vec3(97.0,13.0,251.0), 3);
-      float foldB = 0.5 + 0.5*fbm(sN*18.0 + uSeedS*3.4 + vec3(181.0,317.0,43.0), 2);
-      float folds = clamp(0.58*foldA + 0.42*foldB, 0.0, 1.0);
+      /* 0.5.84: replace the old 12-octave secondary ridge/fold stack with a
+         cheaper five-noise breakup. The plate field supplies macro-scale
+         placement; detail noise only roughens and fragments the mountain chain. */
+      float peaks = ridged(sN*6.6 + uSeedS*1.9, 3);
+      float foldA = 0.5 + 0.5*noise3(sN*13.5 + uSeedS*2.2 + vec3(97.0,13.0,251.0));
+      float foldB = 0.5 + 0.5*noise3(sN*27.0 + uSeedS*3.4 + vec3(181.0,317.0,43.0));
+      float folds = clamp(0.62*foldA + 0.38*foldB,0.0,1.0);
       float ramp = belt.x*belt.x;
-      mountOut = uTect * ramp * (0.34 + 0.66*peaks) * (0.72 + 0.28*folds) * 1.45;
-      rockOut = ramp * (0.28 + 0.72*peaks);
+      mountOut = uTect * ramp * (0.34 + 0.66*peaks) * (0.58 + 0.42*folds) * 1.38;
+      rockOut = ramp * (0.30 + 0.70*peaks);
       mountOut *= mix(0.40, 1.0, ss(-0.05, 0.03, h));
       h += mountOut;
     } else {
-      h -= uTect * belt.x*belt.x * 0.16;
+      /* Rifts are broad depressions, not ink lines. Most of their visual
+         structure is already in the warped/broken belt field above. */
+      h -= uTect * belt.x*belt.x * 0.075;
     }
   }
   if(h > -0.06) h += 0.02*fbm(sN*12.0+uSeedS,2);
@@ -204,4 +195,3 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
 }
 
 float iSphere(vec3 ro, vec3 rd, float r);   /* определена ниже */
-
