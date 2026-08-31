@@ -72,8 +72,8 @@ assert.match(terrainSrc, /vec3 tectonicBelt\(/, 'tectonic plate model missing');
 assert.ok(!/float belts = /.test(terrainSrc), 'the old smooth mountain-belt noise must not return');
 assert.match(terrainSrc, /uPlateW\[i\]\.xyz - uPlateW\[j\]\.xyz/, 'range/rift sign must come from relative plate motion');
 assert.match(terrainSrc, /sN = normalize\(sN \+ wv\*/, 'plate seams must be warped: straight Voronoi arcs read as artificial');
-assert.match(terrainSrc, /for\(int j=i\+1;j<uPlateN;j\+\+\)/, 'belt must sum over plate pairs, not a selected pair');
-assert.ok(!/else if\(d < d2\)/.test(terrainSrc), 'second-neighbour selection must not return');
+assert.match(terrainSrc, /for\(int j=i\+1;j<uPlateN;j\+\+\)/, 'belt must sum over plate pairs rather than hard-switching one physical pair');
+assert.match(terrainSrc, /float dmin = 1e9, dsecond = 1e9/, 'plate display must track the actual nearest two sites');
 assert.match(surface, /temp -= 2\.0\*mount;/, 'snow line must follow orogenic height, not total elevation');
 assert.match(surface, /float arid = /, 'desertification missing');
 assert.match(surface, /0\.22\*coastal\*coastal/, 'coastal greening must compete with aridity');
@@ -100,8 +100,10 @@ assert.match(surface, /float capEdge = /, 'polar cap edge must be perturbed at c
 assert.match(surface, /float steepBare = /, 'ridges must lose snow on steep faces');
 
 assert.match(terrainSrc, /uPlateP\[i\]\.w/, 'plates need a size weight: equal cells look artificial');
-assert.match(terrainSrc, /float seamVisW=wgt\*/, 'tectonic seam display must come from the continuous neighbour field');
-assert.ok(!/seam < gSeamNear/.test(terrainCode), 'hard single-pair seam selection recreates razor-thin Voronoi artifacts');
+assert.match(terrainSrc, /gSeamNear = max\(0\.0,\(dsecond-dmin\)\/diagBase\)/, 'plate seam display must coincide with the actual nearest-site colour boundary');
+assert.match(terrainSrc, /float pairCompetitive = exp\(-130\.0\*\(di\*di \+ dj\*dj\)\)/, 'non-neighbour plate pairs must not engrave ghost bisectors');
+assert.ok(!/seamVisW|seamVisNum|seamConvNum/.test(terrainCode), 'all-pair seam display recreates intersecting ghost plate lines');
+assert.ok(!/seam < gSeamNear/.test(terrainCode), 'hard single-pair relief selection recreates razor-thin Voronoi artifacts');
 assert.match(surface, /if\(uPlatesOn > 0\.5\)/, 'plate schematic overlay missing');
 assert.match(surface, /float volc = /, 'volcanism missing');
 assert.match(surface, /uLava > 0\.01/, 'lava glow missing');
