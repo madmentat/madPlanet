@@ -7,7 +7,7 @@
 
    This layer does not move physics onto render FPS. It keeps the fixed weather
    clock, but gives coarse-pointer/mobile devices the intended 32x32x6 grid and
-   asks the dynamic renderer to favour motion (~45-50 fps) over excess internal
+   asks the dynamic renderer to favour motion (~50-60 fps) over excess internal
    resolution. Resolution changes are suppressed while a finger/mouse is
    actively dragging, because reallocating the framebuffer during interaction
    itself feels like a hitch.
@@ -21,7 +21,7 @@
    ground/water.
 */
 
-const SMOOTH_MOBILE_FRAME_MS = 20.5; /* ~49 fps target before quality recovery */
+const SMOOTH_MOBILE_FRAME_MS = 18.0; /* ~56 fps target, with 60 Hz headroom */
 const SMOOTH_DESKTOP_FRAME_MS = 16.7;
 const SMOOTH_MOBILE_SCALE_MIN = deviceMemory <= 4 ? 0.62 : 0.70;
 
