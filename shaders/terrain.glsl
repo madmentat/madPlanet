@@ -28,7 +28,13 @@ float continentH(vec3 dir){
    bisectors can cross inside an unrelated plate, exactly matching the reported
    smooth intersecting arcs. The visible plate boundary is now derived from the
    first/second nearest weighted sites, while relief from every all-pair term is
-   smoothly attenuated unless BOTH members are locally competitive. */
+   smoothly attenuated unless BOTH members are locally competitive.
+
+   0.5.87 A/B: test Grok's stronger local-competition gate in isolation.
+   Raise exp(-130*...) to exp(-280*...) so remote plate pairs die off much
+   faster, but deliberately keep the existing surface bump gain unchanged.
+   If the ghost arcs disappear, the pair gate was the cause rather than the
+   overall strength of tectonic normal mapping. */
 float gSeamNear, gSeamConv;
 vec3  gPlateTint;
 
@@ -107,7 +113,7 @@ vec3 tectonicBelt(vec3 sN){
          pairwise bisector is then NOT a physical plate boundary. Keep the
          differentiable all-pair reference, but suppress that ghost relief in
          amplitude (not in den, where normalisation would cancel the gate). */
-      float pairCompetitive = exp(-130.0*(di*di + dj*dj));
+      float pairCompetitive = exp(-280.0*(di*di + dj*dj));
 
       vec3 db = pj - pi;
       float base = max(length(db), 1e-4);
