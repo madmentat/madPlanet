@@ -21,7 +21,14 @@ float continentH(vec3 dir){
    Previous terrain() enabled tectonic relief only when abs(belt.x)>0.004.
    That tiny height discontinuity was strongly magnified by finite-difference
    normals and by the Tectonics-dependent bump gain, producing smooth dark or
-   light arcs around mountain systems. Relief now approaches zero continuously. */
+   light arcs around mountain systems. Relief now approaches zero continuously.
+
+   0.5.86: all-pair blending must not create "ghost boundaries" between two
+   plates that are not the locally competing Voronoi cells. Such pairwise
+   bisectors can cross inside an unrelated plate, exactly matching the reported
+   smooth intersecting arcs. The visible plate boundary is now derived from the
+   first/second nearest weighted sites, while relief from every all-pair term is
+   smoothly attenuated unless BOTH members are locally competitive. */
 float gSeamNear, gSeamConv;
 vec3  gPlateTint;
 
@@ -45,20 +52,42 @@ vec3 tectonicBelt(vec3 sN){
   float bw = 0.073*(0.45 + 1.15*seg)*(0.60 + 1.15*orogN);
   vec3 windS = normalize(cross(uRotS*uAxis, sN) + vec3(1e-6));
 
-  float dmin = 1e9;
+  /* dRef stays differentiable for the physical all-pair blend. In parallel,
+     dmin/dsecond track the real displayed weighted-Voronoi cell and its nearest
+     competitor only. Order-statistic identities never feed terrain height. */
+  float dmin = 1e9, dsecond = 1e9;
   float dRef = -dot(sN, uPlateP[0].xyz) - uPlateP[0].w;
-  vec3 nearSite = uPlateP[0].xyz;
+  vec3 nearSite = uPlateP[0].xyz, secondSite = uPlateP[0].xyz;
+  vec3 nearVel = uPlateW[0].xyz, secondVel = uPlateW[0].xyz;
   for(int i=0;i<uPlateN;i++){
     float d = -dot(sN, uPlateP[i].xyz) - uPlateP[i].w;
     if(i>0) dRef=tectonicSmoothMin(dRef,d);
-    if(d < dmin){ dmin = d; nearSite = uPlateP[i].xyz; }
+    if(d < dmin){
+      dsecond = dmin; secondSite = nearSite; secondVel = nearVel;
+      dmin = d; nearSite = uPlateP[i].xyz; nearVel = uPlateW[i].xyz;
+    } else if(d < dsecond){
+      dsecond = d; secondSite = uPlateP[i].xyz; secondVel = uPlateW[i].xyz;
+    }
   }
   gPlateTint = fract(nearSite*vec3(13.71, 7.39, 21.17) + 0.5);
   gSeamNear = 1e9; gSeamConv = 0.0;
+  if(dsecond < 1e8){
+    vec3 diagDb = secondSite-nearSite;
+    float diagBase = max(length(diagDb),1e-4);
+    vec3 diagDbT = diagDb-sN*dot(diagDb,sN);
+    float diagTl = length(diagDbT);
+    vec3 diagDir = diagDbT/max(diagTl,1e-4);
+    float diagValid = ss(0.06,0.32,diagTl);
+    /* Difference between the nearest and second-nearest weighted sites is zero
+       exactly on a REAL cell boundary. Unlike the old all-pair average, this
+       cannot draw pairwise bisectors through a third plate. */
+    gSeamNear = max(0.0,(dsecond-dmin)/diagBase);
+    float diagConv = dot(cross(nearVel-secondVel,sN),diagDir)*diagValid;
+    gSeamConv = clamp(diagConv*2.4,-1.0,1.0);
+  }
 
   const float REACH = 0.62;
   float num = 0.0, den = 1e-6, leeNum = 0.0, seamNum = 0.0;
-  float seamVisNum=0.0, seamVisDen=1e-6, seamConvNum=0.0;
   float ruptureField = clamp(0.52*seg + 0.28*orogN + 0.20*(0.5+0.5*wv2.z),0.0,1.0);
   float rupture = 0.18 + 0.82*ss(0.26,0.66,ruptureField);
 
@@ -72,6 +101,13 @@ vec3 tectonicBelt(vec3 sN){
       float sum2 = di + dj;
       if(sum2 > REACH) continue;
       float wgt = exp(-sum2*9.0) * ss(REACH, REACH*0.7, sum2);
+
+      /* A pair may be geometrically close enough to enter the broad all-pair
+         blend yet still be separated here by a third, nearer plate. Its own
+         pairwise bisector is then NOT a physical plate boundary. Keep the
+         differentiable all-pair reference, but suppress that ghost relief in
+         amplitude (not in den, where normalisation would cancel the gate). */
+      float pairCompetitive = exp(-130.0*(di*di + dj*dj));
 
       vec3 db = pj - pi;
       float base = max(length(db), 1e-4);
@@ -94,32 +130,21 @@ vec3 tectonicBelt(vec3 sN){
       float sS = seamS*over;
       float su = (sS - 0.36*bwEff)/bwEff;
       float arc = exp(-su*su);
-      /* A real subduction system may still contain a trench, but this one is
-         weak and uses the same broken field as the margin. It must never be a
-         compulsory clean parallel line across an entire plate boundary. */
       float trench = band*rupture;
 
       float side = clamp(seamS/0.04, -1.0, 1.0);
       float lee = max(conv, 0.0) * ss(0.10, 0.70, dot(bdir*side, -windS))
-                * exp(-seam/0.095) * rupture;
-
-      float seamVisW=wgt*(1.0-ss(0.018,0.125,seam))*rupture;
-      seamVisNum+=seamVisW*seam;
-      seamConvNum+=seamVisW*convC;
-      seamVisDen+=seamVisW;
+                * exp(-seam/0.095) * rupture * pairCompetitive;
 
       float contrib = (convC > 0.0)
         ? convC*(arc*(0.56+0.44*rupture) - 0.035*trench*rupture)
         : convC*band*(0.16+0.44*rupture);
+      contrib *= pairCompetitive;
       num    += wgt*contrib;
       leeNum += wgt*lee;
-      seamNum+= wgt*seam;
+      seamNum+= wgt*pairCompetitive*seam;
       den    += wgt;
     }
-  }
-  if(seamVisDen>1e-5){
-    gSeamNear=seamVisNum/seamVisDen;
-    gSeamConv=seamConvNum/seamVisDen;
   }
   return vec3(num/den, seamNum/den, clamp(leeNum/den, 0.0, 1.0));
 }
@@ -146,11 +171,6 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
     if(uTect > 0.01) leeOut = belt.z;
   }
 
-  /* Never spatially switch tectonic relief on/off at an arbitrary belt value.
-     belt.x already tends smoothly to zero away from active margins; squaring
-     it gives a C1-style fade. The former abs(belt.x)>0.004 branch created a
-     closed contour around tectonic regions that finite-difference normals
-     turned into the thin smooth arc reported on close zoom. */
   if(uTect > 0.01){
     if(belt.x > 0.0){
       float peaks = ridged(sN*6.6 + uSeedS*1.9, 3);
