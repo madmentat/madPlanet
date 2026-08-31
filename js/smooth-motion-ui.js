@@ -1,29 +1,28 @@
-/* ============ 0.5.83: smooth frame pacing + compact live telemetry ============ */
+/* ============ 0.5.83 / 0.5.84: smooth frame pacing + compact live telemetry ============ */
 /*
-   Two unrelated cadences used to read as one global "tick" on tablets:
-   - render.js deliberately targeted about 32 fps on every mobile device;
-   - Weather Core classified a landscape tablet as desktop unless CSS width was
-     <=700 px, so a coarse-pointer tablet ran the 48x48x6 physics grid.
+   0.5.83 fixed the worst landscape-tablet cadence mismatch. 0.5.84 follows
+   the FPS counter evidence: close zoom still increases fragment cost, while
+   the once-per-second Weather Core callback can still show up as a small hitch.
 
-   This layer does not move physics onto render FPS. It keeps the fixed weather
-   clock, but gives coarse-pointer/mobile devices the intended 32x32x6 grid and
-   asks the dynamic renderer to favour motion (~50-60 fps) over excess internal
-   resolution. Resolution changes are suppressed while a finger/mouse is
-   actively dragging, because reallocating the framebuffer during interaction
-   itself feels like a hitch.
+   The physics clock remains fixed-step and deterministic. On touch/mobile
+   devices the visual/weather grid is now 24..28 cells per cubemap face rather
+   than 32, and the particularly expensive 4x cryosphere reconstruction is
+   published less often than cloud/fog state. Its scalar edge field is blended
+   in time and then thresholded by the surface shader, so the ice EDGE moves
+   smoothly without becoming translucent ice.
 
-   The cryosphere part fixes the visual side of the same problem. 0.5.81 forced
-   NEAREST sampling to eliminate a translucent ice halo, exposing every render
-   texel as a square. The surface shader now resolves the ice boundary as an
-   opaque screen-space contour, so this module may safely restore LINEAR source
-   sampling. Transitional physical coverage is encoded as a continuous signed
-   edge field; the shader, not texture opacity, decides ice versus exposed
-   ground/water.
+   Dynamic resolution is now allowed to react while dragging/pinching. 0.5.83
+   froze quality during pointer interaction to avoid a framebuffer realloc,
+   but that also prevented the renderer from responding exactly when a pinch
+   made the planet fill the screen and fragment cost jumped. One occasional
+   controlled scale change is less objectionable than sustained 20-30 fps.
 */
 
 const SMOOTH_MOBILE_FRAME_MS = 18.0; /* ~56 fps target, with 60 Hz headroom */
 const SMOOTH_DESKTOP_FRAME_MS = 16.7;
-const SMOOTH_MOBILE_SCALE_MIN = deviceMemory <= 4 ? 0.62 : 0.70;
+const SMOOTH_MOBILE_SCALE_MIN = deviceMemory <= 4 ? 0.60 : 0.68;
+const SMOOTH_MOBILE_WEATHER_N = deviceMemory <= 4 ? 24 : 28;
+const SMOOTH_MOBILE_CRYO_PUBLISH_MS = 2400;
 
 /* Landscape tablets used to miss the <=700px media query and pay desktop
    Weather Core cost. Coarse pointer / mobile UA are the important signals. */
@@ -32,12 +31,11 @@ if(typeof weatherCoreRequestedResolution === 'function'){
     const uaMobile = (typeof navigator!=='undefined') && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent||'');
     const coarse = (typeof matchMedia==='function') && matchMedia('(pointer: coarse)').matches;
     const compact = (typeof matchMedia==='function') && matchMedia('(max-width: 900px)').matches;
-    return (uaMobile || coarse || compact) ? WEATHER_CORE_DRAFT_N : WEATHER_CORE_DESKTOP_N;
+    return (uaMobile || coarse || compact) ? SMOOTH_MOBILE_WEATHER_N : WEATHER_CORE_DESKTOP_N;
   };
 }
 
-/* The smoother contour needs fewer brute-force display texels on mobile, which
-   removes a sizeable chunk of the once-per-weather-tick CPU reconstruction. */
+/* The smoother contour needs fewer brute-force display texels on mobile. */
 if(typeof cryoGpuDisplayResolution === 'function'){
   cryoGpuDisplayResolution = function(coreN){
     const n=Math.max(4,Math.round(Number(coreN)||32));
@@ -49,7 +47,7 @@ if(typeof cryoGpuDisplayResolution === 'function'){
 /* Fractional Weather Core coverage becomes a continuous edge FIELD here, not
    optical alpha. 0.5 is the material boundary. Dense ice and zero coverage
    still pin exactly to 1/0; sparse sea ice below the 15% display convention
-   stays open water. The surface shader thresholds this field with ~1px AA. */
+   stays open water. */
 if(typeof cryoGpuVisualCoverage === 'function'){
   cryoGpuVisualCoverage = function(raw,edgeNoise,sea){
     raw=Math.max(0,Math.min(1,Number(raw)||0));
@@ -66,9 +64,8 @@ if(typeof cryoGpuVisualCoverage === 'function'){
   };
 }
 
-/* 0.5.81's NEAREST override solved the wrong problem by exposing the sampling
-   grid. LINEAR is safe again because fractional samples are interpreted only
-   as edge coordinates; they are not used as kilometres-wide translucent ice. */
+/* 0.5.81's NEAREST override exposed the sampling grid. LINEAR is safe here
+   because filtered values are edge coordinates, not optical transparency. */
 if(typeof cryoGpuEnsure === 'function'){
   const cryoGpuEnsureBeforeSmoothContour=cryoGpuEnsure;
   cryoGpuEnsure=function(N){
@@ -85,9 +82,41 @@ if(typeof cryoGpuEnsure === 'function'){
   };
 }
 
+/* The hard-edge release disabled all temporal cryosphere interpolation because
+   blending two binary masks made grey milk. We no longer blend binary optical
+   masks: we blend a scalar boundary coordinate, then the shader thresholds it.
+   This safely turns a multi-second physical update into continuous edge motion. */
+if(typeof cryoGpuBlendAt === 'function'){
+  cryoGpuBlendAt=function(nowMs){
+    if(!cryoGpuHasFrame)return 1;
+    const base=Math.max(1,Number(cryoGpuBlendDurationMs)||1);
+    const duration=mobileDevice?Math.max(850,Math.min(1900,base*5.0)):Math.max(220,base);
+    const t=Math.max(0,Math.min(1,(Number(nowMs)-cryoGpuBlendStartMs)/duration));
+    return t*t*(3-2*t);
+  };
+}
+
+/* Cryosphere reconstruction is much more expensive than its 24/28-cell
+   physics source because it builds a 4x display cubemap with seamless projected
+   sampling. Ice does not need a brand-new visual target every real second.
+   Clouds/fog keep their normal cadence; only this slow surface phase is
+   published every ~2.4 s on mobile, with the smooth edge interpolation above. */
+if(typeof cryoGpuUpload === 'function'){
+  const cryoGpuUploadBeforeSmoothCadence=cryoGpuUpload;
+  let smoothCryoLastPublishMs=-1e12;
+  cryoGpuUpload=function(core){
+    const now=(typeof cryoGpuNowMs==='function')?cryoGpuNowMs():((typeof performance!=='undefined')?performance.now():Date.now());
+    const sameSeed=cryoGpuHasFrame && Number(cryoGpuLastSeed)===(core?.seed|0);
+    if(mobileDevice && sameSeed && now-smoothCryoLastPublishMs<SMOOTH_MOBILE_CRYO_PUBLISH_MS)return false;
+    const ok=cryoGpuUploadBeforeSmoothCadence(core);
+    if(ok)smoothCryoLastPublishMs=now;
+    return ok;
+  };
+}
+
 /* render.js's public helpers are function bindings, so tune the policy without
-   duplicating the render loop. Keep expensive canvas reallocations away from
-   active drags and make quality recovery deliberately slower than degradation. */
+   duplicating the render loop. Quality recovery stays much slower than
+   degradation, preventing resize oscillation. */
 if(typeof setRenderScale === 'function'){
   setRenderScale=function(next){
     const lo=mobileDevice?SMOOTH_MOBILE_SCALE_MIN:SCALE_MIN;
@@ -102,13 +131,13 @@ if(typeof tuneRenderScale === 'function'){
   tuneRenderScale=function(ms){
     if(!Number.isFinite(ms)||ms<=0||document.hidden)return;
     if(qualityCooldown>0)return;
-    if(typeof pointers!=='undefined'&&pointers&&pointers.size>0)return;
     const target=mobileDevice?SMOOTH_MOBILE_FRAME_MS:SMOOTH_DESKTOP_FRAME_MS;
-    if(ms>target*1.10 && renderScale>(mobileDevice?SMOOTH_MOBILE_SCALE_MIN:SCALE_MIN)){
-      const k=Math.max(0.78,Math.min(0.95,Math.sqrt(target/ms)*0.97));
+    const interacting=(typeof pointers!=='undefined'&&pointers&&pointers.size>0);
+    if(ms>target*(interacting?1.06:1.10) && renderScale>(mobileDevice?SMOOTH_MOBILE_SCALE_MIN:SCALE_MIN)){
+      const k=Math.max(0.76,Math.min(0.94,Math.sqrt(target/ms)*0.965));
       setRenderScale(renderScale*k);
-      qualityCooldown=45;
-    }else if(ms<target*0.64 && renderScale<SCALE_MAX){
+      qualityCooldown=interacting?72:45;
+    }else if(!interacting && ms<target*0.64 && renderScale<SCALE_MAX){
       setRenderScale(renderScale*1.020);
       qualityCooldown=120;
     }
