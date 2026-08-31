@@ -15,7 +15,13 @@ float continentH(vec3 dir){
    0.5.84: the weighted-Voronoi plate network remains only the macro-scale
    organiser. The actual seam coordinate is displaced after a plate pair is
    known, so the analytic spherical arc cannot survive as a visible terrain
-   stripe. Long belts are further broken by a 3-D rupture field. */
+   stripe. Long belts are further broken by a 3-D rupture field.
+
+   0.5.85: do not introduce a second artificial contour around that belt.
+   Previous terrain() enabled tectonic relief only when abs(belt.x)>0.004.
+   That tiny height discontinuity was strongly magnified by finite-difference
+   normals and by the Tectonics-dependent bump gain, producing smooth dark or
+   light arcs around mountain systems. Relief now approaches zero continuously. */
 float gSeamNear, gSeamConv;
 vec3  gPlateTint;
 
@@ -140,7 +146,12 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
     if(uTect > 0.01) leeOut = belt.z;
   }
 
-  if(uTect > 0.01 && abs(belt.x) > 0.004){
+  /* Never spatially switch tectonic relief on/off at an arbitrary belt value.
+     belt.x already tends smoothly to zero away from active margins; squaring
+     it gives a C1-style fade. The former abs(belt.x)>0.004 branch created a
+     closed contour around tectonic regions that finite-difference normals
+     turned into the thin smooth arc reported on close zoom. */
+  if(uTect > 0.01){
     if(belt.x > 0.0){
       float peaks = ridged(sN*6.6 + uSeedS*1.9, 3);
       float foldA = 0.5 + 0.5*noise3(sN*13.5 + uSeedS*2.2 + vec3(97.0,13.0,251.0));
@@ -151,7 +162,7 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
       rockOut = ramp * (0.30 + 0.70*peaks);
       mountOut *= mix(0.40, 1.0, ss(-0.05, 0.03, h));
       h += mountOut;
-    } else {
+    } else if(belt.x < 0.0){
       h -= uTect * belt.x*belt.x * 0.075;
     }
   }
