@@ -14,12 +14,14 @@ assert.match(terrain,/seamS \+= seamWarp/,
   'warping must act on the actual seam coordinate, not only on ridge colour');
 assert.match(terrain,/float ruptureField = clamp/,
   'long plate boundaries need a non-periodic breakup field');
-assert.match(terrain,/\? convC\*arc\*\(0\.56\+0\.44\*rupture\)/,
-  'convergent uplift must be broken rather than a uniform analytic ribbon');
+assert.match(terrain,/\? convC\*\(arc\*\(0\.56\+0\.44\*rupture\) - 0\.035\*trench\*rupture\)/,
+  'convergent uplift must be broken and any trench contribution must stay weak');
+assert.match(terrain,/float trench = band\*rupture/,
+  'subduction trench may remain only as part of the broken rupture field');
 assert.match(terrain,/: convC\*band\*\(0\.16\+0\.44\*rupture\)/,
   'divergent rifts must be shallow/broken rather than continuous ink lines');
 assert.doesNotMatch(terrain,/arc - 0\.62\*trench/,
-  'every convergent boundary must not carry a compulsory parallel trench');
+  'every convergent boundary must not carry the old compulsory parallel trench');
 assert.match(terrain,/float peaks = ridged\([^\n]+, 3\)/,
   'collision relief should retain broken ridge structure at lower shader cost');
 assert.match(terrain,/float foldA = 0\.5 \+ 0\.5\*noise3/,
