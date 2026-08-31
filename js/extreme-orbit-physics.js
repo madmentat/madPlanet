@@ -1,26 +1,28 @@
-/* ============ 0.5.79: close-orbit equilibrium + cumulative volatile retention ============ */
+/* ============ 0.5.80: close-orbit climate + irreversible volatile history ============ */
 /*
-   BASE controls describe the equilibrium world we are looking at, not a live
-   spacecraft trajectory. 0.5.78 could move an old Earth-like world to a few
-   hundred Earth fluxes while keeping its original volatile inventory because
-   atmosphere/water inventory had no long-term stellar-loss path at all.
+   0.5.79 correctly removed the accidental 900 K (=626.85 C) climate ceiling,
+   but it exposed long-term atmospheric/water retention as an instantaneous
+   equilibrium multiplier. Dragging a live world inward could therefore make
+   its ocean disappear in one frame, while dragging it outward restored the
+   supposedly escaped atmosphere. Both behaviours looked wrong.
 
-   This module adds a deliberately compact evolutionary proxy. It is NOT a
-   hydrodynamic escape solver and does not claim that atmosphere disappears
-   instantly. Retention depends on received stellar flux, planet age and escape
-   velocity: high gravity helps; strong irradiation integrated over Gyr hurts.
-   The proxy is kept near unity around Earth/Venus-like bolometric fluxes and
-   becomes severe only for genuinely close, old rocky worlds.
+   Keep the same compact age/flux/escape-velocity retention targets, but treat
+   them as asymptotic damage. Within one runtime/seed, H/He, water inventory and
+   heavy atmosphere can only DECREASE toward the target. The decline takes
+   seconds in the interactive simulation, leaving the existing water-budget
+   phase relaxation free to show progressive evaporation/steam. Moving the
+   same world outward stops further loss but does not resurrect escaped gas or
+   water. A new seed/random world starts from its own equilibrium history.
 
-   It also removes climate-regimes.js's accidental 900 K (= 626.85 C) display
-   ceiling. Once volatiles are mostly gone, the equilibrium temperature is
-   recomputed from absorbed stellar power with the remaining greenhouse term.
-   At 1 Lsun / 0.065 AU (~237 S_earth), a low-atmosphere rocky world therefore
-   lands near ~1000 K instead of sticking at exactly 900 K.
+   This is still an intentionally compact visual/evolution scaffold, not a
+   hydrodynamic XUV escape solver.
 */
 
-const EXTREME_ORBIT_MODEL=1;
+const EXTREME_ORBIT_MODEL=2;
 const EXTREME_CLIMATE_MAX_K=2200;
+const EXTREME_HEAVY_LOSS_TAU_SEC=28;
+const EXTREME_WATER_LOSS_TAU_SEC=20;
+const EXTREME_LIGHT_LOSS_TAU_SEC=10;
 
 function extremeClamp(x,a,b){return Math.max(a,Math.min(b,Number(x)||0));}
 function extremeSmooth(a,b,x){
@@ -35,48 +37,71 @@ function extremeEscapeInputs(){
   const escapeEarth=Math.max(0.08,(Number(p.escapeKMS)||11.186)/11.186);
   return {S,ageGyr,escapeEarth,gravityEarth:Math.max(0.05,Number(p.gravityEarth)||1)};
 }
-/* Heavy molecules are comparatively hard to remove. Keep the onset well
-   inside Mercury-like irradiation so ordinary HZ / Venus-like worlds are not
-   silently rewritten by a bolometric escape proxy. */
-function stellarHeavyAtmosRetention(){
+function stellarHeavyAtmosRetentionTarget(){
   const q=extremeEscapeInputs();
   const exposure=Math.max(0,Math.log10(Math.max(1,q.S/4.0)));
   if(!(exposure>0))return 1;
   const dose=0.50*q.ageGyr*Math.pow(exposure,1.50)/(q.escapeEarth*q.escapeEarth);
   return extremeClamp(Math.exp(-dose),0,1);
 }
-/* Water is easier to lose after a moist/runaway greenhouse feeds H into the
-   upper atmosphere. This is intentionally stronger than the heavy-gas proxy. */
-function stellarWaterRetention(){
+function stellarWaterRetentionTarget(){
   const q=extremeEscapeInputs();
   const exposure=Math.max(0,Math.log10(Math.max(1,q.S/1.35)));
   if(!(exposure>0))return 1;
   const dose=0.56*q.ageGyr*Math.pow(exposure,1.70)/(q.escapeEarth*q.escapeEarth);
   return extremeClamp(Math.exp(-dose),0,1);
 }
-function stellarLightGasRetention(){
+function stellarLightGasRetentionTarget(){
   const q=extremeEscapeInputs();
   const exposure=Math.max(0,Math.log10(Math.max(1,q.S/0.55)));
   if(!(exposure>0))return 1;
   const dose=0.85*q.ageGyr*Math.pow(exposure,1.25)/(q.escapeEarth*q.escapeEarth);
   return extremeClamp(Math.exp(-dose),0,1);
 }
+
+let extremeVolatileHistory={seed:null,heavy:1,water:1,light:1,initialized:false};
+function stellarResetVolatileHistory(toEquilibrium=true){
+  extremeVolatileHistory.seed=(typeof state!=='undefined'?(state.seed|0):0);
+  extremeVolatileHistory.heavy=toEquilibrium?stellarHeavyAtmosRetentionTarget():1;
+  extremeVolatileHistory.water=toEquilibrium?stellarWaterRetentionTarget():1;
+  extremeVolatileHistory.light=toEquilibrium?stellarLightGasRetentionTarget():1;
+  extremeVolatileHistory.initialized=true;
+  return extremeVolatileHistory;
+}
+function stellarEnsureVolatileHistory(){
+  const seed=(typeof state!=='undefined'?(state.seed|0):0);
+  if(!extremeVolatileHistory.initialized || extremeVolatileHistory.seed!==seed)
+    stellarResetVolatileHistory(true);
+  return extremeVolatileHistory;
+}
+function stellarLossStep(current,target,dtSec,tauSec){
+  current=extremeClamp(current,0,1);target=extremeClamp(target,0,1);
+  if(target>=current)return current; /* escaped volatiles never grow back */
+  const severity=Math.max(0.02,1-target);
+  const tau=Math.max(1,tauSec/(0.45+0.55*Math.sqrt(severity)));
+  return target+(current-target)*Math.exp(-Math.max(0,dtSec)/tau);
+}
+function stellarAdvanceVolatileHistory(dtSec){
+  const h=stellarEnsureVolatileHistory(),dt=extremeClamp(dtSec,0,0.5);
+  const oh=h.heavy,ow=h.water,ol=h.light;
+  h.heavy=stellarLossStep(h.heavy,stellarHeavyAtmosRetentionTarget(),dt,EXTREME_HEAVY_LOSS_TAU_SEC);
+  h.water=stellarLossStep(h.water,stellarWaterRetentionTarget(),dt,EXTREME_WATER_LOSS_TAU_SEC);
+  h.light=stellarLossStep(h.light,stellarLightGasRetentionTarget(),dt,EXTREME_LIGHT_LOSS_TAU_SEC);
+  return Math.abs(h.heavy-oh)+Math.abs(h.water-ow)+Math.abs(h.light-ol)>1e-10;
+}
+function stellarHeavyAtmosRetention(){return stellarEnsureVolatileHistory().heavy;}
+function stellarWaterRetention(){return stellarEnsureVolatileHistory().water;}
+function stellarLightGasRetention(){return stellarEnsureVolatileHistory().light;}
 function stellarSpeciesRetention(key){
   if(key==='gasHHe')return stellarLightGasRetention();
-  if(key==='gasH2O')return 1; /* H2O is capped by the retained global water budget below. */
+  if(key==='gasH2O')return 1; /* H2O is capped by retained global water below. */
   return stellarHeavyAtmosRetention();
 }
 
-/* Gas inventories remain user/base causes. Pressure functions expose the
-   equilibrium retained atmosphere, so moving the same sliders back outward
-   restores the reservoir instead of irreversibly mutating the URL state. */
 const gasPartialPressureBarBeforeExtreme=gasPartialPressureBar;
 gasPartialPressureBar=function(key){
   const raw=Math.max(0,Number(gasPartialPressureBarBeforeExtreme(key))||0);
   if(key!=='gasH2O')return raw*stellarSpeciesRetention(key);
-  /* Do not double-attenuate water after water-budget has already relaxed its
-     vapor store. Instead cap stale atmospheric vapor by the maximum retained
-     H2O inventory immediately after a large orbit change. */
   const baseTotal=(typeof waterTotalEowFromSliderBeforeExtreme==='function')
     ?waterTotalEowFromSliderBeforeExtreme(state.waterTotal)
     :(typeof waterTotalEowFromSlider==='function'?waterTotalEowFromSlider(state.waterTotal):0);
@@ -93,16 +118,11 @@ atmosphereSurfacePressureBar=function(){
   return Number.isFinite(p)?p:Math.max(0,Number(atmosphereSurfacePressureBarBeforeExtreme())||0);
 };
 
-/* Wrap the conserved H2O cause rather than mutating it. Every downstream
-   reservoir calculation therefore sees the long-term retained water amount. */
 const waterTotalEowFromSliderBeforeExtreme=waterTotalEowFromSlider;
 waterTotalEowFromSlider=function(v){
   return Math.max(0,waterTotalEowFromSliderBeforeExtreme(v))*stellarWaterRetention();
 };
 
-/* `state.atmo` is renderer compatibility only. Make its proxy follow retained
-   pressure, otherwise a nearly stripped planet keeps a bright blue halo and
-   weather/cloud support even though physical pressure has collapsed. */
 const updateLegacyAtmoProxyBeforeExtreme=updateLegacyAtmoProxy;
 updateLegacyAtmoProxy=function(){
   const g=(typeof atmosphereGravityEarth==='function')?Math.max(0.05,atmosphereGravityEarth()):1;
@@ -112,9 +132,6 @@ updateLegacyAtmoProxy=function(){
   return state.atmo;
 };
 
-/* The original climate module intentionally targeted ordinary rocky climates,
-   but its final clamp to 900 K accidentally became the UI's exact 627 C
-   ceiling. Re-evaluate the hot volatile-poor equilibrium without that cap. */
 const climateModelBeforeExtremeOrbit=climateModel;
 climateModel=function(){
   const c=climateModelBeforeExtremeOrbit();
@@ -124,11 +141,6 @@ climateModel=function(){
   const stripped=extremeSmooth(0.20,0.995,1-Math.min(heavy,water));
   const scorch=extremeSmooth(5,55,S);
   const barrenWeight=stripped*scorch;
-
-  /* Once oceans/clouds are gone, use a plausible low/moderate rocky Bond
-     albedo rather than retaining a stale cloud/ice albedo from the former HZ
-     state. Different mineral surfaces can vary widely; this is a compact
-     equilibrium scaffold, not mineral spectroscopy. */
   const barrenAlbedo=0.16-0.025*extremeSmooth(40,300,S);
   const A=extremeClamp((Number(c.A)||0.30)+(barrenAlbedo-(Number(c.A)||0.30))*barrenWeight,0.03,0.86);
   const ASR=CLIMATE_SOLAR_CONSTANT*S*(1-A)/4;
@@ -148,28 +160,37 @@ climateModel=function(){
   c.OLR=rawOLR;c.energyImbalance=ASR-rawOLR;
   c.atmosphereRetention=heavy;c.waterRetention=water;c.volatileStripping=barrenWeight;
   if(barrenWeight>0.72 || c.T>500){
-    c.regime='irradiatedBarren';
-    c.regimeLabel='обожжённый / volatile-poor';
+    c.regime='irradiatedBarren';c.regimeLabel='обожжённый / volatile-poor';
   }else if(typeof climateClassify==='function'&&typeof climateRegimeLabel==='function'){
     c.regime=climateClassify(c);c.regimeLabel=climateRegimeLabel(c.regime);
   }
   return c;
 };
 
-/* Water thermodynamics must not reintroduce the retired 900 K ceiling. */
 waterTemperatureK=function(){
   const c=climateModel();
   return extremeClamp(c?.T??288.15,120,EXTREME_CLIMATE_MAX_K);
+};
+
+/* Run loss before the ordinary water/gas relaxation so this frame's reservoirs
+   see the newly retained total. Evaporation/condensation itself remains the
+   existing gradual water-budget process. */
+const relaxDerivedBeforeExtremeOrbit=relaxDerived;
+relaxDerived=function(dtSec){
+  const lost=stellarAdvanceVolatileHistory(dtSec);
+  const moved=!!relaxDerivedBeforeExtremeOrbit(dtSec);
+  if(lost)updateLegacyAtmoProxy();
+  return lost||moved;
 };
 
 function extremeOrbitDiagnostics(){
   const e=extremeEscapeInputs(),c=climateModel();
   return {S:e.S,ageGyr:e.ageGyr,escapeEarth:e.escapeEarth,
     atmosphereRetention:stellarHeavyAtmosRetention(),waterRetention:stellarWaterRetention(),
+    atmosphereRetentionTarget:stellarHeavyAtmosRetentionTarget(),waterRetentionTarget:stellarWaterRetentionTarget(),
     pressureBar:c.pressureBar,T:c.T};
 }
 
-/* Bring derived compatibility state into equilibrium immediately at module
-   load; later large BASE changes are handled by weather-regime-rebase.js. */
+stellarResetVolatileHistory(true);
 updateLegacyAtmoProxy();
 if(typeof settleWaterEquilibriumImmediate==='function')settleWaterEquilibriumImmediate(4);
