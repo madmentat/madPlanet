@@ -24,6 +24,7 @@ rm -f .built-script.js
 tests=(
   tests/build-integrity.test.js
   tests/performance-guards.test.js
+  tests/smooth-motion-ui.test.js
   tests/visual-regressions.test.js
   tests/tectonic-morphology.test.js
   tests/tectonic-cell-seams.test.js
