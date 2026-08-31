@@ -18,7 +18,7 @@ $VERT = @'
 layout(location=0) in vec2 aPos;
 void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }
 '@
-$fragFiles = @('shaders/header.glsl','shaders/noise.glsl','shaders/terrain.glsl','shaders/weather-cloud-prelude.glsl','shaders/clouds.glsl','shaders/weather-cloud-visual.glsl','shaders/atmosphere.glsl','shaders/rings.glsl','shaders/fog.glsl','shaders/lightning.glsl','shaders/surface.glsl','shaders/sphere.glsl','shaders/main.glsl')
+$fragFiles = @('shaders/header.glsl','shaders/noise.glsl','shaders/terrain.glsl','shaders/weather-cloud-prelude.glsl','shaders/clouds.glsl','shaders/weather-cloud-visual.glsl','shaders/atmosphere.glsl','shaders/rings.glsl','shaders/fog.glsl','shaders/lightning.glsl','shaders/surface-artifact-prelude.glsl','shaders/surface.glsl','shaders/surface-artifact-postlude.glsl','shaders/sphere.glsl','shaders/main.glsl')
 # An empty source module concatenates in silence: the program still links,
 # const FRAG is still there, every existing check passes - and the planet
 # comes out with no clouds and no surface at all. That is exactly how a
