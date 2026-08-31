@@ -67,6 +67,7 @@ assert.match(clouds, /region\*mix\(0\.24,1\.0,ss\(0\.05,0\.62,clim\)\)/, 'arid z
 assert.match(clouds, /vec3\(1\.0,0\.94,0\.86\)\*fwd\*lit\*/, 'forward scattering must be gated by cloud illumination');
 
 const terrainSrc = read('shaders/terrain.glsl');
+const terrainCode = terrainSrc.replace(/\/\*[\s\S]*?\*\//g, '');
 assert.match(terrainSrc, /vec3 tectonicBelt\(/, 'tectonic plate model missing');
 assert.ok(!/float belts = /.test(terrainSrc), 'the old smooth mountain-belt noise must not return');
 assert.match(terrainSrc, /uPlateW\[i\]\.xyz - uPlateW\[j\]\.xyz/, 'range/rift sign must come from relative plate motion');
@@ -100,7 +101,7 @@ assert.match(surface, /float steepBare = /, 'ridges must lose snow on steep face
 
 assert.match(terrainSrc, /uPlateP\[i\]\.w/, 'plates need a size weight: equal cells look artificial');
 assert.match(terrainSrc, /float seamVisW=wgt\*/, 'tectonic seam display must come from the continuous neighbour field');
-assert.ok(!/seam < gSeamNear/.test(terrainSrc), 'hard single-pair seam selection recreates razor-thin Voronoi artifacts');
+assert.ok(!/seam < gSeamNear/.test(terrainCode), 'hard single-pair seam selection recreates razor-thin Voronoi artifacts');
 assert.match(surface, /if\(uPlatesOn > 0\.5\)/, 'plate schematic overlay missing');
 assert.match(surface, /float volc = /, 'volcanism missing');
 assert.match(surface, /uLava > 0\.01/, 'lava glow missing');
