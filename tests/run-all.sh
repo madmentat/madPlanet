@@ -34,6 +34,7 @@ tests=(
   tests/volcanic-atmosphere-coupling.test.js
   tests/water-budget.test.js
   tests/climate-regimes.test.js
+  tests/extreme-orbit-regressions.test.js
   tests/stellar-weather-coupling.test.js
   tests/ui-random-polish.test.js
   tests/cloud-visibility-controls.test.js
