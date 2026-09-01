@@ -2,12 +2,13 @@
 float contFreq(){ return mix(0.7, 2.6, uCont); }
 float seaLvl(){ return mix(-0.25, 0.34, uSea); }
 
-/* 0.5.104/105: simplex FBM, mild isotropic domain-warp only. */
+/* 0.5.106: classic continent recipe (warp 0.9 + 5 oct + mid detail) on
+   simplex — same look as 0.5.67–0.5.86, without cubic lattice facets. */
 float continentNoise(vec3 p){
-  vec3 w = vec3(fbmSimplex(p*0.9 + vec3(1.7,9.2,3.1), 2),
-                fbmSimplex(p*0.9 + vec3(8.3,2.8,5.9), 2),
-                fbmSimplex(p*0.9 + vec3(4.6,7.1,0.7), 2));
-  vec3 q = p + 0.40*w; /* 0.5.105: milder warp — fewer elongated coastal tongues */
+  vec3 w = vec3(fbmSimplex(p + vec3(1.7,9.2,3.1), 2),
+                fbmSimplex(p + vec3(8.3,2.8,5.9), 2),
+                fbmSimplex(p + vec3(4.6,7.1,0.7), 2));
+  vec3 q = p + 0.9*w;
   float c = fbmSimplex(q, 5);
   c += 0.14*fbmSimplex(q*3.1 + vec3(7.0), 3);
   return c;
@@ -39,7 +40,7 @@ vec3 tectonicBelt(vec3 sN){
 
   float orogN = 0.5 + 0.5*fbm(sN*1.15 + uSeedS*3.1 + vec3(311.0,43.0,7.0), 2);
   float seg   = 0.5 + 0.5*fbm(sN*2.6 + uSeedS*2.7 + vec3(211.0,17.0,53.0), 3);
-  float bw = 0.048*(0.50 + 1.00*seg)*(0.65 + 1.00*orogN); /* 0.5.105: narrower orogeny */
+  float bw = 0.048*(0.50 + 1.00*seg)*(0.65 + 1.00*orogN);
   vec3 windS = normalize(cross(uRotS*uAxis, sN) + vec3(1e-6));
 
   float dmin = 1e9, dsecond = 1e9;
@@ -131,13 +132,10 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   vec3 sN = uRotS * dir;
   vec3 p = sN*contFreq() + uSeedS;
   float c = continentNoise(p);
-  /* islands: isotropic mild warp, soft threshold */
-  vec3 islP = sN*5.5 + uSeedS*1.7 + vec3(23.1);
-  vec3 islW = vec3(fbmSimplex(islP + vec3(2.1,9.4,1.3), 2),
-                   fbmSimplex(islP + vec3(7.2,1.8,4.6), 2),
-                   fbmSimplex(islP + vec3(3.9,6.5,8.2), 2));
-  float isl = fbmSimplex(islP + 0.55*islW, 5);
-  float islandH = uIsle*0.6*smoothstep(0.16, 0.30, isl);
+  /* 0.5.106: classic island field (freq 5.5, threshold ~0.22) on simplex.
+     softstep instead of hard max(isl-0.22,0) to avoid wedge islands. */
+  float isl = fbmSimplex(sN*5.5 + uSeedS*1.7 + vec3(23.1), 4);
+  float islandH = uIsle*0.6*smoothstep(0.18, 0.28, isl);
   float h = c*0.95 + islandH - seaLvl();
   rockOut = 0.0;
   mountOut = 0.0;
@@ -157,7 +155,7 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
     leeOut *= seamGate;
 
     if(belt.x > 0.0){
-      /* 0.5.105: no table-mountains. Multi-scale ridged peaks, crest near seam. */
+      /* 0.5.105: peaked narrow ranges, crest near seam */
       float peaks  = ridged(sN*9.0  + uSeedS*1.9, 4);
       float peaks2 = ridged(sN*22.0 + uSeedS*2.8 + vec3(41.0), 3);
       float peakMix = clamp(0.62*peaks + 0.38*peaks2, 0.0, 1.0);
