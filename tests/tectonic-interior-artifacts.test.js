@@ -8,26 +8,32 @@ const surface=read('shaders/surface.glsl');
 const pre=read('shaders/surface-artifact-prelude.glsl');
 const post=read('shaders/surface-artifact-postlude.glsl');
 
-/* 0.5.89: all-pair tectonic math may remain differentiable, but physical
-   height must be supported by proximity to the REAL nearest/second-nearest
-   boundary. Use a broad smooth window rather than Grok's very narrow
-   exp(-28*gSeamNear), which risked squeezing mountain systems into ribbons. */
-assert.match(terrain,/float seamGate = 1\.0 - ss\(0\.075,0\.240,gSeamNear\)/,
-  'physical tectonic relief needs a broad real-seam support window');
-assert.match(terrain,/belt\.x \*= seamGate/,'tectonic height must fade in plate interiors');
-assert.match(terrain,/belt\.z \*= seamGate/,'orographic/lee source must fade with physical tectonics');
+/* 0.5.107: retain a deep-interior ghost guard, but it must begin well outside
+   the normal mountain envelope. Earlier narrow seam gates changed the actual
+   geography and squeezed ranges into synthetic boundary ribbons. */
+assert.match(terrain,/float seamGate = 1\.0 - ss\(0\.24,0\.50,gSeamNear\)/,
+  'deep-plate relief needs a broad, morphology-neutral real-seam guard');
+assert.match(terrain,/belt\.x \*= seamGate/,'tectonic height must still die deep inside plates');
+assert.match(terrain,/belt\.z \*= seamGate/,'orographic source must use the same deep-interior guard');
 assert.match(terrain,/leeOut \*= seamGate/,'published lee effect must not survive deep inside a plate');
 assert.doesNotMatch(terrain,/exp\(-28\.0 \* gSeamNear\)/,
-  'do not collapse all orogeny into Grok\'s overly narrow exponential corridor');
+  'do not collapse all orogeny into the old narrow exponential corridor');
 
-/* The raw surface shader has a single uTect use: the finite-difference normal
-   gain. That slider must therefore be locally supported during surface-only
-   preprocessing instead of multiplying every land normal on the planet. */
+/* Normal shading uses the modern stable ONB/central-difference path, but the
+   Tectonics slider must not amplify unrelated land. surface.glsl owns the
+   local support explicitly; the prelude may only restore amplitude, never add
+   a second spatial mask. */
 assert.equal((surface.match(/\buTect\b/g)||[]).length,1,
-  'surface uTect usage changed; review the local normal-support macro before adding more');
-assert.match(pre,/#define uTect \(uTect \* max\(max\(ss\(0\.004,0\.065,mount\),ss\(0\.010,0\.120,ridge\)\),1\.0-ss\(0\.080,0\.240,seamNearCenter\)\)\)/,
-  'Tectonics normal gain must be supported only by real orogenic relief/margin proximity');
-assert.match(post,/#undef uTect/,'surface-only Tectonics remap must not leak to later shader modules');
+  'surface uTect usage changed; review local normal support before adding more');
+assert.match(surface,/float localTectSupport = max\(/,
+  'surface must retain explicit local support for tectonic normal strength');
+assert.match(surface,/ss\(0\.02, 0\.10, mount\)/,
+  'real mountain height must participate in local normal support');
+assert.match(pre,/#define uTect \(1\.75\*uTect\)/,
+  'surface prelude may calibrate amplitude but must not spatially remask Tectonics');
+assert.doesNotMatch(pre,/#define uTect \(uTect \* max/,
+  'double localisation of Tectonics flattens legitimate mountain relief');
+assert.match(post,/#undef uTect/,'surface-only amplitude calibration must not leak later');
 assert.doesNotMatch(pre,/#define gSeamNear/,'real tectonic seam must never be shadowed again');
 
 console.log('tectonic-interior-artifacts.test.js: OK');
