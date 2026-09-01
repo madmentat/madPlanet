@@ -29,6 +29,12 @@ assert.match(surface,/cryoSurfaceSample\(uCryosphereTex,\s*normalize\(sN\)\)/,'s
 assert.doesNotMatch(surface,/float\s+snowN\s*=\s*temp/,'surface shader must not recreate polar snow from decorative temperature');
 assert.doesNotMatch(surface,/float\s+iceN\s*=\s*temp/,'surface shader must not recreate sea ice from decorative temperature');
 assert.match(surface,/landCryoPhys/);assert.match(surface,/seaIcePhys/);
+/* 0.5.113: the seam-smoothing temperature envelope must follow the Weather
+   Core bootstrap profile, not a latitude-cubed curve that freezes every pole. */
+assert.doesNotMatch(surface,/pow\(abs\(dot\(n0,uAxis\)\),3\.0\)\*1\.55 - max\(h,0\.0\)\*0\.95/,'latitude-cubed decorative polar temperature must not return');
+assert.match(surface,/float gradK = clamp\(38\.0 - 1\.5\*\(meanK - 288\.15\), 14\.0, 60\.0\);/,'shader envelope must use the climate-dependent contrast of weather-target-smoothing.js');
+assert.match(surface,/float tempContK = meanK - gradK\*\(pow\(latS, 2\.4\) - 0\.294\)/,'shader envelope must share the bootstrap zonal shape');
+assert.match(surface,/surfaceK = mix\(tempContK, surfaceK, 0\.70\);/,'physical temperature must dominate the envelope');
 assert.match(gpu,/R\/G = previous land-cryosphere \/ sea-ice coverage/);
 assert.match(gpu,/B\/A = current\s+land-cryosphere \/ sea-ice coverage/);
 

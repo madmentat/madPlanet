@@ -24,10 +24,18 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     surfaceK = mix(180.0,380.0,(tempCode-0.05)/0.85);
   else
     surfaceK = mix(380.0,1000.0,(tempCode-0.90)/0.10);
-  /* blend toward continuous lat/height temperature so cube faces cannot
-     invent a hard thermal boundary across a river */
-  float tempContK = mix(210.0, 310.0, clamp(0.5 + 0.5*(mix(-0.55,1.55,uTemp) - pow(abs(dot(n0,uAxis)),3.0)*1.55 - max(h,0.0)*0.95), 0.0, 1.0));
-  surfaceK = mix(tempContK, surfaceK, 0.55);
+  /* blend toward a continuous lat/height temperature so cube faces cannot
+     invent a hard thermal boundary across a river.
+     0.5.113: this envelope must agree with the Weather Core bootstrap
+     (weather-target-smoothing.js): same mean, same climate-dependent
+     equator-pole contrast. The old latitude-cubed curve put every pole near
+     215 K whatever the climate, so frost and the deep-cold ocean closure
+     painted a huge symmetric cap that no physics could remove. */
+  float meanK = 273.15 + (uTemp*175.0 - 78.0);
+  float gradK = clamp(38.0 - 1.5*(meanK - 288.15), 14.0, 60.0);
+  float latS = abs(dot(n0, uAxis));
+  float tempContK = meanK - gradK*(pow(latS, 2.4) - 0.294) - max(h,0.0)*40.0;
+  surfaceK = mix(tempContK, surfaceK, 0.70);
 
   /* 0.5.99: geographic ONB (east/north from uAxis). */
   vec3 nS = n0;
