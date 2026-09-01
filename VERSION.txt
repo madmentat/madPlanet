@@ -1,12 +1,13 @@
-VERSION 0.5.113
-Base: 0.5.112
-Changes: Stop polar caps from growing without limit, size them by climate, and make the two hemispheres differ.
-  - new js/atmospheric-heat-transport.js: energy-balance diffusion of surface heat along the cubed-sphere edge graph (D = 0.55 W m^-2 K^-1 on Earth, scaled by the atmospheric column cp p / g, planet radius and water-vapour latent transport); conservative and stability-capped per edge
-  - polar cells previously sat at -80..-150 W m^-2 net radiation with nothing to balance it, so every cap kept growing at ~0.8 K/day regardless of the mean climate; poleward transport now pays that deficit as it does on a real planet
-  - seasonal bootstrap at Weather Core creation: the steady anomaly of the current declination relative to the annual-mean daily insolation is applied (land ~0.75, ocean ~0.12 response), so the winter cap is larger than the summer cap from the first frame
-  - weather-target-smoothing.js: the equator-pole contrast of the bootstrap follows the mean climate (38 K at +15 C, ~28 K at +22 C, ~50 K at +5 C) instead of freezing the poles of a +22 C world exactly like a +15 C one
-  - h2o-advection.js: the initial vapour column is capped by local saturation; polar air no longer starts twice saturated and no longer dumps ~6 kg/m2 of cloud water as snow onto every cold continent within the first simulated hours
-  - surface.glsl: the seam-smoothing temperature envelope now shares the Weather Core bootstrap profile (same mean, same climate-dependent contrast) instead of a latitude-cubed curve that put every pole near 215 K; frost and the deep-cold ocean closure no longer paint a huge symmetric cap that physics could not remove
-Regression: add tests/atmospheric-heat-transport.test.js (conservation, pole warming, airless and 90-bar limits, moist scaling, seasonal asymmetry, wrapper integration); extend weather-core.test.js for the climate-dependent contrast and cryosphere.test.js for the shader envelope.
-Snapshot: 0.5.112 remains the rollback point before atmospheric heat transport.
+VERSION 0.5.114
+Base: 0.5.113
+Changes: Decouple the visible frame loop from fixed Weather Core cadence so orbit, zoom and animated effects no longer hitch once per weather tick.
+  - Weather Core desktop grid reduced from 48x48 to 36x36 cells per cubemap face; the physical grid remains synoptic while shader detail stays full-resolution
+  - replace setInterval(weatherCoreTick, 1000) with a non-overlapping cooperative scheduler using requestIdleCallback when available; missed real-time ticks are never replayed
+  - weather physics defers while the user is dragging, pinching or wheeling, while paused/hidden, and while the full shader is still compiling
+  - cloud, fog and cryosphere GPU target publication is removed from the visible fixed-tick burst by rebinding uploads to a coalescing idle queue; one visual target is published per idle turn
+  - first frame, seed changes and texture-size changes remain synchronous so a regenerated planet never displays stale weather from the previous world
+  - expensive cryosphere publication is throttled to about 2.4 s on mobile and 1.8 s on desktop, while its scalar edge field continues to interpolate continuously between targets
+  - Weather Core scheduler records last/EMA tick cost in window.__madPlanetWeatherScheduler for profiling without forcing synchronous GPU timing
+Regression intent: fixed-step determinism is unchanged; render FPS still never drives weather integration; visual target blending remains continuous and no catch-up work occurs after hidden/interactive periods.
+Snapshot: 0.5.113 remains the rollback point before frame-pacing decoupling.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
