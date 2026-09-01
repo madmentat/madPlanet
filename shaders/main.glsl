@@ -97,6 +97,14 @@ void main(){
     vec3 nightGlow = mix(atmC*0.5, uStarCol*0.3, 0.4);
     col += nightGlow * pow(scat, 3.0) * (1.0-alit) * 0.35 * uAtmo * visualAtmo;
 
+    /* Instrument mode: show the physical Weather Core surface temperature
+       directly. physicalFogSample().a is already the temporally interpolated
+       180..380 K surface field, so clouds/lighting cannot hide the data. */
+    if(uThermalOn > 0.5){
+      float temp01 = clamp(physicalFogSample(n0).a, 0.0, 1.0);
+      col = thermalSurfaceColor(temp01);
+    }
+
     /* кольца перед планетой */
     float tR;
     vec4 rg = ringColor(ro, rd, tP, tR);
