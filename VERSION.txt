@@ -1,8 +1,14 @@
-VERSION 0.5.90
-Base: 0.5.89
-Changes: The normal-path fix described in 0.5.89 was missing from surface.glsl. The global bump gain (0.03 + 0.095*uTect) was still applied to every land pixel, so raising Tectonics continued to amplify ordinary base-terrain FBM gradients into residual smooth curved stripes far from plate boundaries.
-Actual implementation: localTectSupport = max(ss(0.01,0.08,mount), 1.0 - ss(0.05,0.20,seamNearCenter)). The Tectonics contribution to finite-difference normal strength is now gated by real tectonic height or proximity to a genuine plate margin. Deep plate interiors keep only the neutral 0.03 base gain.
-Validation: seed 90636862 (or any previously problematic area), sweep Tectonics 0% -> 100% with Plates off. Distant smooth arcs must no longer strengthen merely because the slider is raised. Real mountain systems and plate-margin structure must still respond.
-Snapshots: snapshot/0.5.89-pre-normal-fix is the rollback point before this change.
-Retained: all prior pairCompetitive, broad seamGate and diagnostic fixes from 0.5.86-0.5.89.
+VERSION 0.5.91
+Base: 0.5.90
+Changes: Thin discontinuous lines, interrupted colour changes and classic "triangle without hypotenuse" artefacts were still visible even at Tectonics=0. They originated from the finite-difference tangent basis
+  tg = normalize(cross(n0, abs(n0.y)<0.99 ? upY : upX))
+which degenerates and flips orientation near the poles and at the hard switch threshold. After normalize() the numerical noise becomes visible as sphere-discretisation stripes.
+Fix: replace with a continuously oriented non-degenerate frame
+  if (abs(n0.z) < 0.999) tg = normalize(vec3(n0.y, -n0.x, 0.0));
+  else                   tg = normalize(vec3(0.0, n0.z, -n0.y));
+  bt = cross(n0, tg);
+This keeps the basis well-defined everywhere on the sphere.
+Validation: same seed / camera as the reported screenshots (e.g. 82765821), Tectonics both 0 and 1. Thin interrupted lines and triangular geometry artefacts should disappear; real tectonic relief and plate boundaries remain.
+Snapshots: snapshot/0.5.90-pre-basis-fix is the rollback point.
+Retained: localTectSupport bump gate from 0.5.90 and all prior tectonic fixes.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

@@ -34,7 +34,18 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float gradH = 0.0;
   float eps = clamp(tHit*uPixA*2.0, 0.0006, 0.02);
   if(h > -0.05){
-    vec3 tg = normalize(cross(n0, (abs(n0.y)<0.99) ? vec3(0,1,0) : vec3(1,0,0)));
+    /* 0.5.91: previous basis
+         tg = normalize(cross(n0, abs(n0.y)<0.99 ? vec3(0,1,0) : vec3(1,0,0)))
+       degenerates and flips orientation in a band around the poles and at the
+       hard switch. After normalize() this produced thin discontinuous lines,
+       interrupted colour changes and classic "triangle without hypotenuse"
+       artefacts even at Tectonics=0. Use a continuously oriented frame that
+       never yields a near-zero cross product. */
+    vec3 tg;
+    if(abs(n0.z) < 0.999)
+      tg = normalize(vec3(n0.y, -n0.x, 0.0));
+    else
+      tg = normalize(vec3(0.0, n0.z, -n0.y));
     vec3 bt = cross(n0, tg);
     float rr1, rr2, mm1, mm2, ll1, ll2;
     float h1 = terrain(normalize(n0 + tg*eps), rr1, mm1, ll1);
