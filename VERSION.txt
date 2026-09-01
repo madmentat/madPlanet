@@ -1,13 +1,5 @@
-VERSION 0.5.103
-Base: 0.5.102
-Changes: With lattice artifacts gone, land still read as noise blobs from orbit. Continent formation reworked for orbital realism:
-  - low-freq shaped massifs (clear land vs ocean floor)
-  - mid-scale gulfs/peninsulas
-  - fine coastal fractal
-  - interior hills on land only
-  - islands ocean-only, chain-biased (anisotropic), soft threshold
-  - soft continental shelf ramp
-  - tectonic ranges: simplex folds, slightly softer ridged peaks
-  - slightly wider coastline AA
-Snapshots: snapshot/0.5.102-pre-orbit-land
+VERSION 0.5.104
+Base: 0.5.103
+Changes: 0.5.103 strong curl warp + anisotropic island stretch + plateau reshape smeared continents (stretched streaks). Revert land formation to mild isotropic domain-warp on simplex FBM — same structure that looked natural in older builds, without cubic lattice artifacts.
+Snapshots: snapshot/0.5.103-pre-no-stretch
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
