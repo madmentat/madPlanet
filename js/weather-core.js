@@ -1,4 +1,4 @@
-/* ============ 0.5.39 / 0.5.65: persistent low-resolution Weather Core ============ */
+/* ============ 0.5.39 / 0.5.65 / 0.5.114: persistent low-resolution Weather Core ============ */
 /*
    CPU climate/weather state, deliberately decoupled from render FPS.
 
@@ -16,10 +16,18 @@
    erased thunderstorms, fog, pressure systems and every other accumulated
    field. Resolution now depends only on the device class; changing visual
    quality can no longer reset weather.
+
+   0.5.114: the one-second physics cadence is no longer a one-second main-
+   thread interrupt. A non-overlapping idle scheduler runs a fixed deterministic
+   model step only when the user is not dragging/zooming, the page is visible
+   and the full shader is ready. Missed wall-clock ticks are deliberately not
+   replayed. Desktop resolution is 36 rather than 48 cells per face: the visual
+   shader supplies small-scale cloud/terrain detail, while the physical grid is
+   a synoptic field and should not steal a render frame once per second.
 */
 
 const WEATHER_CORE_MODEL = 1;
-const WEATHER_CORE_DESKTOP_N = 48;
+const WEATHER_CORE_DESKTOP_N = 36;
 const WEATHER_CORE_DRAFT_N = 32;
 const WEATHER_CORE_REAL_TICK_MS = 1000;
 const WEATHER_CORE_FIXED_DT_SEC = 300; /* five simulated minutes per tick */
@@ -163,6 +171,7 @@ function weatherCoreEnsure(){
 }
 function weatherCoreTick(){
   if(typeof document!=='undefined' && document.hidden) return false; /* no catch-up */
+  if(typeof state!=='undefined' && state && state.paused) return false;
   const core=weatherCoreEnsure();
   if(!core) return false;
   weatherCoreStep(core,WEATHER_CORE_FIXED_DT_SEC,weatherCoreClimateSnapshot(),weatherCoreAxis());
@@ -208,9 +217,92 @@ if(typeof createPanel==='function'){
   };
 }
 
-/* One fixed CPU tick per real second. It is intentionally not driven by
-   requestAnimationFrame and hidden tabs simply skip work instead of replaying
-   elapsed wall time on return. */
-if(typeof window!=='undefined' && typeof document!=='undefined' && typeof setInterval==='function'){
-  setInterval(weatherCoreTick,WEATHER_CORE_REAL_TICK_MS);
+/* Cooperative fixed-step scheduler. The old setInterval(weatherCoreTick,1000)
+   could fire in the middle of pointer input and run the complete stack of
+   per-cell physics plus GPU publication in one main-thread task. This driver
+   is non-overlapping, never catches up missed wall time and asks the browser
+   for an idle slice before entering the fixed step. The optional interaction
+   hook is installed later by smooth-motion-ui.js. */
+let weatherCoreSchedulerTimer=0;
+let weatherCoreSchedulerIdle=0;
+let weatherCoreLastWallTickMs=NaN;
+let weatherCoreLastCostMs=0;
+let weatherCoreCostEwmaMs=0;
+function weatherCoreNowMs(){
+  return (typeof performance!=='undefined'&&performance&&typeof performance.now==='function')
+    ?performance.now():Date.now();
+}
+function weatherCoreSchedulerBlocked(nowMs){
+  if(typeof document!=='undefined' && document.hidden) return true;
+  if(typeof state!=='undefined' && state && state.paused) return true;
+  /* Shader linking is CPU-heavy on some Chromium builds. Let the compact
+     renderer get established before weather starts competing for the thread. */
+  if(typeof fullShaderDone==='boolean' && !fullShaderDone) return true;
+  if(typeof weatherCoreInteractionBusy==='function' && weatherCoreInteractionBusy(nowMs)) return true;
+  return false;
+}
+function weatherCoreSchedule(delayMs=WEATHER_CORE_REAL_TICK_MS){
+  if(typeof setTimeout!=='function') return;
+  if(weatherCoreSchedulerTimer) clearTimeout(weatherCoreSchedulerTimer);
+  const delay=Math.max(16,Number(delayMs)||WEATHER_CORE_REAL_TICK_MS);
+  weatherCoreSchedulerTimer=setTimeout(weatherCoreRequestTick,delay);
+}
+function weatherCoreRequestTick(){
+  weatherCoreSchedulerTimer=0;
+  const now=weatherCoreNowMs();
+  if(weatherCoreSchedulerBlocked(now)){
+    weatherCoreSchedule(72);
+    return;
+  }
+  const run=()=>{
+    if(weatherCoreSchedulerBlocked(weatherCoreNowMs())){
+      weatherCoreSchedule(72);
+      return;
+    }
+    const t1=weatherCoreNowMs();
+    const stepped=weatherCoreTick();
+    const t2=weatherCoreNowMs();
+    if(stepped){
+      weatherCoreLastCostMs=Math.max(0,t2-t1);
+      weatherCoreCostEwmaMs=weatherCoreCostEwmaMs>0
+        ?weatherCoreCostEwmaMs*0.78+weatherCoreLastCostMs*0.22
+        :weatherCoreLastCostMs;
+      weatherCoreLastWallTickMs=t2;
+    }
+    /* Cadence is measured from completion. A 12 ms tick therefore does not
+       cause the next one 988 ms later, and delayed ticks are never replayed. */
+    weatherCoreSchedule(WEATHER_CORE_REAL_TICK_MS);
+  };
+
+  if(typeof requestIdleCallback==='function'){
+    weatherCoreSchedulerIdle=requestIdleCallback((deadline)=>{
+      weatherCoreSchedulerIdle=0;
+      if(weatherCoreSchedulerBlocked(weatherCoreNowMs())){
+        weatherCoreSchedule(72);
+        return;
+      }
+      if(!deadline.didTimeout && deadline.timeRemaining()<5){
+        weatherCoreSchedule(24);
+        return;
+      }
+      run();
+    },{timeout:220});
+  }else{
+    /* Safari/older browsers: still yield out of the timer callback so pointer
+       and wheel events already queued for this turn are serviced first. */
+    setTimeout(run,0);
+  }
+}
+
+/* One fixed CPU tick no sooner than once per real second. It is intentionally
+   not driven by requestAnimationFrame and hidden tabs / active interaction
+   simply skip work instead of replaying elapsed wall time on return. */
+if(typeof window!=='undefined' && typeof document!=='undefined' && typeof setTimeout==='function'){
+  weatherCoreSchedule(WEATHER_CORE_REAL_TICK_MS);
+  window.__madPlanetWeatherScheduler={
+    get lastCostMs(){return weatherCoreLastCostMs;},
+    get costEwmaMs(){return weatherCoreCostEwmaMs;},
+    get lastWallTickMs(){return weatherCoreLastWallTickMs;},
+    request(){weatherCoreSchedule(16);}
+  };
 }
