@@ -124,14 +124,16 @@ assert.ok(cctx.cryoGpuVisualCoverage(0.35,0.80,true)<0.05,'the same concentratio
 const n0=cctx.cryoGpuEdgeNoise(123,0,20,20,64),n1=cctx.cryoGpuEdgeNoise(123,0,21,20,64);
 assert.ok(n0>=0&&n0<=1&&n1>=0&&n1<=1&&Math.abs(n0-n1)<0.5,'3-D ice field should be bounded and spatially coherent');
 
-/* 0.5.88: the old 0.5.80 mount-derived gSeamNear macro became the artifact.
-   Real nearest/second-nearest plate seams are now safe and must reach surface
-   shading unchanged; only the unrelated cryosphere texture wrapper remains. */
+/* 0.5.88 retired the mount-derived seam macro, and 0.5.98 retired the global
+   texture() wrapper. Real plate seams and an explicit cryosphere sampler must
+   reach surface shading without preprocessor hijacks. */
 assert.doesNotMatch(surfPre,/#define\s+gSeamNear\b/,
   'surface prelude must not manufacture tectonic contour lines from mount');
 assert.doesNotMatch(surfPost,/#undef\s+gSeamNear\b/,
   'postlude must not treat the real terrain seam global as a temporary macro');
-assert.match(surfPre,/#define\s+texture\(TEX,COORD\)\s+cryoSurfaceTextureAA/,
-  'cryosphere material-edge wrapper must remain after retiring the seam macro');
+assert.match(surfPre,/vec4\s+cryoSurfaceSample\s*\(samplerCube\s+tex,\s*vec3\s+dir\)/,
+  'explicit cryosphere surface sampler must remain after retiring the texture macro');
+assert.doesNotMatch(surfPre,/#define\s+texture\s*\(/,
+  'cryosphere code must not hijack the GLSL texture builtin');
 
 console.log('extreme-orbit-regressions.test.js: OK');
