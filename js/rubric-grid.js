@@ -1,4 +1,4 @@
-/* ============ 0.5.116: two-column draggable rubric ============ */
+/* ============ 0.5.116 / 0.5.117: two-column draggable rubric ============ */
 /*
    The original eight parameter buttons remain the right-hand column. A second
    eight-slot column is added immediately to its left, aligned above the
@@ -6,6 +6,9 @@
    dropping on an occupied slot swaps the two buttons, while dropping on an
    empty slot simply moves the button. Layout is device-local UI state and is
    deliberately not part of the planet seed/hash.
+
+   0.5.117 fills the first three cells of the new column with instrument tools:
+   Orbit, Ecliptic and Thermal Imager. The remaining five cells stay free.
 */
 (function installRubricGrid(){
   if(typeof document==='undefined')return;
@@ -35,7 +38,7 @@
       position:fixed;z-index:40;pointer-events:none;width:44px;height:44px;border-radius:12px;
       opacity:.92;transform:translate(-50%,-50%) scale(1.04);box-shadow:0 8px 28px rgba(0,0,0,.45)
     }
-    .rubric-btn.orbit-enabled{color:var(--warm);border-color:rgba(232,163,92,.50);background:rgba(232,163,92,.14)}
+    .rubric-btn.orbit-enabled,.rubric-btn.tool-enabled{color:var(--warm);border-color:rgba(232,163,92,.50);background:rgba(232,163,92,.14)}
     @media(max-width:700px){
       .rubric.rubric-grid{
         display:flex;width:auto;max-width:calc(100vw - 16px);height:40px;gap:5px;overflow-x:auto;
@@ -51,28 +54,23 @@
   document.head.appendChild(style);
 
   const existing=[...rubric.querySelectorAll(':scope > .rubric-btn')];
-  existing.forEach((btn,i)=>{
-    btn.dataset.toolId='group:'+String(btn.dataset.group||i);
-  });
+  existing.forEach((btn,i)=>{btn.dataset.toolId='group:'+String(btn.dataset.group||i);});
 
-  const orbitBtn=document.createElement('button');
-  orbitBtn.type='button';
-  orbitBtn.id='orbitOverlayBtn';
-  orbitBtn.className='rubric-btn rubric-action-btn';
-  orbitBtn.dataset.toolId='action:orbit';
-  orbitBtn.title='Показать орбиту';
-  orbitBtn.setAttribute('aria-label','Показать орбиту');
-  orbitBtn.setAttribute('aria-pressed','false');
-  orbitBtn.innerHTML='<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><ellipse cx="9" cy="9" rx="7" ry="3.7" transform="rotate(-20 9 9)" stroke="currentColor" stroke-width="1.1"/><circle cx="9" cy="9" r="1.6" fill="currentColor" opacity=".85"/><circle cx="14.5" cy="5.7" r="1.1" fill="currentColor"/></svg><span>ОР</span>';
+  function actionButton(id,toolId,title,shortLabel,svg){
+    const btn=document.createElement('button');btn.type='button';btn.id=id;btn.className='rubric-btn rubric-action-btn';
+    btn.dataset.toolId=toolId;btn.title=title;btn.setAttribute('aria-label',title);btn.setAttribute('aria-pressed','false');
+    btn.innerHTML=svg+'<span>'+shortLabel+'</span>';return btn;
+  }
+  const orbitBtn=actionButton('orbitOverlayBtn','action:orbit','Показать орбиту','ОР','<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><ellipse cx="9" cy="9" rx="7" ry="3.7" transform="rotate(-20 9 9)" stroke="currentColor" stroke-width="1.1"/><circle cx="9" cy="9" r="1.6" fill="currentColor" opacity=".85"/><circle cx="14.5" cy="5.7" r="1.1" fill="currentColor"/></svg>');
+  const eclipticBtn=actionButton('eclipticOverlayBtn','action:ecliptic','Показать эклиптику','ЭК','<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="5.2" stroke="currentColor" stroke-width="1" opacity=".45"/><ellipse cx="9" cy="9" rx="7.2" ry="2.7" transform="rotate(-24 9 9)" stroke="currentColor" stroke-width="1.2"/><path d="M9 2v14" stroke="currentColor" stroke-width="1" stroke-dasharray="2 2"/></svg>');
+  const thermalBtn=actionButton('thermalDisplayBtn','action:thermal','Тепловизор','ТЕ','<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M7 3.5a2 2 0 1 1 4 0v6.1a3.6 3.6 0 1 1-4 0V3.5Z" stroke="currentColor" stroke-width="1.1"/><path d="M9 6v6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="9" cy="13" r="1.6" fill="currentColor"/></svg>');
 
   /* Logical slot order is column-major on purpose: 0..7 are the original
      right column; 8..15 are the new left column. On narrow phones the same
      order naturally flattens to the old eight buttons followed by additions. */
-  const slots=[];
-  rubric.textContent='';
+  const slots=[];rubric.textContent='';
   for(let i=0;i<SLOT_COUNT;i++){
-    const slot=document.createElement('div');
-    slot.className='rubric-slot';slot.dataset.slot=String(i);
+    const slot=document.createElement('div');slot.className='rubric-slot';slot.dataset.slot=String(i);
     if(i<COLUMN_ROWS){slot.style.gridColumn='2';slot.style.gridRow=String(i+1);}
     else{slot.style.gridColumn='1';slot.style.gridRow=String(i-COLUMN_ROWS+1);}
     slots.push(slot);rubric.appendChild(slot);
@@ -81,12 +79,13 @@
   const defaultIds=Array(SLOT_COUNT).fill(null);
   existing.slice(0,COLUMN_ROWS).forEach((btn,i)=>{defaultIds[i]=btn.dataset.toolId;});
   defaultIds[COLUMN_ROWS]=orbitBtn.dataset.toolId;
+  defaultIds[COLUMN_ROWS+1]=eclipticBtn.dataset.toolId;
+  defaultIds[COLUMN_ROWS+2]=thermalBtn.dataset.toolId;
   const toolMap=new Map(existing.map(btn=>[btn.dataset.toolId,btn]));
-  toolMap.set(orbitBtn.dataset.toolId,orbitBtn);
+  [orbitBtn,eclipticBtn,thermalBtn].forEach(btn=>toolMap.set(btn.dataset.toolId,btn));
 
   function loadIds(){
-    let saved=null;
-    try{saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');}catch(_e){}
+    let saved=null;try{saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');}catch(_e){}
     if(!Array.isArray(saved)||saved.length!==SLOT_COUNT)return defaultIds.slice();
     const out=Array(SLOT_COUNT).fill(null),seen=new Set();
     for(let i=0;i<SLOT_COUNT;i++){
@@ -97,81 +96,43 @@
        free, otherwise the first available empty cell. */
     for(const [id] of toolMap){
       if(seen.has(id))continue;
-      let wanted=defaultIds.indexOf(id);
-      if(wanted<0||out[wanted])wanted=out.indexOf(null);
+      let wanted=defaultIds.indexOf(id);if(wanted<0||out[wanted])wanted=out.indexOf(null);
       if(wanted>=0){out[wanted]=id;seen.add(id);}
     }
     return out;
   }
   let layout=loadIds();
-
-  function saveLayout(){
-    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(layout));}catch(_e){}
-  }
+  function saveLayout(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(layout));}catch(_e){}}
   function renderLayout(){
     slots.forEach(slot=>{while(slot.firstChild)slot.removeChild(slot.firstChild);});
-    for(let i=0;i<SLOT_COUNT;i++){
-      const id=layout[i],btn=id?toolMap.get(id):null;
-      if(btn)slots[i].appendChild(btn);
-    }
+    for(let i=0;i<SLOT_COUNT;i++){const id=layout[i],btn=id?toolMap.get(id):null;if(btn)slots[i].appendChild(btn);}
   }
   renderLayout();
 
   let drag=null,suppressClickUntil=0;
-  function makeGhost(btn,x,y){
-    const g=btn.cloneNode(true);g.removeAttribute('id');g.classList.add('rubric-drag-ghost');
-    g.style.left=x+'px';g.style.top=y+'px';document.body.appendChild(g);return g;
-  }
-  function slotAtPoint(x,y){
-    const el=document.elementFromPoint(x,y);return el&&el.closest?el.closest('.rubric-slot'):null;
-  }
+  function makeGhost(btn,x,y){const g=btn.cloneNode(true);g.removeAttribute('id');g.classList.add('rubric-drag-ghost');g.style.left=x+'px';g.style.top=y+'px';document.body.appendChild(g);return g;}
+  function slotAtPoint(x,y){const el=document.elementFromPoint(x,y);return el&&el.closest?el.closest('.rubric-slot'):null;}
   function beginDrag(e,btn){
-    if(e.button!==undefined&&e.button!==0)return;
-    const source=btn.closest('.rubric-slot');if(!source)return;
+    if(e.button!==undefined&&e.button!==0)return;const source=btn.closest('.rubric-slot');if(!source)return;
     drag={pointerId:e.pointerId,btn,source,startX:e.clientX,startY:e.clientY,active:false,ghost:null,target:null};
     try{btn.setPointerCapture(e.pointerId);}catch(_e){}
   }
   function moveDrag(e){
-    if(!drag||e.pointerId!==drag.pointerId)return;
-    const dx=e.clientX-drag.startX,dy=e.clientY-drag.startY;
+    if(!drag||e.pointerId!==drag.pointerId)return;const dx=e.clientX-drag.startX,dy=e.clientY-drag.startY;
     if(!drag.active&&dx*dx+dy*dy<49)return;
-    if(!drag.active){
-      drag.active=true;rubric.classList.add('rubric-dragging');drag.btn.classList.add('rubric-drag-source');
-      drag.ghost=makeGhost(drag.btn,e.clientX,e.clientY);
-    }
-    e.preventDefault();
-    drag.ghost.style.left=e.clientX+'px';drag.ghost.style.top=e.clientY+'px';
-    const target=slotAtPoint(e.clientX,e.clientY);
-    if(drag.target&&drag.target!==target)drag.target.style.outline='';
-    drag.target=target;
-    if(target)target.style.outline='1px solid rgba(159,194,255,.55)';
+    if(!drag.active){drag.active=true;rubric.classList.add('rubric-dragging');drag.btn.classList.add('rubric-drag-source');drag.ghost=makeGhost(drag.btn,e.clientX,e.clientY);}
+    e.preventDefault();drag.ghost.style.left=e.clientX+'px';drag.ghost.style.top=e.clientY+'px';
+    const target=slotAtPoint(e.clientX,e.clientY);if(drag.target&&drag.target!==target)drag.target.style.outline='';drag.target=target;if(target)target.style.outline='1px solid rgba(159,194,255,.55)';
   }
   function endDrag(e){
-    if(!drag||e.pointerId!==drag.pointerId)return;
-    const d=drag;drag=null;
-    if(d.target)d.target.style.outline='';
-    rubric.classList.remove('rubric-dragging');d.btn.classList.remove('rubric-drag-source');
-    if(d.ghost)d.ghost.remove();
-    if(!d.active)return;
-    suppressClickUntil=performance.now()+350;
-    const src=Number(d.source.dataset.slot),dst=d.target?Number(d.target.dataset.slot):src;
-    if(Number.isInteger(src)&&Number.isInteger(dst)&&src>=0&&dst>=0&&src<SLOT_COUNT&&dst<SLOT_COUNT&&src!==dst){
-      const tmp=layout[src];layout[src]=layout[dst];layout[dst]=tmp;saveLayout();renderLayout();
-    }
+    if(!drag||e.pointerId!==drag.pointerId)return;const d=drag;drag=null;if(d.target)d.target.style.outline='';rubric.classList.remove('rubric-dragging');d.btn.classList.remove('rubric-drag-source');if(d.ghost)d.ghost.remove();if(!d.active)return;
+    suppressClickUntil=performance.now()+350;const src=Number(d.source.dataset.slot),dst=d.target?Number(d.target.dataset.slot):src;
+    if(Number.isInteger(src)&&Number.isInteger(dst)&&src>=0&&dst>=0&&src<SLOT_COUNT&&dst<SLOT_COUNT&&src!==dst){const tmp=layout[src];layout[src]=layout[dst];layout[dst]=tmp;saveLayout();renderLayout();}
   }
 
-  rubric.addEventListener('pointerdown',e=>{
-    const btn=e.target.closest&&e.target.closest('.rubric-btn');if(btn)beginDrag(e,btn);
-  });
-  rubric.addEventListener('pointermove',moveDrag,{passive:false});
-  rubric.addEventListener('pointerup',endDrag);
-  rubric.addEventListener('pointercancel',endDrag);
-  rubric.addEventListener('click',e=>{
-    if(performance.now()<suppressClickUntil){e.preventDefault();e.stopImmediatePropagation();}
-  },true);
+  rubric.addEventListener('pointerdown',e=>{const btn=e.target.closest&&e.target.closest('.rubric-btn');if(btn)beginDrag(e,btn);});
+  rubric.addEventListener('pointermove',moveDrag,{passive:false});rubric.addEventListener('pointerup',endDrag);rubric.addEventListener('pointercancel',endDrag);
+  rubric.addEventListener('click',e=>{if(performance.now()<suppressClickUntil){e.preventDefault();e.stopImmediatePropagation();}},true);
 
-  window.__madPlanetRubricLayout={
-    get layout(){return layout.slice();},
-    reset(){layout=defaultIds.slice();saveLayout();renderLayout();}
-  };
+  window.__madPlanetRubricLayout={get layout(){return layout.slice();},reset(){layout=defaultIds.slice();saveLayout();renderLayout();}};
 })();
