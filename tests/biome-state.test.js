@@ -92,7 +92,7 @@ assert.equal((surface.match(/float rn = fbm\(/g)||[]).length,1,'river geometry s
 assert.equal((surface.match(/float lakeN = fbm\(/g)||[]).length,1,'lake geometry should be evaluated once');
 const hydro=surface.indexOf('float riverWarpX');
 const drought=surface.indexOf('float drought =');
-const biome=surface.indexOf('/* биомы */');
+const biome=surface.indexOf('vec3 SAND=');
 assert.ok(hydro>=0&&hydro<drought&&drought<biome,'hydrology must disaggregate coarse moisture before biome colour selection');
 
 const dense=surface.indexOf('alb = mix(alb, denseC');
