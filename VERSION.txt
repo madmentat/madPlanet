@@ -1,10 +1,9 @@
-VERSION 0.5.95
-Base: 0.5.94
-Changes: Screen-space dFdx/dFdy normals (0.5.94) produced V-shaped dotted seams, triangular facets and cut rivers whenever dFdx(n0) and dFdy(n0) were nearly parallel. Continent height is continuous FBM; those were pure normal singularities.
-Fix in surface.glsl:
-  - restore Frisvad ONB + central finite differences for normals
-  - coast AA uses pure screen-pixel width (tHit*uPixA), independent of gradH
-localTectSupport retained. Pause/zoom unchanged.
-Validation: seeds 30241529, 26596513, 28226818 — no V-dotted seams, no triangular land cuts, rivers continuous.
-Snapshots: snapshot/0.5.94-pre-stable-normals is the rollback point.
+VERSION 0.5.96
+Base: 0.5.95
+Changes: Coast "whiskers" and non-closing island edges persisted. FD step up to ~1° of arc bridged entire coast features; bump on the shoreline turned residual gradient error into silhouette nicks; weak tectonic ridges could grow barely-positive land spikes into the ocean.
+Fix:
+  surface.glsl — hard-cap FD eps (~0.25°), shoreLock (no bump on waterline), reduced bump gain, pixel coast AA retained
+  terrain.glsl — tighter seamGate, mountOut only when land already above sea (ss(0.01,0.06,h)), weaker trench near sea level
+Validation: seed 29222792 and prior coast-cut seeds — no radial whiskers from coast into ocean, island silhouettes continuous.
+Snapshots: snapshot/0.5.95-pre-coast-lock is the rollback point.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
