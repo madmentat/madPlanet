@@ -2,15 +2,21 @@
 float contFreq(){ return mix(0.7, 2.6, uCont); }
 float seaLvl(){ return mix(-0.25, 0.34, uSea); }
 
-/* 0.5.106: classic continent recipe (warp 0.9 + 5 oct + mid detail) on
-   simplex — same look as 0.5.67–0.5.86, without cubic lattice facets. */
+/* 0.5.107: keep the artifact-resistant simplex basis, but put it on the same
+   statistical scale as the old cubic noise. simplex3 is about 2x stronger
+   than noise3 for the same coordinates, so blindly reusing the classic 0.9
+   warp in 0.5.106 doubled the effective deformation and changed the whole
+   planet silhouette. A 0.50 normalization restores the old macro recipe
+   without restoring cubic-lattice coast facets. */
+float classicSimplexFbm(vec3 p, int oct){ return 0.50*fbmSimplex(p,oct); }
+
 float continentNoise(vec3 p){
-  vec3 w = vec3(fbmSimplex(p + vec3(1.7,9.2,3.1), 2),
-                fbmSimplex(p + vec3(8.3,2.8,5.9), 2),
-                fbmSimplex(p + vec3(4.6,7.1,0.7), 2));
+  vec3 w = vec3(classicSimplexFbm(p + vec3(1.7,9.2,3.1), 2),
+                classicSimplexFbm(p + vec3(8.3,2.8,5.9), 2),
+                classicSimplexFbm(p + vec3(4.6,7.1,0.7), 2));
   vec3 q = p + 0.9*w;
-  float c = fbmSimplex(q, 5);
-  c += 0.14*fbmSimplex(q*3.1 + vec3(7.0), 3);
+  float c = classicSimplexFbm(q, 5);
+  c += 0.14*classicSimplexFbm(q*3.1 + vec3(7.0), 3);
   return c;
 }
 float continentH(vec3 dir){
@@ -40,7 +46,9 @@ vec3 tectonicBelt(vec3 sN){
 
   float orogN = 0.5 + 0.5*fbm(sN*1.15 + uSeedS*3.1 + vec3(311.0,43.0,7.0), 2);
   float seg   = 0.5 + 0.5*fbm(sN*2.6 + uSeedS*2.7 + vec3(211.0,17.0,53.0), 3);
-  float bw = 0.048*(0.50 + 1.00*seg)*(0.65 + 1.00*orogN);
+  /* Restore the broad pre-Grok orogenic envelope. The later 0.048 belt made
+     mountain systems read as narrow synthetic ribbons even from orbit. */
+  float bw = 0.073*(0.45 + 1.15*seg)*(0.60 + 1.15*orogN);
   vec3 windS = normalize(cross(uRotS*uAxis, sN) + vec3(1e-6));
 
   float dmin = 1e9, dsecond = 1e9;
@@ -86,6 +94,8 @@ vec3 tectonicBelt(vec3 sN){
       float sum2 = di + dj;
       if(sum2 > REACH) continue;
       float wgt = exp(-sum2*9.0) * ss(REACH, REACH*0.7, sum2);
+      /* Keep the later ghost-pair safeguard: it had little visible influence
+         by itself, but cheaply suppresses physically irrelevant remote pairs. */
       float pairCompetitive = exp(-280.0*(di*di + dj*dj));
 
       vec3 db = pj - pi;
@@ -132,11 +142,12 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   vec3 sN = uRotS * dir;
   vec3 p = sN*contFreq() + uSeedS;
   float c = continentNoise(p);
-  /* 0.5.106: classic island field (freq 5.5, threshold ~0.22) on simplex.
-     softstep instead of hard max(isl-0.22,0) to avoid wedge islands. */
-  float isl = fbmSimplex(sN*5.5 + uSeedS*1.7 + vec3(23.1), 4);
-  float islandH = uIsle*0.6*smoothstep(0.18, 0.28, isl);
-  float h = c*0.95 + islandH - seaLvl();
+
+  /* Restore the classic island mass/threshold on the isotropic simplex basis.
+     The hard max is safe here because simplex has no cubic cell faces to stamp
+     triangular islands; keeping the old 0.22 heel restores the old abundance. */
+  float isl = classicSimplexFbm(sN*5.5 + uSeedS*1.7 + vec3(23.1), 4);
+  float h = c*0.95 + uIsle*0.6*max(isl-0.22,0.0) - seaLvl();
   rockOut = 0.0;
   mountOut = 0.0;
   leeOut = 0.0;
@@ -149,28 +160,27 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   }
 
   if(uTect > 0.01){
-    float seamGate = 1.0 - ss(0.055,0.180,gSeamNear);
+    /* Anti-ghost guard only deep inside a plate. The 0.5.105/106 narrow gate
+       clipped the legitimate mountain envelope and changed the world shape. */
+    float seamGate = 1.0 - ss(0.24,0.50,gSeamNear);
     belt.x *= seamGate;
     belt.z *= seamGate;
     leeOut *= seamGate;
 
     if(belt.x > 0.0){
-      /* 0.5.105: peaked narrow ranges, crest near seam */
-      float peaks  = ridged(sN*9.0  + uSeedS*1.9, 4);
-      float peaks2 = ridged(sN*22.0 + uSeedS*2.8 + vec3(41.0), 3);
-      float peakMix = clamp(0.62*peaks + 0.38*peaks2, 0.0, 1.0);
-      float foldA = 0.5 + 0.5*fbmSimplex(sN*14.0 + uSeedS*2.2 + vec3(97.0,13.0,251.0), 3);
-      float foldB = 0.5 + 0.5*fbmSimplex(sN*31.0 + uSeedS*3.4 + vec3(181.0,317.0,43.0), 3);
-      float folds = clamp(0.55*foldA + 0.45*foldB, 0.0, 1.0);
+      /* Classic 0.5.86 mountain morphology: broad broken ranges rather than
+         later needle/crest ribbons. Keep the newer seam diagnostics only. */
+      float peaks = ridged(sN*6.6 + uSeedS*1.9, 3);
+      float foldA = 0.5 + 0.5*noise3(sN*13.5 + uSeedS*2.2 + vec3(97.0,13.0,251.0));
+      float foldB = 0.5 + 0.5*noise3(sN*27.0 + uSeedS*3.4 + vec3(181.0,317.0,43.0));
+      float folds = clamp(0.62*foldA + 0.38*foldB,0.0,1.0);
       float ramp = belt.x*belt.x;
-      float crest = exp(-gSeamNear*10.0);
-      float profile = (0.04 + 0.96*peakMix) * (0.40 + 0.60*folds) * mix(0.20, 1.0, crest);
-      mountOut = uTect * ramp * profile * 1.10;
-      rockOut = ramp * peakMix * mix(0.25, 1.0, crest);
-      mountOut *= ss(0.01, 0.06, h);
+      mountOut = uTect * ramp * (0.34 + 0.66*peaks) * (0.58 + 0.42*folds) * 1.38;
+      rockOut = ramp * (0.30 + 0.70*peaks);
+      mountOut *= mix(0.40, 1.0, ss(-0.05, 0.03, h));
       h += mountOut;
     } else if(belt.x < 0.0){
-      h -= uTect * belt.x*belt.x * 0.055 * ss(0.0, 0.05, -h);
+      h -= uTect * belt.x*belt.x * 0.075;
     }
   }
   if(h > -0.06) h += 0.02*fbm(sN*12.0+uSeedS,2);
