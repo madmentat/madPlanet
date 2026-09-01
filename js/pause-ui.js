@@ -1,4 +1,4 @@
-/* ============ 0.5.92: pause all simulation processes for clean screenshots ============ */
+/* ============ 0.5.92 / 0.5.111: pause all simulation processes for clean screenshots ============ */
 /*
    Freezes the simulation clock, derived-parameter relaxation and time-driven
    weather / cloud / planet motion. Camera navigation (zoom, orbit) stays
@@ -7,6 +7,11 @@
    Placement is opposite the hamburger (rub-toggle):
      - landscape / wide viewports: top-right
      - portrait  / narrow viewports: bottom-left
+
+   0.5.111: bottom-corner controls must never sit on top of the utility bar.
+   Wide portrait tablets lift both pause and hamburger just above that bar;
+   narrow phones lift pause above the two stacked mobile bottom rows while the
+   hamburger remains at its existing top-center position.
 */
 (function installPauseUI(){
   if(typeof document === 'undefined') return;
@@ -43,6 +48,25 @@
       .pause-btn{
         top:auto;right:auto;
         bottom:var(--safe-b);left:var(--safe-b);
+      }
+    }
+    /* Phones have two bottom rows: rubric + horizontally scrolling utility
+       bar. Keep pause above both; the hamburger is already top-center there. */
+    @media (max-width:700px){
+      .pause-btn{bottom:calc(var(--safe-b) + 102px)}
+    }
+    /* Portrait tablets keep the desktop one-row utility bar at the bottom.
+       Raise both corner buttons by one bar height plus a small visual gap.
+       This is deliberately injected after index.src.html styles so it also
+       overrides rub-toggle without duplicating the whole responsive layout. */
+    @media (min-width:701px) and (orientation:portrait){
+      .pause-btn{
+        top:auto;right:auto;left:var(--safe-b);
+        bottom:calc(var(--safe-b) + 58px);
+      }
+      .rub-toggle{
+        top:auto;left:auto;right:var(--safe-b);transform:none;
+        bottom:calc(var(--safe-b) + 58px);
       }
     }
   `;
