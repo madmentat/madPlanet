@@ -6,19 +6,30 @@ const root=path.resolve(__dirname,'..');
 const src=fs.readFileSync(path.join(root,'js/cryosphere-edge-display.js'),'utf8');
 const surface=fs.readFileSync(path.join(root,'shaders/surface.glsl'),'utf8');
 
-assert.match(src,/CRYOSPHERE_EDGE_DISPLAY_MODEL=3/,'hard-edge display model must stay active');
+assert.match(src,/CRYOSPHERE_EDGE_DISPLAY_MODEL=4/,'irregular hard-edge display model must stay active');
 assert.doesNotMatch(src,/const feather=/,'polar ice must not regain an optical feather');
 assert.match(src,/raw>=edgeNoise\?1:0/,'fractional physical coverage must resolve to binary visible ice');
 assert.match(src,/raw<0\.15/,'very sparse sea ice must not become a milky coherent fringe');
 assert.match(src,/gl\.TEXTURE_MIN_FILTER,gl\.NEAREST/,'linear cubemap filtering must not blur the binary ice mask');
 assert.match(src,/cryoGpuBlendAt=function\(\)\{return 1;\}/,'temporal crossfade must not create translucent ice between updates');
 
+/* 0.5.108: dense physical polar coverage may not expose a latitude-like
+   isocontour as a perfect circle. Large/regional seamless 3-D geography must
+   participate almost all the way into the cap; only saturated core ice is
+   guaranteed solid. */
+assert.doesNotMatch(src,/!sea\s*&&\s*raw>=0\.70/,'the old 70% circular dense-cap shortcut must never return');
+assert.match(src,/raw>=0\.995\)return 1/,'only a truly saturated physical ice core may bypass geographic edge breakup');
+for(const f of ['2.35','5.40','13.7','31.1'])assert.ok(src.includes(f),'missing polar-cap edge scale '+f);
+assert.match(src,/0\.48\*broad\+0\.29\*regional\+0\.16\*local\+0\.07\*fine/,
+  'polar cap morphology must be dominated by broad/regional geography, not fine pixel noise');
+assert.match(src,/rawLand>0\.008&&rawLand<0\.995/,
+  'edge geography must still be evaluated through the dense transitional land-ice range');
+
 /* 0.5.82: a second, shader-local cold closure used to bypass all of the hard
    cryosphere rules above. deepColdIce was a smooth 0..1 mask from 258..271 K,
-   then mixed directly into ocean colour. That produced the large grey polar
-   disc even with every atmospheric effect disabled. The emergency sub-grid
-   closure may remain, but it must be a binary phase decision and sea-ice
-   opacity itself must stay binary. */
+   then mixed directly into ocean colour. The emergency sub-grid closure may
+   remain, but it must be a binary phase decision and sea-ice opacity itself
+   must stay binary. */
 assert.match(surface,/float deepColdIce = \(ecologyK < 258\.15\) \? 1\.0 : 0\.0;/,
   'deep-cold sub-grid closure must be a binary phase decision');
 assert.doesNotMatch(surface,/deepColdIce\s*=\s*1\.0-ss\(/,
@@ -40,7 +51,9 @@ const ctx={console,Math,Number,
 vm.createContext(ctx);vm.runInContext(src,ctx,{filename:'cryosphere-edge-display.js'});
 
 assert.equal(ctx.cryoGpuVisualCoverage(0,0.5,false),0);
-assert.equal(ctx.cryoGpuVisualCoverage(0.8,0.5,false),1,'dense continental ice is opaque');
+assert.equal(ctx.cryoGpuVisualCoverage(1.0,0.99,false),1,'saturated continental core stays solid');
+assert.equal(ctx.cryoGpuVisualCoverage(0.80,0.50,false),1,'dense transitional land ice may be opaque where geography supports it');
+assert.equal(ctx.cryoGpuVisualCoverage(0.80,0.85,false),0,'the same physical density may form a bay instead of a forced circular core');
 assert.equal(ctx.cryoGpuVisualCoverage(0.35,0.20,true),1,'partial sea ice resolves to an opaque floe');
 assert.equal(ctx.cryoGpuVisualCoverage(0.35,0.80,true),0,'same concentration can resolve to open water');
 assert.equal(ctx.cryoGpuVisualCoverage(0.14,0.01,true),0,'<15% sea ice must not paint a coherent white fringe');
