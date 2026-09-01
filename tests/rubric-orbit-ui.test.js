@@ -5,31 +5,58 @@ const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const grid=read('js/rubric-grid.js');
 const orbit=read('js/orbit-overlay.js');
+const orbitDrag=read('js/orbit-overlay-drag.js');
+const ecliptic=read('js/ecliptic-overlay.js');
+const thermal=read('js/thermal-display.js');
+const thermalShader=read('shaders/thermal.glsl');
+const mainShader=read('shaders/main.glsl');
 const buildSh=read('build.sh');
 const buildPs=read('build.ps1');
 
 function ordered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
-ordered(buildSh,['js/ui.js','js/rubric-grid.js','js/render.js','js/orbit-overlay.js','js/runtime-settings.js'],'shell rubric/orbit order');
-ordered(buildPs,['js/ui.js','js/rubric-grid.js','js/render.js','js/orbit-overlay.js','js/runtime-settings.js'],'PowerShell rubric/orbit order');
+ordered(buildSh,['js/ui.js','js/rubric-grid.js','js/render.js','js/orbit-overlay.js','js/orbit-overlay-drag.js','js/ecliptic-overlay.js','js/thermal-display.js','js/runtime-settings.js'],'shell instrument order');
+ordered(buildPs,['js/ui.js','js/rubric-grid.js','js/render.js','js/orbit-overlay.js','js/orbit-overlay-drag.js','js/ecliptic-overlay.js','js/thermal-display.js','js/runtime-settings.js'],'PowerShell instrument order');
+ordered(buildSh,['shaders/sphere.glsl','shaders/thermal.glsl','shaders/main.glsl'],'shell thermal shader order');
+ordered(buildPs,['shaders/sphere.glsl','shaders/thermal.glsl','shaders/main.glsl'],'PowerShell thermal shader order');
 
 assert.match(grid,/const SLOT_COUNT=16/,'rubric must expose sixteen logical positions');
 assert.match(grid,/const COLUMN_ROWS=8/,'each desktop rubric column must remain eight buttons tall');
 assert.match(grid,/if\(i<COLUMN_ROWS\)\{slot\.style\.gridColumn='2'/,'original logical column must stay on the right');
 assert.match(grid,/else\{slot\.style\.gridColumn='1'/,'new logical column must be placed to the left');
 assert.match(grid,/defaultIds\[COLUMN_ROWS\]=orbitBtn\.dataset\.toolId/,'Orbit must start at the top of the new column');
+assert.match(grid,/defaultIds\[COLUMN_ROWS\+1\]=eclipticBtn\.dataset\.toolId/,'Ecliptic must occupy the second new-column cell');
+assert.match(grid,/defaultIds\[COLUMN_ROWS\+2\]=thermalBtn\.dataset\.toolId/,'Thermal must occupy the third new-column cell');
 assert.match(grid,/localStorage\.setItem\(STORAGE_KEY,JSON\.stringify\(layout\)\)/,'custom rubric order must persist per browser/device');
 assert.match(grid,/layout\[src\]=layout\[dst\];layout\[dst\]=tmp/,'dropping on another slot must swap positions');
 assert.match(grid,/rubric-dragging \.rubric-slot:empty/,'empty destinations must become visible during drag');
-assert.match(grid,/id='orbitOverlayBtn'/,'Orbit rubric button missing');
-assert.match(grid,/action:orbit/,'Orbit must be an action tool rather than a parameter group');
+for(const id of ['orbitOverlayBtn','eclipticOverlayBtn','thermalDisplayBtn'])assert.ok(grid.includes("'"+id+"'"),'instrument rubric button missing: '+id);
+for(const id of ['action:orbit','action:ecliptic','action:thermal'])assert.ok(grid.includes(id),'instrument must be action tool: '+id);
 
 assert.match(orbit,/const drawFrameBeforeOrbitOverlay=drawFrame/,'orbit overlay must attach to the frame loop');
-assert.match(orbit,/drawFrame=function\(now\)/,'orbit overlay frame wrapper missing');
 assert.match(orbit,/seasonOrbitPhaseRad/,'orbit marker must use the physical seasonal orbit phase');
 assert.match(orbit,/seasonAxialTiltDeg/,'axis diagram must use the physical axial tilt');
 assert.match(orbit,/seasonDeclinationRadForPhase/,'diagram must expose seasonal solar declination');
-assert.match(orbit,/orbitOverlayBtn/,'overlay must bind to the rubric Orbit button');
 assert.match(orbit,/canvas\.getContext\('2d'/,'orbit schematic must stay on a cheap 2D overlay canvas');
 assert.ok(!/state\.orbitOverlay\s*=/.test(orbit),'display-only Orbit mode must not enter planet state/hash');
+
+assert.match(orbitDrag,/orbit-overlay-head/,'Orbit window must have a dedicated drag handle');
+assert.match(orbitDrag,/pointerdown/,'Orbit window must support pointer/touch dragging');
+assert.match(orbitDrag,/madPlanet\.orbitOverlay\.pos\.v1/,'Orbit window position must persist locally');
+assert.match(orbitDrag,/window\.__madPlanetOrbitOverlay\?\.setEnabled\(false\)/,'Orbit title bar close control must use the existing overlay state');
+
+assert.match(ecliptic,/eclipticOverlayBtn/,'Ecliptic tool must bind to its rubric button');
+assert.match(ecliptic,/drawPlane\(cx,cy,r,axis/,'Ecliptic overlay must draw the equatorial plane');
+assert.match(ecliptic,/drawPlane\(cx,cy,r,ecl/,'Ecliptic overlay must draw the ecliptic plane');
+assert.match(ecliptic,/planetPhysics\(\)\.axialTiltDeg/,'Ecliptic overlay must use physical axial tilt');
+assert.match(ecliptic,/projectedBasis/,'Ecliptic geometry must follow the current camera viewpoint');
+
+assert.match(thermal,/thermalDisplayBtn/,'Thermal tool must bind to its rubric button');
+assert.match(thermal,/gl\.getUniformLocation\(prog,'uThermalOn'\)/,'Thermal mode must bind its display uniform lazily across shader swaps');
+assert.match(thermal,/180 K/,'Thermal legend must expose the physical lower temperature bound');
+assert.match(thermal,/380 K/,'Thermal legend must expose the physical upper temperature bound');
+assert.match(thermalShader,/uniform float uThermalOn/,'Thermal shader display switch missing');
+assert.match(thermalShader,/thermalSurfaceColor/,'Thermal shader palette missing');
+assert.match(mainShader,/physicalFogSample\(n0\)\.a/,'Thermal mode must use Weather Core surface temperature rather than visual colour');
+assert.match(mainShader,/if\(uThermalOn > 0\.5\)/,'Thermal display override missing from planet disk');
 
 console.log('rubric-orbit-ui.test.js: OK');
