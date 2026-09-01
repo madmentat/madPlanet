@@ -4,9 +4,6 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec3 atmC = atmoColor();
   float ridge, mount, lee;
   float h = terrain(n0, ridge, mount, lee);
-  /* terrain() also publishes tectonic display diagnostics through globals.
-     Snapshot the centre point before any derivative work so plate/volcanism
-     display stays tied to the shaded sample, not a neighbour. */
   float seamNearCenter = gSeamNear;
   float seamConvCenter = gSeamConv;
   vec3 plateTintCenter = gPlateTint;
@@ -14,9 +11,6 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec4 cryoTex = texture(uCryosphereTex, normalize(sN));
   float landCryoPhys = mix(cryoTex.r, cryoTex.b, uCryosphereBlend);
   float seaIcePhys = mix(cryoTex.g, cryoTex.a, uCryosphereBlend);
-  /* 0.5.78: A keeps near-Earth precision but also carries real extreme cold
-     and heat. fog-gpu reserves 0..0.05 for 80..180 K, 0.05..0.90 for the
-     high-precision 180..380 K band, and 0.90..1 for 380..1000 K. */
   vec4 surfaceWx = physicalFogSample(n0);
   float soilMoistPhys = clamp(surfaceWx.b,0.0,1.0);
   float tempCode = clamp(surfaceWx.a,0.0,1.0);
@@ -28,17 +22,13 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   else
     surfaceK = mix(380.0,1000.0,(tempCode-0.90)/0.10);
 
-  /* 0.5.95: 0.5.94 screen-space dFdx normals blew up wherever dFdx(n0) and
-     dFdy(n0) were nearly parallel (common near certain view directions),
-     inventing V-shaped dotted seams, triangular facets and cut rivers. Height
-     itself is continuous FBM — those were pure normal/AA artefacts.
-     Restore Frisvad ONB + central differences for stable normals. Coast AA
-     no longer depends on gradH: use a pure screen-pixel width so the
-     silhouette follows the continuous zero-contour of h. */
+  /* 0.5.96: coast whiskers / non-closing edges.
+     Cap FD eps, disable bump on waterline (shoreLock), lower gain. */
   vec3 nS = n0;
   float gradH = 0.0;
-  float eps = clamp(tHit*uPixA*2.0, 0.0006, 0.02);
-  if(h > -0.05){
+  float eps = clamp(tHit*uPixA*1.5, 0.0004, 0.0045);
+  float shoreLock = ss(0.012, 0.045, abs(h));
+  if(h > -0.05 && shoreLock > 0.01){
     vec3 tg, bt;
     if(n0.z < 0.0){
       float a = 1.0/(1.0 - n0.z);
@@ -59,21 +49,18 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     float dhT = 0.5*(hA - hB);
     float dhB = 0.5*(hC - hD);
     gradH = length(vec2(dhT, dhB))/eps;
-    float localTectSupport = max(ss(0.01, 0.08, mount),
-                                 1.0 - ss(0.05, 0.20, seamNearCenter));
-    float bmp = (0.03 + 0.095*uTect*localTectSupport) * (1.0 + 1.3*(1.0-ss(1.7, 3.4, uCamDist)));
+    float localTectSupport = max(ss(0.02, 0.10, mount),
+                                 1.0 - ss(0.04, 0.16, seamNearCenter));
+    float bmp = (0.02 + 0.06*uTect*localTectSupport)
+              * (1.0 + 0.9*(1.0-ss(1.7, 3.4, uCamDist)))
+              * shoreLock;
     nS = normalize(n0 - (tg*dhT + bt*dhB) * (bmp/eps));
   }
 
-  /* берег: AA строго по экранному пикселю, без gradH */
-  float aa = clamp(tHit*uPixA*1.25, 1.0e-5, 0.02);
+  float aa = clamp(tHit*uPixA*1.35, 1.0e-5, 0.018);
   float land = ss(-aa, aa, h);
-
-  /* Поверхность океана плоская: раньше её нормаль бралась из рельефа дна,
-     и мелководье затенялось как склон — лагуны выглядели горами воды. */
   nS = normalize(mix(n0, nS, land));
 
-  /* климат */
   float lat = abs(dot(n0, uAxis));
   float temp = mix(-0.55, 1.55, uTemp) - pow(lat,3.0)*1.55 - max(h,0.0)*0.95
              + 0.22*fbm(sN*1.3+uSeedS*1.1+vec3(61.0),3)
