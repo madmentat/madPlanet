@@ -1,8 +1,9 @@
-VERSION 0.5.100
-Base: 0.5.99
-Changes: Straight knife-cut seams through rivers/land (e.g. seed 58532301) persisted after ONB/island/cryo fixes. Root cause: land biomes used soil moisture + surface temperature from the low-res fog/weather cubemap (channels B/A). Cubemap face edges project as great circles and appear as hard linear cuts across continuous FBM rivers and continents — independent of Tectonics.
-Fix:
-  fog.glsl — physicalFogSample averages B/A over a few-degree tetrahedron (R/G fog stays single-tap)
-  surface.glsl — mix ≥45% continuous FBM into soil moisture and surface temperature so cube faces cannot own albedo
-Snapshots: snapshot/0.5.99-pre-cubemap-biome is the rollback point.
+VERSION 0.5.101
+Base: 0.5.100
+Changes: Triangular coast cuts + dashed geometric seams (seed 14739216 and earlier) persisted after tectonics/normals/cubemap fixes. Root cause is cubic-lattice gradient noise: iso-surfaces of Perlin-on-cube have preferred 45°/axis facets that read as Malevich triangles and knife lines on the coastline — independent of Tectonics.
+Fix in terrain.glsl:
+  continentNoise() — dual-scale domain warp (1.40 + 0.55) + average of two rotated FBM fields
+  islands — same dual-warp + rotated FBM treatment
+  surface.glsl — slightly wider coastline AA
+Snapshots: snapshot/0.5.100-pre-lattice-break is the rollback point.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

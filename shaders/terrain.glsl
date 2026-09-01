@@ -2,13 +2,35 @@
 float contFreq(){ return mix(0.7, 2.6, uCont); }
 float seaLvl(){ return mix(-0.25, 0.34, uSea); }
 
+/* 0.5.101: cubic-lattice gradient noise has preferred 45°/axis facets.
+   Single weak domain-warp still left triangular coast cuts and dashed
+   iso-seams. Dual-scale warp + two rotated FBM fields break the lattice. */
+float continentNoise(vec3 p){
+  /* warp 1 — large, strong */
+  vec3 w1 = vec3(fbm(p*0.85 + vec3(1.7,9.2,3.1), 3),
+                 fbm(p*0.85 + vec3(8.3,2.8,5.9), 3),
+                 fbm(p*0.85 + vec3(4.6,7.1,0.7), 3));
+  vec3 q = p + 1.40*w1;
+  /* warp 2 — mid scale */
+  vec3 w2 = vec3(fbm(q*1.55 + vec3(11.3,2.4,7.8), 2),
+                 fbm(q*1.55 + vec3(5.1,13.7,1.9), 2),
+                 fbm(q*1.55 + vec3(9.6,4.2,12.1), 2));
+  q += 0.55*w2;
+  /* two differently oriented FBM — average kills residual lattice axes */
+  float a = fbm(q, 5);
+  /* rotate sample space ~golden-angle-ish so cell faces never align */
+  vec3 q2 = q*mat3( 0.36, 0.48,-0.80,
+                   -0.80, 0.60, 0.00,
+                    0.48, 0.64, 0.60) + vec3(17.3, 5.9, 11.1);
+  float b = fbm(q2, 5);
+  float c = mix(a, b, 0.50);
+  c += 0.12*fbm(q*2.9 + vec3(7.0), 3);
+  return c;
+}
 float continentH(vec3 dir){
   vec3 sN = uRotS * dir;
   vec3 p = sN*contFreq() + uSeedS;
-  vec3 w = vec3(fbm(p+vec3(1.7,9.2,3.1),2),
-                fbm(p+vec3(8.3,2.8,5.9),2),
-                fbm(p+vec3(4.6,7.1,0.7),2));
-  return fbm(p + 0.9*w, 5)*0.95 - seaLvl();
+  return continentNoise(p)*0.95 - seaLvl();
 }
 
 /* ---------- тектоника ----------
@@ -60,89 +82,70 @@ vec3 tectonicBelt(vec3 sN){
     vec3 diagDbT = diagDb-sN*dot(diagDb,sN);
     float diagTl = length(diagDbT);
     vec3 diagDir = diagDbT/max(diagTl,1e-4);
-    float diagValid = ss(0.06,0.32,diagTl);
+    float diagConv = dot(nearVel-secondVel, diagDir);
     gSeamNear = max(0.0,(dsecond-dmin)/diagBase);
-    float diagConv = dot(cross(nearVel-secondVel,sN),diagDir)*diagValid;
     gSeamConv = clamp(diagConv*2.4,-1.0,1.0);
   }
 
-  const float REACH = 0.62;
-  float num = 0.0, den = 1e-6, leeNum = 0.0, seamNum = 0.0;
-  float ruptureField = clamp(0.52*seg + 0.28*orogN + 0.20*(0.5+0.5*wv2.z),0.0,1.0);
-  float rupture = 0.18 + 0.82*ss(0.26,0.66,ruptureField);
-
+  float belt = 0.0, ridge = 0.0, lee = 0.0;
+  float seamNum = 0.0, seamDen = 0.0;
   for(int i=0;i<uPlateN;i++){
-    vec3 pi = uPlateP[i].xyz;
-    float di = -dot(sN, pi) - uPlateP[i].w - dRef;
-    if(di > REACH) continue;
     for(int j=i+1;j<uPlateN;j++){
-      vec3 pj = uPlateP[j].xyz;
-      float dj = -dot(sN, pj) - uPlateP[j].w - dRef;
-      float sum2 = di + dj;
-      if(sum2 > REACH) continue;
-      float wgt = exp(-sum2*9.0) * ss(REACH, REACH*0.7, sum2);
+      float di = -dot(sN, uPlateP[i].xyz) - uPlateP[i].w;
+      float dj = -dot(sN, uPlateP[j].xyz) - uPlateP[j].w;
       float pairCompetitive = exp(-280.0*(di*di + dj*dj));
+      if(pairCompetitive < 1e-5) continue;
 
-      vec3 db = pj - pi;
-      float base = max(length(db), 1e-4);
-      vec3 dbT = db - sN*dot(db, sN);
+      float base = max(length(uPlateP[i].xyz-uPlateP[j].xyz), 1e-4);
+      vec3 db = uPlateP[j].xyz - uPlateP[i].xyz;
+      vec3 dbT = db - sN*dot(db,sN);
       float dbTl = length(dbT);
       vec3 bdir = dbT/max(dbTl, 1e-4);
-      float bValid = ss(0.06, 0.32, dbTl);
 
-      float seamS = (dj - di)/base;
-      float seamWarp = 0.052*dot(wv2,bdir) + 0.020*dot(wv,bdir);
-      seamS += seamWarp;
+      float seamS = (di - dj) / base;
       float seam = abs(seamS);
+      float side = sign(seamS+1e-9);
 
-      float conv = dot(cross(uPlateW[i].xyz - uPlateW[j].xyz, sN), bdir)*bValid;
+      float conv = dot(uPlateW[i].xyz - uPlateW[j].xyz, bdir);
       float convC = clamp(conv*2.4, -1.0, 1.0);
       float bwEff = bw*(0.66 + 1.00*abs(convC));
-      float sb = seam/bwEff;
-      float band = exp(-sb*sb);
-      float over = (uPlateP[i].w >= uPlateP[j].w) ? 1.0 : -1.0;
-      float sS = seamS*over;
-      float su = (sS - 0.36*bwEff)/bwEff;
-      float arc = exp(-su*su);
-      float trench = band*rupture;
+      float gate = exp(-seam/max(bwEff,1e-4));
+      float rupture = mix(0.55, 1.0, 0.5+0.5*fbm(sN*4.5+uSeedS*2.1+vec3(float(i)*3.1,float(j)*7.3,11.0), 2));
 
-      float side = clamp(seamS/0.04, -1.0, 1.0);
+      float contrib = gate * rupture * (0.55 + 0.90*abs(convC));
       float lee = max(conv, 0.0) * ss(0.10, 0.70, dot(bdir*side, -windS))
                 * exp(-seam/0.095) * rupture * pairCompetitive;
 
-      float contrib = (convC > 0.0)
-        ? convC*(arc*(0.56+0.44*rupture) - 0.035*trench*rupture)
-        : convC*band*(0.16+0.44*rupture);
+      float signBelt = (convC >= 0.0) ? 1.0 : -1.0;
       contrib *= pairCompetitive;
-      num    += wgt*contrib;
-      leeNum += wgt*lee;
+      belt += contrib * signBelt;
+      ridge += contrib * abs(convC);
       seamNum+= wgt*pairCompetitive*seam;
-      den    += wgt;
     }
   }
-  return vec3(num/den, seamNum/den, clamp(leeNum/den, 0.0, 1.0));
+  return vec3(belt, ridge, lee);
 }
 
 float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut){
   vec3 sN = uRotS * dir;
   vec3 p = sN*contFreq() + uSeedS;
-  vec3 w = vec3(fbm(p+vec3(1.7,9.2,3.1),2),
-                fbm(p+vec3(8.3,2.8,5.9),2),
-                fbm(p+vec3(4.6,7.1,0.7),2));
-  vec3 q = p + 0.9*w;
-  float c = fbm(q,5);
-  c += 0.14*fbm(q*3.1+vec3(7.0),3);
-  /* 0.5.98: island FBM was sampled on the raw cubic lattice with a hard
-     max(isl-0.22,0). Near threshold a single noise cell peak becomes a
-     triangular/wedge-shaped island (Malevich geometry). Domain-warp the
-     island field, rotate sample axes, and use a soft heel so the zero
-     contour is not a lattice corner. */
+  float c = continentNoise(p);
+  /* islands: same lattice-break treatment as continents */
   vec3 islP = sN*5.5 + uSeedS*1.7 + vec3(23.1);
-  vec3 islW = vec3(fbm(islP+vec3(2.1,9.4,1.3),2),
-                   fbm(islP+vec3(7.2,1.8,4.6),2),
-                   fbm(islP+vec3(3.9,6.5,8.2),2));
-  float isl = fbm(islP + 0.85*islW, 5);
-  float islandH = uIsle*0.6*smoothstep(0.16, 0.30, isl);
+  vec3 islW1 = vec3(fbm(islP*0.9+vec3(2.1,9.4,1.3),3),
+                    fbm(islP*0.9+vec3(7.2,1.8,4.6),3),
+                    fbm(islP*0.9+vec3(3.9,6.5,8.2),3));
+  vec3 islQ = islP + 1.25*islW1;
+  vec3 islW2 = vec3(fbm(islQ*1.7+vec3(14.0),2),
+                    fbm(islQ*1.7+vec3(28.0),2),
+                    fbm(islQ*1.7+vec3(42.0),2));
+  islQ += 0.50*islW2;
+  float islA = fbm(islQ, 5);
+  vec3 islQ2 = islQ*mat3(0.60,-0.80,0.00, 0.48,0.36,0.80, -0.64,-0.48,0.60)
+             + vec3(31.7, 9.3, 19.1);
+  float islB = fbm(islQ2, 5);
+  float isl = mix(islA, islB, 0.50);
+  float islandH = uIsle*0.6*smoothstep(0.14, 0.32, isl);
   float h = c*0.95 + islandH - seaLvl();
   rockOut = 0.0;
   mountOut = 0.0;
