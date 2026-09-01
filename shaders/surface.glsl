@@ -5,9 +5,8 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float ridge, mount, lee;
   float h = terrain(n0, ridge, mount, lee);
   /* terrain() also publishes tectonic display diagnostics through globals.
-     Finite-difference normal samples below call terrain() again at neighbouring
-     directions, so snapshot the centre point now. Using the last offset sample
-     for volcanism/plate display was one remaining source of thin dark seams. */
+     Snapshot the centre point before any derivative work so plate/volcanism
+     display stays tied to the shaded sample, not a neighbour. */
   float seamNearCenter = gSeamNear;
   float seamConvCenter = gSeamConv;
   vec3 plateTintCenter = gPlateTint;
@@ -29,50 +28,33 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   else
     surfaceK = mix(380.0,1000.0,(tempCode-0.90)/0.10);
 
-  /* нормали по конечным разностям (только у суши/мелководья) */
+  /* нормали и берег через экранные производные (без явного tangent-basis).
+     0.5.94: explicit FD (+ Frisvad/central) still left razor cuts on coasts and
+     peninsulas independent of Tectonics (seeds 8127344, 33018067). Those were
+     basis/sample artefacts, not height discontinuities — continent FBM is
+     continuous. Screen-space dFdx/dFdy of the already-evaluated centre height
+     and of n0 need no extra terrain() calls and cannot invent a planar cut. */
   vec3 nS = n0;
   float gradH = 0.0;
-  float eps = clamp(tHit*uPixA*2.0, 0.0006, 0.02);
+  float hx = dFdx(h);
+  float hy = dFdy(h);
+  gradH = length(vec2(hx, hy)) / max(tHit*uPixA, 1.0e-5);
   if(h > -0.05){
-    /* 0.5.93: one-sided FD along an explicit tangent frame still produced a
-       razor-thin vertical cut through islands (seed 8127344). The silhouette
-       itself was truncated, not only the shading. Replace with:
-         1) Frisvad ONB — continuous everywhere except the single south pole;
-         2) central differences (±eps on both axes) so the gradient is
-            symmetric and cannot invent a one-sided cliff along the sample ray.
-       localTectSupport from 0.5.90 is retained. */
-    vec3 tg, bt;
-    if(n0.z < 0.0){
-      float a = 1.0/(1.0 - n0.z);
-      float b = n0.x*n0.y*a;
-      tg = vec3(1.0 - n0.x*n0.x*a, -b, n0.x);
-      bt = vec3(b, n0.y*n0.y*a - 1.0, -n0.y);
-    }else{
-      float a = 1.0/(1.0 + n0.z);
-      float b = -n0.x*n0.y*a;
-      tg = vec3(1.0 - n0.x*n0.x*a, b, -n0.x);
-      bt = vec3(b, 1.0 - n0.y*n0.y*a, -n0.y);
-    }
-    float rrA, rrB, rrC, rrD, mmA, mmB, mmC, mmD, llA, llB, llC, llD;
-    float hA = terrain(normalize(n0 + tg*eps), rrA, mmA, llA);
-    float hB = terrain(normalize(n0 - tg*eps), rrB, mmB, llB);
-    float hC = terrain(normalize(n0 + bt*eps), rrC, mmC, llC);
-    float hD = terrain(normalize(n0 - bt*eps), rrD, mmD, llD);
-    float dhT = 0.5*(hA - hB);
-    float dhB = 0.5*(hC - hD);
-    gradH = length(vec2(dhT, dhB))/eps;
+    vec3 dx = dFdx(n0);
+    vec3 dy = dFdy(n0);
+    /* project position derivatives into the tangent plane */
+    dx -= n0 * dot(dx, n0);
+    dy -= n0 * dot(dy, n0);
     float localTectSupport = max(ss(0.01, 0.08, mount),
                                  1.0 - ss(0.05, 0.20, seamNearCenter));
     float bmp = (0.03 + 0.095*uTect*localTectSupport) * (1.0 + 1.3*(1.0-ss(1.7, 3.4, uCamDist)));
-    nS = normalize(n0 - (tg*dhT + bt*dhB) * (bmp/eps));
+    /* height gradient in the same screen basis as dx/dy */
+    float inv = bmp / max(dot(dx,dx) + dot(dy,dy), 1.0e-12);
+    nS = normalize(n0 - (dx*hx + dy*hy) * inv);
   }
 
-  /* Ширина береговой линии — ровно пиксель. Раньше порог задавался в единицах
-     высоты, и на пологом побережье, где рельеф почти горизонтален, кромка
-     расплывалась на десятки пикселей. Теперь след пикселя пересчитывается
-     через настоящий градиент высоты. */
-  float pixH = gradH * tHit * uPixA;
-  float aa = clamp(pixH*1.1, 1.0e-5, 0.02);
+  /* береговая AA по fwidth(h): ровно экранный след нулевой изолинии */
+  float aa = clamp(fwidth(h)*0.75, 1.0e-5, 0.02);
   float land = ss(-aa, aa, h);
 
   /* Поверхность океана плоская: раньше её нормаль бралась из рельефа дна,
@@ -181,7 +163,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float snowMicro = 0.88 + 0.12*(0.5+0.5*fbm(sN*11.0+uSeedS+vec3(31.0),3));
   float snowM = clamp(landCryoPhys*snowMicro, 0.0, 1.0);
   if(mount > 0.02){
-    float rough = 0.5+0.5*fbm(sN*26.0+uSeedS*1.6+vec3(211.0),3);
+    float rough = 0.5+0.5*fbm(sN*26.0+uSeedS*1.6+vec3(211.0,3));
     float steepBare = ss(1.1, 3.4, gradH);
     float bare = clamp(steepBare*0.75 + (1.0-rough)*0.55, 0.0, 1.0);
     snowM *= 1.0 - bare*ss(0.02, 0.13, mount)*0.85;
