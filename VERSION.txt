@@ -1,12 +1,14 @@
-VERSION 0.5.108
-Base: 0.5.107
-Changes: Keep the restored classic planet morphology and remove the suspiciously perfect circular outline from polar ice caps.
-  - preserve the 0.5.107 simplex-based continent/island restoration, broad classic mountain morphology and post-Grok anti-artifact rendering foundation
-  - polar display ice remains strictly opaque/binary: no feather, no translucent white fringe, no temporal alpha crossfade
-  - remove the old dense-land shortcut that forced every physical land-ice sample above 70% to solid white and exposed a latitude-like circular isocontour
-  - resolve almost the entire transitional polar cap against seamless 3-D geography; only a truly saturated physical ice core (>=99.5%) is guaranteed solid
-  - make the edge field low-frequency dominant so polar caps can form broad bays, peninsulas and ice tongues, with smaller shoreline breakup layered on top
-  - compute geographic edge noise through the full transitional land-ice range instead of skipping it above rawLand=0.82
-  - retain the +15 C calibration that trims transitional polar-cap coverage by about ten percent without altering cryosphere mass or temperature
-Regression: update the hard-edge cryosphere guard so future fixes cannot restore the 70% circular dense-cap shortcut or translucent ice.
+VERSION 0.5.109
+Base: 0.5.108
+Changes: Make polar ice caps visibly non-circular at planetary scale instead of only roughening the same latitude ring.
+  - preserve the restored 0.5.107 classic planet morphology and the 0.5.108 opaque/binary cryosphere edge; no translucent polar fringe returns
+  - add a body-fixed, seed-dependent global polar warp with several low-order sectors (1/2/3/5-lobed components) and a hard maximum displacement of 0.18 rad (~10.3 degrees)
+  - north and south poles use independent seeded sector phases, so they do not become mirrored copies of one another
+  - displace the physical cryosphere sampling direction along the local meridian before thresholding; even a physically sharp latitude snow line therefore develops continent-scale bays, eccentric sides, peninsulas and ice tongues
+  - keep the global warp restricted to high latitudes and near-zero at lower latitudes so ordinary alpine snow and mid-latitude terrain are not dragged around
+  - retain the seamless 3-D broad/regional/local/fine edge field only for shoreline-scale breakup after the large cap geometry has already been displaced
+  - keep visible ice strictly binary/opaque, NEAREST-filtered and without temporal alpha crossfade; the old grey Arctic mould cannot return through this path
+  - keep the +15 C ~10% transitional-cap trim from 0.5.81/0.5.108
+Regression: strengthen cryosphere-hard-edge.test.js with a behavioural orbital-scale guard: around a representative 67-degree latitude the seed-90636862 cap sampling latitude must span more than 12 degrees, preventing another visually negligible "edge-noise-only" fix.
+Snapshot: snapshot/0.5.108 remains the rollback point before this deliberately large global cap deformation. Create snapshot/0.5.109 only after final CI passes.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
