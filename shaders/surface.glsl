@@ -12,7 +12,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float landCryoPhys = mix(cryoTex.r, cryoTex.b, uCryosphereBlend);
   float seaIcePhys = mix(cryoTex.g, cryoTex.a, uCryosphereBlend);
   vec4 surfaceWx = physicalFogSample(n0);
-  float soilMoistPhys = clamp(surfaceWx.b,0.0,1.0);
+  /* 0.5.100: never let cubemap B/A fully own biomes — residual face seams
+     still read as knife cuts through rivers. Continuous FBM carries ≥45%. */
+  float soilCont = clamp(0.38 + 0.48*fbm(sN*1.9 + uSeedS*1.3 + vec3(41.0,7.0,19.0), 3), 0.0, 1.0);
+  float soilMoistPhys = mix(soilCont, clamp(surfaceWx.b,0.0,1.0), 0.50);
   float tempCode = clamp(surfaceWx.a,0.0,1.0);
   float surfaceK;
   if(tempCode < 0.05)
@@ -21,18 +24,17 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     surfaceK = mix(180.0,380.0,(tempCode-0.05)/0.85);
   else
     surfaceK = mix(380.0,1000.0,(tempCode-0.90)/0.10);
+  /* blend toward continuous lat/height temperature so cube faces cannot
+     invent a hard thermal boundary across a river */
+  float tempContK = mix(210.0, 310.0, clamp(0.5 + 0.5*(mix(-0.55,1.55,uTemp) - pow(abs(dot(n0,uAxis)),3.0)*1.55 - max(h,0.0)*0.95), 0.0, 1.0));
+  surfaceK = mix(tempContK, surfaceK, 0.55);
 
-  /* 0.5.99: Frisvad ONB branches on n0.z and is discontinuous across the
-     entire great circle n0.z=0. That seam is a visible oval/circular lighting
-     arc on the disk after planet rotation — independent of Tectonics, ice,
-     or islands. Use a geographic ONB (east/north from uAxis) so the only
-     singularities are the two geographic poles, not a whole meridian. */
+  /* 0.5.99: geographic ONB (east/north from uAxis). */
   vec3 nS = n0;
   float gradH = 0.0;
   float eps = clamp(tHit*uPixA*1.5, 0.0004, 0.0045);
   float shoreLock = ss(0.012, 0.045, abs(h));
   if(h > -0.05 && shoreLock > 0.01){
-    /* geographic tangent frame: bt ~ north, tg ~ east */
     vec3 north = uAxis - n0*dot(uAxis, n0);
     float n2 = dot(north, north);
     vec3 tg, bt;
@@ -40,7 +42,6 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
       bt = north * inversesqrt(n2);
       tg = cross(bt, n0);
     }else{
-      /* geographic pole: fall back to a stable world axis */
       vec3 a = (abs(n0.y) < 0.9) ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0);
       tg = normalize(cross(a, n0));
       bt = cross(n0, tg);
@@ -252,7 +253,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   }
 
   float dRaw = -h + 0.0045*fbm(sN*26.0 + uSeedS + vec3(63.0), 3)
-                  + 0.0020*fbm(sN*90.0 + uSeedS + vec3(11.0), 2);
+                  + 0.0020*fbm(sN*90.0 + vec3(11.0), 2);
   float depth = clamp(dRaw*46.0, 0.0, 1.0);
   vec3 shallowC = mix(vec3(0.028,0.100,0.145), vec3(0.075,0.30,0.34), ss(0.30,0.85,temp));
   vec3 oc = mix(shallowC, vec3(0.013,0.072,0.130), ss(0.0,0.5,pow(depth,0.55)));
