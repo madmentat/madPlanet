@@ -6,7 +6,9 @@ const root=path.resolve(__dirname,'..');
 const src=fs.readFileSync(path.join(root,'js/cryosphere.js'),'utf8');
 const sub=fs.readFileSync(path.join(root,'js/cryosphere-sublimation.js'),'utf8');
 const gpu=fs.readFileSync(path.join(root,'js/cryosphere-gpu.js'),'utf8');
+const edge=fs.readFileSync(path.join(root,'js/cryosphere-edge-display.js'),'utf8');
 const surface=fs.readFileSync(path.join(root,'shaders/surface.glsl'),'utf8');
+const prelude=fs.readFileSync(path.join(root,'shaders/surface-artifact-prelude.glsl'),'utf8');
 const header=fs.readFileSync(path.join(root,'shaders/header.glsl'),'utf8');
 const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
@@ -16,33 +18,35 @@ assert.ok(+m[1]>0||+m[2]>5||(+m[2]===5&&+m[3]>=60),'cryosphere requires 0.5.60+'
 function ordered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
 ordered(buildSh,['js/ocean-thermal.js','js/cryosphere.js','js/cryosphere-sublimation.js','js/physical-fog.js'],'shell cryosphere order');
 ordered(buildPs,['js/ocean-thermal.js','js/cryosphere.js','js/cryosphere-sublimation.js','js/physical-fog.js'],'PowerShell cryosphere order');
-ordered(buildSh,['js/fog-gpu.js','js/cryosphere-gpu.js','js/planet-export.js'],'shell cryo GPU order');
+ordered(buildSh,['js/fog-gpu.js','js/cryosphere-gpu.js','js/cryosphere-edge-display.js','js/planet-export.js'],'shell cryo GPU/display order');
 ordered(buildSh,['js/fog-render.js','js/cryosphere-render.js','js/screenshot-trigger.js'],'shell cryo render order');
 assert.ok(!/requestAnimationFrame|Math\.random/.test(src),'cryosphere physics must stay deterministic and off FPS');
 assert.ok(!/requestAnimationFrame|Math\.random/.test(sub),'seasonal freeze/sublimation must stay deterministic and off FPS');
 assert.ok(!/requestAnimationFrame/.test(gpu),'cryo texture uploads must not be render-driven');
 assert.match(header,/uniform samplerCube uCryosphereTex/);assert.match(header,/uniform float uCryosphereBlend/);
-assert.match(surface,/texture\(uCryosphereTex/);
+assert.match(prelude,/vec4\s+cryoSurfaceSample\s*\(/,'surface cryosphere sampler helper missing');
+assert.match(surface,/cryoSurfaceSample\(uCryosphereTex,\s*normalize\(sN\)\)/,'surface must consume cryosphere through explicit sampler helper');
 assert.doesNotMatch(surface,/float\s+snowN\s*=\s*temp/,'surface shader must not recreate polar snow from decorative temperature');
 assert.doesNotMatch(surface,/float\s+iceN\s*=\s*temp/,'surface shader must not recreate sea ice from decorative temperature');
 assert.match(surface,/landCryoPhys/);assert.match(surface,/seaIcePhys/);
 assert.match(gpu,/R\/G = previous land-cryosphere \/ sea-ice coverage/);
 assert.match(gpu,/B\/A = current\s+land-cryosphere \/ sea-ice coverage/);
 
-/* 0.5.75 regression: the authoritative physical grid remains coarse and cheap,
-   while the display-only reconstruction is dense enough for a close mobile
-   view and does not encode ice texture as semi-transparent coverage. */
-assert.match(gpu,/CRYO_GPU_MODEL=4/,'sharp geographic cryosphere renderer must use GPU model v4');
-assert.match(gpu,/CRYO_GPU_UPSCALE=5/,'render cryosphere must reconstruct at 5x physical grid resolution');
-assert.match(gpu,/cryoGpuBilerp/,'display grid must interpolate the physical field before sharpening');
-assert.match(gpu,/cryoGpuVisualCoverage/,'fractional physical coverage must have a separate visual transfer curve');
-assert.match(gpu,/cryoGpuEdgeNoise/,'ice-sheet edge needs seamless irregular breakup instead of cube-cell geometry');
-assert.match(gpu,/173\.3/,'edge morphology must contain sub-cell detail at close zoom');
-assert.match(gpu,/307\.9/,'edge morphology needs a second fine scale so long smooth arcs cannot dominate');
-assert.match(gpu,/weatherFaceDir\(face,u,v\)/,'edge breakup must be spherical/seamless across cubemap faces');
-assert.match(gpu,/raw<=0\.012\)return 0/,'render morphology may never invent ice from zero physical coverage');
-assert.match(gpu,/if\(raw>=0\.78\)return 1/,'dense physical ice must display as a solid surface, not translucent milk');
-assert.match(gpu,/CRYO_BLEND_DEFAULT_MS=220/,'ice crossfade must be brief relative to the one-second weather tick');
+/* Physical grid remains coarse; the display reconstruction is a dense visual
+   bridge. 0.5.97 moved the base bridge to model 5 / 7x, and 0.5.108's wrapper
+   resolves the visible edge to opaque irregular geographic coverage. */
+assert.match(gpu,/CRYO_GPU_MODEL=5/,'current cryosphere GPU bridge must use model v5');
+assert.match(gpu,/CRYO_GPU_UPSCALE=7/,'render cryosphere must reconstruct at 7x physical grid resolution');
+assert.match(gpu,/cryoGpuBilerp/,'display grid must interpolate the physical field before geographic resolution');
+assert.match(edge,/CRYOSPHERE_EDGE_DISPLAY_MODEL=4/,'0.5.108 irregular opaque polar edge wrapper missing');
+assert.match(edge,/cryoGpuVisualCoverage=function/,'fractional physical coverage must have a separate final visual resolver');
+assert.match(edge,/cryoGpuEdgeNoise=function/,'ice-sheet edge needs seamless irregular breakup instead of cube-cell geometry');
+for(const f of ['2.35','5.40','13.7','31.1'])assert.ok(edge.includes(f),'missing polar-edge geographic scale '+f);
+assert.match(edge,/weatherFaceDir\(face,u,v\)/,'edge breakup must be spherical/seamless across cubemap faces');
+assert.match(edge,/raw<=0\.008\)return 0/,'render morphology may never invent ice from zero physical coverage');
+assert.match(edge,/raw>=0\.995\)return 1/,'only saturated physical ice may bypass geographic breakup');
+assert.match(edge,/gl\.TEXTURE_MIN_FILTER,gl\.NEAREST/,'binary final ice mask must not regain translucent linear filtering');
+assert.match(edge,/cryoGpuBlendAt=function\(\)\{return 1;\}/,'binary ice coastlines must not alpha-crossfade between weather updates');
 assert.ok(!/cryoGpuEnsure\(core\.N\)/.test(gpu),'GPU texture must not fall back to coarse physical resolution');
 
 /* 0.5.73 regression: mildly freezing rain/runoff is seasonal surface ice,
