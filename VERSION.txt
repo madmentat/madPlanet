@@ -1,9 +1,6 @@
-VERSION 0.5.98
-Base: 0.5.97
-Changes: Perfect triangular green islands (seed e.g. 74152889, +15C) — real land, not ice. Root cause: island height used hard max(isl-0.22,0) on raw cubic-lattice FBM; a single noise-cell peak becomes a triangular wedge on the sphere.
-Fix:
-  terrain.glsl — domain-warp island FBM, 5 octaves, smoothstep(0.16,0.30) heel instead of hard max
-  surface-artifact-prelude.glsl — no more #define texture(); explicit cryoSurfaceSample()
-  surface.glsl — call cryoSurfaceSample for cryosphere only
-Snapshots: snapshot/0.5.97-pre-island-warp is the rollback point.
+VERSION 0.5.99
+Base: 0.5.98
+Changes: Circular/oval lighting arcs and hard geometric coast cuts persisted (e.g. seed 76801061). Root cause: Frisvad ONB for finite-difference normals branches on n0.z and is discontinuous across the whole great circle n0.z=0. After uRotS that seam is a visible oval on the planet disk — independent of Tectonics, ice, and islands.
+Fix: surface.glsl — geographic ONB (east/north from uAxis); only singularities at geographic poles.
+Snapshots: snapshot/0.5.98-pre-geo-onb is the rollback point.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
