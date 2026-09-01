@@ -9,11 +9,9 @@ const postlude=read('shaders/surface-artifact-postlude.glsl');
 const surface=read('shaders/surface.glsl');
 const terrain=read('shaders/terrain.glsl');
 
-/* 0.5.88: surface shading must receive the real nearest/second-nearest plate
-   boundary computed by terrain.glsl. The old 0.5.80 workaround replaced
-   gSeamNear with a function of mount, manufacturing smooth contour lines around
-   tectonic relief and then feeding those fake lines to both volcanism and the
-   optional plate overlay. */
+/* Surface shading must receive the real nearest/second-nearest plate boundary
+   computed by terrain.glsl. The old 0.5.80 workaround replaced gSeamNear with
+   a function of mount and manufactured smooth contour lines around tectonics. */
 assert.doesNotMatch(prelude,/^\s*#define\s+gSeamNear\b/m,
   'surface prelude must never replace the real plate-boundary field with a mount-derived contour');
 assert.doesNotMatch(postlude,/^\s*#undef\s+gSeamNear\b/m,
@@ -23,15 +21,20 @@ assert.match(terrain,/gSeamNear\s*=\s*max\(0\.0,\(dsecond-dmin\)\/diagBase\)/,
 assert.match(surface,/float seamNearCenter\s*=\s*gSeamNear\s*;/,
   'surface must snapshot the real terrain seam before finite-difference terrain calls overwrite globals');
 
-const volc=(surface.match(/\/\* ---- вулканизм ----[\s\S]*?\/\* океан \*\//)||[''])[0];
-assert.match(volc,/seamNearCenter/,
+/* Do not key these checks to comment headings: those changed during the Grok
+   refactor while the actual routing stayed valid. Check the executable uses. */
+assert.match(surface,/float arc\s*=\s*1\.0\s*-\s*ss\([^;]*seamNearCenter\)/,
   'volcanic arcs may follow the real plate boundary, not an invented mount contour');
-const plates=(surface.match(/\/\* ---- схема литосферных плит ---- \*\/[\s\S]*?return col;/)||[''])[0];
-assert.match(plates,/seamNearCenter/,
+assert.match(surface,/float line\s*=\s*1\.0\s*-\s*ss\([^;]*seamNearCenter\)/,
   'plate diagnostic lines must be drawn from the real boundary snapshot');
 
-/* The cryosphere texture AA macro is unrelated and intentionally remains. */
-assert.match(prelude,/^\s*#define\s+texture\(TEX,COORD\)\s+cryoSurfaceTextureAA/m,
-  'cryosphere one-pixel material-edge helper must remain active');
+/* 0.5.98 retired the global texture() macro. Cryosphere sampling is explicit
+   and therefore cannot hijack unrelated cubemap/2D texture calls. */
+assert.match(prelude,/vec4\s+cryoSurfaceSample\s*\(samplerCube\s+tex,\s*vec3\s+dir\)/,
+  'explicit cryosphere surface sampler must remain available');
+assert.doesNotMatch(prelude,/^\s*#define\s+texture\s*\(/m,
+  'surface prelude must not hijack the GLSL texture builtin');
+assert.match(surface,/cryoSurfaceSample\(uCryosphereTex,\s*normalize\(sN\)\)/,
+  'surface must sample cryosphere through the explicit helper');
 
 console.log('tectonic-surface-seam-routing.test.js: OK');
