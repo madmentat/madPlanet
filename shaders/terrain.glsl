@@ -31,11 +31,14 @@ float continentH(vec3 dir){
    smoothly attenuated unless BOTH members are locally competitive.
 
    0.5.87: residual faint arcs still appeared at high uTect because the
-   pairCompetitive gate (exp(-130*...)) left enough micro-height for the
-   Tectonics-scaled finite-difference bump to amplify into visible stripes
-   far from real plate edges. Raise the exponent to 280 and reduce the
-   bump coefficient in surface.glsl so only genuinely competitive pairs
-   produce noticeable relief. */
+   pairCompetitive gate left enough micro-height for the Tectonics-scaled
+   finite-difference bump to amplify into visible stripes far from real plate
+   edges. Raised pairCompetitive to 280 and reduced the bump coefficient.
+
+   0.5.87b: even the stronger pairCompetitive left interior stripes. The
+   decisive fix is to hard-gate the physical relief by the real nearest/
+   second-nearest seam distance (gSeamNear). Deep inside a plate the gate
+   collapses to near-zero, so only genuine boundary-adjacent orography remains. */
 float gSeamNear, gSeamConv;
 vec3  gPlateTint;
 
@@ -179,6 +182,16 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   }
 
   if(uTect > 0.01){
+    /* 0.5.87b: hard-gate by real plate boundary distance.
+       gSeamNear is ~0 exactly on the nearest/second-nearest Voronoi edge and
+       grows inside a plate. Only near that real edge do we allow tectonic
+       height. This kills interior ghost arcs that survived the pairCompetitive
+       attenuation. */
+    float seamGate = exp(-28.0 * gSeamNear);
+    belt.x *= seamGate;
+    belt.z *= seamGate;
+    leeOut *= seamGate;
+
     if(belt.x > 0.0){
       float peaks = ridged(sN*6.6 + uSeedS*1.9, 3);
       float foldA = 0.5 + 0.5*noise3(sN*13.5 + uSeedS*2.2 + vec3(97.0,13.0,251.0));

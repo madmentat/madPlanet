@@ -1,10 +1,9 @@
-VERSION 0.5.87
-Base: 0.5.86
-Changes: Residual faint curved stripes still appeared at high Tectonics values far from real plate boundaries and mountain systems. Root cause: the pairCompetitive gate exp(-130*(di^2+dj^2)) left enough micro-height variation for the Tectonics-dependent finite-difference bump gain (0.03 + 0.095*uTect) to amplify into visible dark/light arcs.
-Relief gate: raised pairCompetitive exponent from 130 to 280 so only truly local competing plate pairs contribute meaningful height.
-Bump gain: reduced the Tectonics coefficient in surface.glsl from 0.095 to 0.055.
-Regression: tectonic-cell-seams.test.js now requires the stronger 280 gate.
-Validation: seed 90636862, enable Plates, zoom to the previously marked island and sweep Tectonics 0% -> 100%. Long intersecting mathematical arcs inside a single plate colour must not reappear; real plate boundaries and genuine orographic belts remain.
-Snapshots: snapshot/0.5.86 is the pre-fix rollback point. Create snapshot/0.5.87 after CI passes.
-Retained: all 0.5.86 nearest/second-nearest diagnostic logic and continuous outer tectonic envelope.
+VERSION 0.5.87b
+Base: 0.5.87
+Changes: Residual curved stripes persisted after the 280-pairCompetitive + reduced-bump changes. The decisive fix is a hard spatial gate on the physical tectonic relief.
+After tectonicBelt() the height/lee contributions are multiplied by
+  seamGate = exp(-28.0 * gSeamNear)
+where gSeamNear is the normalised distance to the real nearest/second-nearest Voronoi boundary. Deep inside a plate the gate collapses, eliminating interior ghost arcs while leaving genuine boundary-adjacent mountains intact.
+Validation: seed 90636862, Tectonics 0%->100%, Plates on/off. Interior mathematical arcs must disappear; real plate edges and orographic belts remain.
+Snapshots: snapshot/0.5.86 is the pre-0.5.87 rollback. Create snapshot/0.5.87b after visual confirmation.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
