@@ -2,14 +2,26 @@
 float contFreq(){ return mix(0.7, 2.6, uCont); }
 float seaLvl(){ return mix(-0.25, 0.34, uSea); }
 
-/* 0.5.102: continent/island height from simplex FBM + curl domain-warp.
-   Cubic Perlin iso-surfaces had 45°/axis facets (triangular bays, wedge
-   islands). Simplex has no cubic lattice; curl warp is divergence-free. */
+/* 0.5.103: orbital-scale landmass structure on simplex+curl basis.
+   Low-freq shaped massifs (clear continents vs ocean floor), mid-scale
+   gulfs/peninsulas, fine coastal fractal only near the shoreline, gentle
+   interior hills. Avoids uniform noise-blob continents. */
 float continentNoise(vec3 p){
-  vec3 w = curlNoise(p*0.65)*1.15 + curlNoise(p*1.55 + vec3(9.1,2.7,5.3))*0.40;
+  vec3 w = curlNoise(p*0.55)*1.05 + curlNoise(p*1.35 + vec3(9.1,2.7,5.3))*0.38;
   vec3 q = p + w;
-  float c = fbmSimplex(q, 5);
-  c += 0.13*fbmSimplex(q*2.85 + vec3(7.0), 3);
+  /* large massifs — shape toward plateaus so land/ocean reads from orbit */
+  float mass = fbmSimplex(q, 4);
+  float plate = smoothstep(-0.22, 0.28, mass);
+  /* mid: seas, gulfs, peninsulas inside the massif envelope */
+  float mid = fbmSimplex(q*2.15 + vec3(3.7,1.1,8.2), 4);
+  /* fine coastal fractal */
+  float fine = fbmSimplex(q*6.2 + vec3(11.0,4.3,2.0), 3);
+  /* interior hills on land only */
+  float hills = fbmSimplex(q*3.4 + vec3(19.0), 3);
+  float c = mix(-0.38, 0.42, plate)
+          + mid*0.16
+          + fine*0.07
+          + hills*0.10*plate;
   return c;
 }
 float continentH(vec3 dir){
@@ -134,12 +146,19 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   vec3 sN = uRotS * dir;
   vec3 p = sN*contFreq() + uSeedS;
   float c = continentNoise(p);
-  /* islands: simplex + curl warp (same basis as continents) */
-  vec3 islP = sN*5.5 + uSeedS*1.7 + vec3(23.1);
-  vec3 islW = curlNoise(islP*0.8)*1.05 + curlNoise(islP*1.7+vec3(4.0))*0.35;
+  /* 0.5.103 islands: ocean-only, chain-biased (anisotropic stretch), soft heel.
+     Suppress on top of continental mass so islands don't pepper inland. */
+  vec3 islP = sN*5.2 + uSeedS*1.7 + vec3(23.1);
+  /* mild anisotropic stretch → archipelago / island-arc feel */
+  islP = vec3(islP.x*1.15, islP.y*0.82, islP.z*1.05);
+  vec3 islW = curlNoise(islP*0.75)*0.95 + curlNoise(islP*1.6+vec3(4.0))*0.32;
   float isl = fbmSimplex(islP + islW, 5);
-  float islandH = uIsle*0.6*smoothstep(0.14, 0.32, isl);
+  float oceanMask = 1.0 - smoothstep(-0.05, 0.12, c);
+  float islandH = uIsle*0.55*smoothstep(0.18, 0.38, isl)*oceanMask;
   float h = c*0.95 + islandH - seaLvl();
+  /* soft continental shelf */
+  float shelf = smoothstep(-0.08, 0.04, h) * (1.0 - smoothstep(0.04, 0.18, h));
+  h += shelf * 0.012;
   rockOut = 0.0;
   mountOut = 0.0;
   leeOut = 0.0;
@@ -152,9 +171,6 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   }
 
   if(uTect > 0.01){
-    /* 0.5.96: keep orogeny on real margins only; kill thin radial whiskers
-       that used to march from a coast into the ocean when a weak belt.x
-       ridge crossed sea level. */
     float seamGate = 1.0 - ss(0.055,0.180,gSeamNear);
     belt.x *= seamGate;
     belt.z *= seamGate;
@@ -162,14 +178,12 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
 
     if(belt.x > 0.0){
       float peaks = ridged(sN*6.6 + uSeedS*1.9, 3);
-      float foldA = 0.5 + 0.5*noise3(sN*13.5 + uSeedS*2.2 + vec3(97.0,13.0,251.0));
-      float foldB = 0.5 + 0.5*noise3(sN*27.0 + uSeedS*3.4 + vec3(181.0,317.0,43.0));
+      float foldA = 0.5 + 0.5*fbmSimplex(sN*12.0 + uSeedS*2.2 + vec3(97.0,13.0,251.0), 3);
+      float foldB = 0.5 + 0.5*fbmSimplex(sN*24.0 + uSeedS*3.4 + vec3(181.0,317.0,43.0), 3);
       float folds = clamp(0.62*foldA + 0.38*foldB,0.0,1.0);
       float ramp = belt.x*belt.x;
-      mountOut = uTect * ramp * (0.34 + 0.66*peaks) * (0.58 + 0.42*folds) * 1.20;
+      mountOut = uTect * ramp * (0.30 + 0.70*peaks) * (0.55 + 0.45*folds) * 1.15;
       rockOut = ramp * (0.30 + 0.70*peaks);
-      /* only raise land that is already clearly above sea; never grow a
-         whisker of barely-positive height out into the ocean */
       mountOut *= ss(0.01, 0.06, h);
       h += mountOut;
     } else if(belt.x < 0.0){
