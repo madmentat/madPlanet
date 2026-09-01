@@ -1,10 +1,10 @@
-VERSION 0.5.93
-Base: 0.5.92
-Changes: Island silhouettes were still razor-cut by a thin vertical line (seed 8127344) even at Tectonics=0. One-sided finite differences along an explicit tangent frame could invent a one-sided cliff when neighbouring height samples disagreed.
-Fix in surface.glsl normals:
-  1) Frisvad orthonormal basis (continuous except the single south pole)
-  2) central differences (±eps on both axes) instead of one-sided +eps samples
-localTectSupport bump gate retained. Pause/zoom behaviour unchanged.
-Validation: seed 8127344, same camera; the island must no longer be truncated by a vertical line at Tectonics 0% and 100%.
-Snapshots: snapshot/0.5.92-pre-dfdx-normals is the rollback point.
+VERSION 0.5.94
+Base: 0.5.93
+Changes: Coastline and peninsula silhouettes still showed razor cuts independent of Tectonics (seeds 8127344, 33018067). Explicit finite differences — even Frisvad ONB with central samples — can invent a planar cut when the tangent frame or sample offsets mis-align with the raster. Continent FBM itself is continuous.
+Fix in surface.glsl:
+  - normals from screen-space dFdx/dFdy of the centre height and of n0 (no extra terrain samples, no explicit tangent basis)
+  - coast AA from fwidth(h) instead of FD gradH
+localTectSupport bump gate retained. Pause/zoom unchanged.
+Validation: seeds 8127344 and 33018067 at Tectonics 0% and 100%; peninsula/island silhouettes must no longer be truncated by a straight line.
+Snapshots: snapshot/0.5.93-pre-screen-normals is the rollback point.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
