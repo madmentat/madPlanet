@@ -1,40 +1,20 @@
-/* ============ 0.5.60 / 0.5.70 / 0.5.73 / 0.5.74 / 0.5.75: physical cryosphere -> GPU cubemap ============ */
+/* ============ 0.5.60 / 0.5.70 / 0.5.73 / 0.5.74 / 0.5.75 / 0.5.97: physical cryosphere -> GPU cubemap ============ */
 /*
    One RGBA8 cubemap carries both temporal endpoints to remain WebGL1-safe:
    R/G = previous land-cryosphere / sea-ice coverage,
    B/A = current  land-cryosphere / sea-ice coverage.
    The shader blends them with uCryosphereBlend; no texture upload runs on FPS.
 
-   0.5.70 keeps the physical Weather Core coverage continuous for albedo,
-   latent heat and H2O closure, but stops displaying that fraction literally as
-   translucent white fog. 0.5.73 raises only the cheap render reconstruction to
-   3x and replaces the two broad sinusoidal edge waves with several unrelated
-   spherical scales. Transitional ice therefore breaks into bays, tongues and
-   peninsulas instead of exposing a rounded/coarse cubemap contour.
-
-   0.5.74 fixes the remaining long curved seam artifacts. The old bilinear
-   reconstruction clamped all four source taps to the current cube face. At an
-   edge it therefore repeated the last row/column instead of sampling the
-   physically adjacent face. Every projected cube edge could become a dark or
-   bright great-circle arc on the planet. Corner taps may now leave the source
-   face: their extended face coordinate is converted to a 3-D direction and
-   mapped back onto the canonical cubed sphere before the source cell is read.
-
-   0.5.75 makes the DISPLAY reconstruction 5x rather than 3x. This does not
-   increase Weather Core resolution or physical cost: it only gives the sharp
-   visual threshold enough sub-cell samples that a close mobile view no longer
-   exposes each 32x32 physics cell as a soft polygon. Two extra high-frequency
-   spherical terms break the last over-smooth edge segments. Dense continental
-   ice is now exactly opaque in the display mask; surface texture belongs in
-   the shader colour/lighting, not in semi-transparent coverage. Physics remains
-   untouched: zero physical cover is still exactly zero visible ice.
+   0.5.74: seamless cross-face bilinear on CPU (no projected cube arcs).
+   0.5.75: display reconstruction 5x; dense ice opaque in the display mask.
+   0.5.97: display reconstruction 7x; visualCoverage Hermite widened so small
+   sea-ice patches are no longer hard mid-threshold polygons on the cube grid.
+   Pair with surface-artifact-prelude.glsl which no longer re-binarizes at 0.5.
 */
 
-const CRYO_GPU_MODEL=4;
+const CRYO_GPU_MODEL=5;
 const CRYO_TEX_UNIT=7;
-const CRYO_GPU_UPSCALE=5;
-/* Keep enough interpolation to avoid popping, but do not spend most of a
-   one-second weather tick cross-fading two sharp ice margins into grey milk. */
+const CRYO_GPU_UPSCALE=7;
 const CRYO_BLEND_DEFAULT_MS=220;
 const CRYO_BLEND_MIN_MS=70;
 const CRYO_BLEND_MAX_MS=360;
@@ -87,9 +67,6 @@ function cryoGpuSourceLand(core,face,x,y){
 function cryoGpuSourceSea(core,face,x,y){
   const N=core.N;return cryoGpuSourceSeaIndex(core,face*N*N+y*N+x);
 }
-/* Inverse of weatherFaceDir(). Keeping this orientation in one canonical
-   helper matters: a projected tap that crosses +X must arrive at exactly the
-   same +Z/-Z/+Y/-Y cell that the Weather Core itself uses for that direction. */
 function cryoGpuDirToIndex(core,dx,dy,dz){
   const ax=Math.abs(dx),ay=Math.abs(dy),az=Math.abs(dz);let face,u,v,a;
   if(ax>=ay&&ax>=az){
@@ -107,11 +84,6 @@ function cryoGpuDirToIndex(core,dx,dy,dz){
   const y=Math.max(0,Math.min(N-1,Math.floor((v+1)*0.5*N)));
   return face*N*N+y*N+x;
 }
-/* x/y are deliberately allowed outside [0,N-1]. weatherFaceDir() turns that
-   extended face coordinate into a real sphere direction; cryoGpuDirToIndex()
-   then selects the adjacent canonical face. This is the CPU equivalent of
-   seamless cubemap filtering and removes projected face arcs without blurring
-   the geographic ice edge itself. */
 function cryoGpuProjectedSample(core,face,x,y,sea){
   const N=core.N,u=2*(x+0.5)/N-1,v=2*(y+0.5)/N-1;
   const d=weatherFaceDir(face,u,v),i=cryoGpuDirToIndex(core,d[0],d[1],d[2]);
@@ -124,10 +96,6 @@ function cryoGpuBilerp(core,face,fx,fy,sea){
   const c=cryoGpuProjectedSample(core,face,x0,y1,sea),d=cryoGpuProjectedSample(core,face,x1,y1,sea);
   const ab=a+(b-a)*tx,cd=c+(d-c)*tx;return ab+(cd-ab)*ty;
 }
-/* Seed-stable seamless sub-cell geography. Broad terms make bays and tongues;
-   high-frequency terms stop long edge sections from turning into smooth arcs.
-   All inputs are 3-D directions, so none of these scales knows about cube
-   faces, latitude circles or screen coordinates. */
 function cryoGpuEdgeNoise(seed,face,x,y,N){
   if(typeof weatherFaceDir!=='function')return 0.5;
   const u=2*(x+0.5)/N-1,v=2*(y+0.5)/N-1,d=weatherFaceDir(face,u,v);
@@ -142,13 +110,13 @@ function cryoGpuEdgeNoise(seed,face,x,y,N){
 }
 function cryoGpuVisualCoverage(raw,edgeNoise,sea){
   raw=Math.max(0,Math.min(1,Number(raw)||0));
-  if(raw<=0.012)return 0;
-  /* Dense physical ice is a solid surface. Texture/crevasses belong to colour
-     and lighting in surface.glsl; varying coverage here is what made the cap
-     look like translucent milk. */
-  if(raw>=0.78)return 1;
-  const shift=(edgeNoise-0.5)*(sea?0.15:0.26);
-  const lo=(sea?0.18:0.30)+shift,hi=(sea?0.44:0.43)+shift;
+  if(raw<=0.008)return 0;
+  /* 0.5.97: keep transitional ice continuous. A hard mid-range threshold on a
+     cubemap cell made small sea-ice patches look like triangles/cubes. Wider
+     Hermite + stronger edge noise break residual face geometry. */
+  if(raw>=0.88)return 1;
+  const shift=(edgeNoise-0.5)*(sea?0.22:0.34);
+  const lo=(sea?0.12:0.22)+shift,hi=(sea?0.55:0.58)+shift;
   return cryoGpuSmooth(lo,hi,raw);
 }
 function cryoGpuReadCurrent(core){
