@@ -1,14 +1,13 @@
-VERSION 0.5.109
-Base: 0.5.108
-Changes: Make polar ice caps visibly non-circular at planetary scale instead of only roughening the same latitude ring.
-  - preserve the restored 0.5.107 classic planet morphology and the 0.5.108 opaque/binary cryosphere edge; no translucent polar fringe returns
-  - add a body-fixed, seed-dependent global polar warp with several low-order sectors (1/2/3/5-lobed components) and a hard maximum displacement of 0.18 rad (~10.3 degrees)
-  - north and south poles use independent seeded sector phases, so they do not become mirrored copies of one another
-  - displace the physical cryosphere sampling direction along the local meridian before thresholding; even a physically sharp latitude snow line therefore develops continent-scale bays, eccentric sides, peninsulas and ice tongues
-  - keep the global warp restricted to high latitudes and near-zero at lower latitudes so ordinary alpine snow and mid-latitude terrain are not dragged around
-  - retain the seamless 3-D broad/regional/local/fine edge field only for shoreline-scale breakup after the large cap geometry has already been displaced
-  - keep visible ice strictly binary/opaque, NEAREST-filtered and without temporal alpha crossfade; the old grey Arctic mould cannot return through this path
-  - keep the +15 C ~10% transitional-cap trim from 0.5.81/0.5.108
-Regression: strengthen cryosphere-hard-edge.test.js with a behavioural orbital-scale guard: around a representative 67-degree latitude the seed-90636862 cap sampling latitude must span more than 12 degrees, preventing another visually negligible "edge-noise-only" fix.
-Snapshot: snapshot/0.5.108 remains the rollback point before this deliberately large global cap deformation. Create snapshot/0.5.109 only after final CI passes.
+VERSION 0.5.110
+Base: 0.5.109
+Changes: Move the anti-circular polar-cap fix into the physical ocean/sea-ice system instead of relying on a rendered polar warp.
+  - add wind-driven surface currents derived from the resolved Weather Core wind field with hemispheric Ekman deflection
+  - advect mixed-layer heat anisotropically along connected wet cubed-sphere edges, so the freezing isotherm is no longer forced to remain a latitude ring
+  - add conservative sea-ice drift using ocean current plus a small direct wind-drift component; ice can form tongues, bays, leads and displaced pack instead of a static polar disk
+  - keep land ice controlled by snowfall, temperature and terrain; the ocean-current path never paints or deforms land ice directly
+  - use the existing wet-edge graph and coastline mask, so continents and basin geometry naturally interrupt/redirect the transport rather than introducing another latitude mask
+  - retain the 0.5.109 large-scale display warp only as a visual reconstruction aid; the physical cryosphere now has its own non-zonal evolution underneath it
+  - keep the implementation deterministic, fixed-tick and independent of render FPS; no Math.random or per-frame ocean work
+Regression: add ocean-circulation.test.js covering build order, deterministic current generation, conservative SST heat exchange and conservative sea-ice volume drift.
+Snapshot: 0.5.109 remains the rollback point before physical ocean-current/pack-ice transport.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
