@@ -2,17 +2,12 @@
 float contFreq(){ return mix(0.7, 2.6, uCont); }
 float seaLvl(){ return mix(-0.25, 0.34, uSea); }
 
-/* 0.5.104: simplex FBM, mild isotropic domain-warp only.
-   0.5.103 used strong curl warp + anisotropic island stretch + plateau
-   reshape — that smeared landmasses (visible as stretched streaks).
-   Keep simplex (no cubic lattice artifacts) but restore the simple
-   multi-octave mix that read as natural continents from orbit. */
+/* 0.5.104/105: simplex FBM, mild isotropic domain-warp only. */
 float continentNoise(vec3 p){
-  /* mild isotropic warp — strength ~0.55, same idea as pre-artifact era */
   vec3 w = vec3(fbmSimplex(p*0.9 + vec3(1.7,9.2,3.1), 2),
                 fbmSimplex(p*0.9 + vec3(8.3,2.8,5.9), 2),
                 fbmSimplex(p*0.9 + vec3(4.6,7.1,0.7), 2));
-  vec3 q = p + 0.55*w;
+  vec3 q = p + 0.40*w; /* 0.5.105: milder warp — fewer elongated coastal tongues */
   float c = fbmSimplex(q, 5);
   c += 0.14*fbmSimplex(q*3.1 + vec3(7.0), 3);
   return c;
@@ -23,10 +18,7 @@ float continentH(vec3 dir){
   return continentNoise(p)*0.95 - seaLvl();
 }
 
-/* ---------- тектоника ----------
-   0.5.84–0.5.89: weighted-Voronoi organiser, continuous belt, no ghost arcs.
-   0.5.96: mount only on land already above sea so weak belt ridges cannot
-   grow barely-positive whiskers out into the ocean. */
+/* ---------- тектоника ---------- */
 float gSeamNear, gSeamConv;
 vec3  gPlateTint;
 
@@ -47,7 +39,7 @@ vec3 tectonicBelt(vec3 sN){
 
   float orogN = 0.5 + 0.5*fbm(sN*1.15 + uSeedS*3.1 + vec3(311.0,43.0,7.0), 2);
   float seg   = 0.5 + 0.5*fbm(sN*2.6 + uSeedS*2.7 + vec3(211.0,17.0,53.0), 3);
-  float bw = 0.073*(0.45 + 1.15*seg)*(0.60 + 1.15*orogN);
+  float bw = 0.048*(0.50 + 1.00*seg)*(0.65 + 1.00*orogN); /* 0.5.105: narrower orogeny */
   vec3 windS = normalize(cross(uRotS*uAxis, sN) + vec3(1e-6));
 
   float dmin = 1e9, dsecond = 1e9;
@@ -139,7 +131,7 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   vec3 sN = uRotS * dir;
   vec3 p = sN*contFreq() + uSeedS;
   float c = continentNoise(p);
-  /* 0.5.104 islands: isotropic mild warp, soft threshold — no stretch */
+  /* islands: isotropic mild warp, soft threshold */
   vec3 islP = sN*5.5 + uSeedS*1.7 + vec3(23.1);
   vec3 islW = vec3(fbmSimplex(islP + vec3(2.1,9.4,1.3), 2),
                    fbmSimplex(islP + vec3(7.2,1.8,4.6), 2),
@@ -165,13 +157,18 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
     leeOut *= seamGate;
 
     if(belt.x > 0.0){
-      float peaks = ridged(sN*6.6 + uSeedS*1.9, 3);
-      float foldA = 0.5 + 0.5*fbmSimplex(sN*12.0 + uSeedS*2.2 + vec3(97.0,13.0,251.0), 3);
-      float foldB = 0.5 + 0.5*fbmSimplex(sN*24.0 + uSeedS*3.4 + vec3(181.0,317.0,43.0), 3);
-      float folds = clamp(0.62*foldA + 0.38*foldB,0.0,1.0);
+      /* 0.5.105: no table-mountains. Multi-scale ridged peaks, crest near seam. */
+      float peaks  = ridged(sN*9.0  + uSeedS*1.9, 4);
+      float peaks2 = ridged(sN*22.0 + uSeedS*2.8 + vec3(41.0), 3);
+      float peakMix = clamp(0.62*peaks + 0.38*peaks2, 0.0, 1.0);
+      float foldA = 0.5 + 0.5*fbmSimplex(sN*14.0 + uSeedS*2.2 + vec3(97.0,13.0,251.0), 3);
+      float foldB = 0.5 + 0.5*fbmSimplex(sN*31.0 + uSeedS*3.4 + vec3(181.0,317.0,43.0), 3);
+      float folds = clamp(0.55*foldA + 0.45*foldB, 0.0, 1.0);
       float ramp = belt.x*belt.x;
-      mountOut = uTect * ramp * (0.30 + 0.70*peaks) * (0.55 + 0.45*folds) * 1.15;
-      rockOut = ramp * (0.30 + 0.70*peaks);
+      float crest = exp(-gSeamNear*10.0);
+      float profile = (0.04 + 0.96*peakMix) * (0.40 + 0.60*folds) * mix(0.20, 1.0, crest);
+      mountOut = uTect * ramp * profile * 1.10;
+      rockOut = ramp * peakMix * mix(0.25, 1.0, crest);
       mountOut *= ss(0.01, 0.06, h);
       h += mountOut;
     } else if(belt.x < 0.0){
@@ -190,4 +187,4 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   return h;
 }
 
-float iSphere(vec3 ro, vec3 rd, float r);   /* определена ниже */
+float iSphere(vec3 ro, vec3 rd, float r);
