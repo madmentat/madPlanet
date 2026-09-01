@@ -30,6 +30,7 @@ tests=(
   tests/tectonic-cell-seams.test.js
   tests/tectonic-surface-seam-routing.test.js
   tests/tectonic-interior-artifacts.test.js
+  tests/terrain-classic-look.test.js
   tests/param-model.test.js
   tests/star-orbit.test.js
   tests/planet-physics.test.js
