@@ -28,33 +28,45 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   else
     surfaceK = mix(380.0,1000.0,(tempCode-0.90)/0.10);
 
-  /* нормали и берег через экранные производные (без явного tangent-basis).
-     0.5.94: explicit FD (+ Frisvad/central) still left razor cuts on coasts and
-     peninsulas independent of Tectonics (seeds 8127344, 33018067). Those were
-     basis/sample artefacts, not height discontinuities — continent FBM is
-     continuous. Screen-space dFdx/dFdy of the already-evaluated centre height
-     and of n0 need no extra terrain() calls and cannot invent a planar cut. */
+  /* 0.5.95: 0.5.94 screen-space dFdx normals blew up wherever dFdx(n0) and
+     dFdy(n0) were nearly parallel (common near certain view directions),
+     inventing V-shaped dotted seams, triangular facets and cut rivers. Height
+     itself is continuous FBM — those were pure normal/AA artefacts.
+     Restore Frisvad ONB + central differences for stable normals. Coast AA
+     no longer depends on gradH: use a pure screen-pixel width so the
+     silhouette follows the continuous zero-contour of h. */
   vec3 nS = n0;
   float gradH = 0.0;
-  float hx = dFdx(h);
-  float hy = dFdy(h);
-  gradH = length(vec2(hx, hy)) / max(tHit*uPixA, 1.0e-5);
+  float eps = clamp(tHit*uPixA*2.0, 0.0006, 0.02);
   if(h > -0.05){
-    vec3 dx = dFdx(n0);
-    vec3 dy = dFdy(n0);
-    /* project position derivatives into the tangent plane */
-    dx -= n0 * dot(dx, n0);
-    dy -= n0 * dot(dy, n0);
+    vec3 tg, bt;
+    if(n0.z < 0.0){
+      float a = 1.0/(1.0 - n0.z);
+      float b = n0.x*n0.y*a;
+      tg = vec3(1.0 - n0.x*n0.x*a, -b, n0.x);
+      bt = vec3(b, n0.y*n0.y*a - 1.0, -n0.y);
+    }else{
+      float a = 1.0/(1.0 + n0.z);
+      float b = -n0.x*n0.y*a;
+      tg = vec3(1.0 - n0.x*n0.x*a, b, -n0.x);
+      bt = vec3(b, 1.0 - n0.y*n0.y*a, -n0.y);
+    }
+    float rrA, rrB, rrC, rrD, mmA, mmB, mmC, mmD, llA, llB, llC, llD;
+    float hA = terrain(normalize(n0 + tg*eps), rrA, mmA, llA);
+    float hB = terrain(normalize(n0 - tg*eps), rrB, mmB, llB);
+    float hC = terrain(normalize(n0 + bt*eps), rrC, mmC, llC);
+    float hD = terrain(normalize(n0 - bt*eps), rrD, mmD, llD);
+    float dhT = 0.5*(hA - hB);
+    float dhB = 0.5*(hC - hD);
+    gradH = length(vec2(dhT, dhB))/eps;
     float localTectSupport = max(ss(0.01, 0.08, mount),
                                  1.0 - ss(0.05, 0.20, seamNearCenter));
     float bmp = (0.03 + 0.095*uTect*localTectSupport) * (1.0 + 1.3*(1.0-ss(1.7, 3.4, uCamDist)));
-    /* height gradient in the same screen basis as dx/dy */
-    float inv = bmp / max(dot(dx,dx) + dot(dy,dy), 1.0e-12);
-    nS = normalize(n0 - (dx*hx + dy*hy) * inv);
+    nS = normalize(n0 - (tg*dhT + bt*dhB) * (bmp/eps));
   }
 
-  /* береговая AA по fwidth(h): ровно экранный след нулевой изолинии */
-  float aa = clamp(fwidth(h)*0.75, 1.0e-5, 0.02);
+  /* берег: AA строго по экранному пикселю, без gradH */
+  float aa = clamp(tHit*uPixA*1.25, 1.0e-5, 0.02);
   float land = ss(-aa, aa, h);
 
   /* Поверхность океана плоская: раньше её нормаль бралась из рельефа дна,
