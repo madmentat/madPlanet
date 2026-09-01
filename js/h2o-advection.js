@@ -170,6 +170,7 @@ function h2oRefreshRelativeHumidity(core,climate){
     core.humidity[i]=h2oClamp(rh,0,1);
   }
 }
+const H2O_BOOTSTRAP_MAX_RH=1.0;
 function h2oInitializeVapor(core,climate){
   const target=h2oGlobalTargetColumnKgM2(climate);
   for(let i=0;i<core.count;i++){
@@ -180,7 +181,18 @@ function h2oInitializeVapor(core,climate){
     const shape=0.42+0.70*oldRH+0.38*wet;
     core.vaporColumn[i]=Math.max(0,target*shape);
   }
-  h2oNormalizeGlobalVapor(core,climate);
+  /* 0.5.113: a column can only start with what its own air can hold. The
+     one-box target spread by shape alone left polar air twice saturated, and
+     condensation then dumped ~6 kg/m2 of cloud water as snow onto every cold
+     continent within the first simulated hours. Cap by local saturation and
+     let the global closure place the remainder where warm air can carry it. */
+  for(let pass=0;pass<2;pass++){
+    for(let i=0;i<core.count;i++){
+      const sat=h2oSaturationColumnKgM2(core.airTemp[i],climate);
+      core.vaporColumn[i]=Math.min(core.vaporColumn[i],H2O_BOOTSTRAP_MAX_RH*sat);
+    }
+    h2oNormalizeGlobalVapor(core,climate);
+  }
   h2oRefreshRelativeHumidity(core,climate);
 }
 

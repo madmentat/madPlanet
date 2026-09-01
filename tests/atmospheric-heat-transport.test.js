@@ -18,6 +18,7 @@ assert.ok(!/requestAnimationFrame|Math\.random/.test(src),'transport must stay d
 assert.match(src,/AHT_DIFFUSIVITY_M2_S=2\.2e6/,'diffusivity must stay at the Earth-calibrated EBM value');
 assert.match(src,/ahtColumnHeatCapacity/,'transport strength must scale with the atmospheric column cp p / g');
 assert.match(src,/AHT_MAX_EDGE_MIX/,'explicit diffusion needs a per-edge stability cap');
+assert.match(src,/ahtMoistFactor\(climate\)\*cAtm/,'latent-heat transport must scale the diffusivity with water vapour');
 assert.match(src,/function ahtDailyMeanInsolation\(/,'seasonal bootstrap needs the daily-mean insolation integral');
 assert.match(src,/seasonDeclinationRadForPhase\(2\*Math\.PI\*\(k\+0\.5\)\/AHT_SEASON_PHASES,tilt\)/,'seasonal anomaly must be relative to the annual mean of the same orbit');
 
@@ -112,6 +113,12 @@ assert.ok(Math.abs(season.ahtSeasonAnomalyK[seaCell])<Math.abs(season.ahtSeasonA
 for(let i=0;i<season.count;i++)assert.ok(Math.abs(season.ahtSeasonAnomalyK[i])<=24.0001);
 const noTilt=makeCore(N,()=>0);ctx.ahtSeasonBootstrap(noTilt,{pressureBar:1,S:1,axialTiltDeg:0},[0,1,0]);
 for(let i=0;i<noTilt.count;i++)assert.equal(noTilt.ahtSeasonAnomalyK[i],0,'no tilt means no seasonal anomaly');
+
+/* Moist static energy: wetter atmospheres transport more, dry ones less, Earth reference = 1. */
+assert.ok(Math.abs(ctx.ahtMoistFactor({h2oBar:0.0019})-1)<1e-9,'Earth reference must reproduce the calibrated diffusivity');
+assert.ok(ctx.ahtMoistFactor({h2oBar:0})<0.4,'a dry atmosphere transports only sensible heat');
+assert.ok(ctx.ahtMoistFactor({h2oBar:0.004})>1.4,'a wetter atmosphere transports more');
+assert.ok(ctx.ahtMoistFactor({h2oBar:1})<=(1+1.67*4)/2.67+1e-9,'latent enhancement must stay capped');
 
 /* Wrapper integration. */
 publishes=0;covers=0;ctx.weatherCoreStep(core,300,climate,[0,1,0]);

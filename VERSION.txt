@@ -1,9 +1,11 @@
 VERSION 0.5.113
 Base: 0.5.112
-Changes: Stop polar caps from growing without limit and make the two hemispheres differ.
-  - new js/atmospheric-heat-transport.js: energy-balance diffusion of surface heat along the cubed-sphere edge graph (D = 0.55 W m^-2 K^-1 on Earth, scaled by the atmospheric column cp p / g and planet radius); conservative and stability-capped per edge
+Changes: Stop polar caps from growing without limit, size them by climate, and make the two hemispheres differ.
+  - new js/atmospheric-heat-transport.js: energy-balance diffusion of surface heat along the cubed-sphere edge graph (D = 0.55 W m^-2 K^-1 on Earth, scaled by the atmospheric column cp p / g, planet radius and water-vapour latent transport); conservative and stability-capped per edge
   - polar cells previously sat at -80..-150 W m^-2 net radiation with nothing to balance it, so every cap kept growing at ~0.8 K/day regardless of the mean climate; poleward transport now pays that deficit as it does on a real planet
   - seasonal bootstrap at Weather Core creation: the steady anomaly of the current declination relative to the annual-mean daily insolation is applied (land ~0.75, ocean ~0.12 response), so the winter cap is larger than the summer cap from the first frame
-Regression: add tests/atmospheric-heat-transport.test.js (conservation, pole warming, airless and 90-bar limits, seasonal asymmetry, wrapper integration).
+  - weather-target-smoothing.js: the equator-pole contrast of the bootstrap follows the mean climate (38 K at +15 C, ~28 K at +22 C, ~50 K at +5 C) instead of freezing the poles of a +22 C world exactly like a +15 C one
+  - h2o-advection.js: the initial vapour column is capped by local saturation; polar air no longer starts twice saturated and no longer dumps ~6 kg/m2 of cloud water as snow onto every cold continent within the first simulated hours
+Regression: add tests/atmospheric-heat-transport.test.js (conservation, pole warming, airless and 90-bar limits, moist scaling, seasonal asymmetry, wrapper integration); extend weather-core.test.js for the climate-dependent contrast.
 Snapshot: 0.5.112 remains the rollback point before atmospheric heat transport.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

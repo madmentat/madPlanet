@@ -25,8 +25,11 @@
 */
 
 const AHT_MODEL=1;
-const AHT_DIFFUSIVITY_M2_S=2.2e6;      /* D_earth * R_earth^2 / C_atm(1 bar) */
+const AHT_DIFFUSIVITY_M2_S=2.2e6;      /* D_earth * R_earth^2 / C_atm(1 bar), moist Earth */
 const AHT_CP_J_KG_K=1004.0;
+const AHT_EARTH_H2O_BAR=0.0019;        /* reference water-vapour partial pressure of the calibration */
+const AHT_LATENT_SHARE=1.67;           /* (L/cp) dq_sat/dT on Earth: latent vs sensible transport */
+const AHT_MOIST_MAX=4.0;               /* cap on the latent enhancement */
 const AHT_MAX_EDGE_MIX=0.12;           /* explicit-step stability cap per edge */
 const AHT_LAND_HEAT_CAPACITY=1.6e7;
 const AHT_SOLAR_CONSTANT=1361.0;
@@ -51,6 +54,15 @@ function ahtColumnHeatCapacity(climate){
   const p=Math.max(0,Number(climate?.pressureBar)||0)*1e5;
   return AHT_CP_J_KG_K*p/Math.max(0.05,ahtGravity(climate));
 }
+/* Moist static energy is what the atmosphere really diffuses: on Earth the
+   latent part is ~1.7x the sensible part, and it scales with the water-vapour
+   partial pressure. A drier or colder atmosphere transports less, a warmer
+   and wetter one more, which is the latent-heat half of polar amplification.
+   Normalized so that the Earth reference reproduces AHT_DIFFUSIVITY_M2_S. */
+function ahtMoistFactor(climate){
+  const r=ahtClamp((Number(climate?.h2oBar)||0)/AHT_EARTH_H2O_BAR,0,AHT_MOIST_MAX);
+  return (1+AHT_LATENT_SHARE*r)/(1+AHT_LATENT_SHARE);
+}
 function ahtEnsure(core){
   if(!core?.count)return core;
   if(!core.ahtHeatDelta||core.ahtHeatDelta.length!==core.count)core.ahtHeatDelta=new Float64Array(core.count);
@@ -74,7 +86,7 @@ function ahtDiffuse(core,dtSec,climate){
   let areaSum=0;
   for(let i=0;i<core.count;i++)areaSum+=Math.max(1e-12,Number(core.areaWeight?.[i])||1);
   const sphere=4*Math.PI*R*R,delta=core.ahtHeatDelta;delta.fill(0);
-  const conductance=AHT_DIFFUSIVITY_M2_S*cAtm*dt;  /* J K^-1 per step */
+  const conductance=AHT_DIFFUSIVITY_M2_S*ahtMoistFactor(climate)*cAtm*dt;  /* J K^-1 per step */
   let moved=0;
   for(let e=0;e<edges;e++){
     const i=core.h2oEdgeI[e],j=core.h2oEdgeJ[e];

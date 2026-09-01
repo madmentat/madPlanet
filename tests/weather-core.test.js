@@ -62,6 +62,19 @@ assert.ok(Math.abs(weightedSurfaceMean-climate.T)<0.35,
 assert.match(targetSmooth,/WEATHER_TARGET_LAT_MEAN/,'latitude target must explicitly remove its spherical mean');
 assert.match(targetSmooth,/Math\.pow\(lat,WEATHER_TARGET_LAT_POWER\)-WEATHER_TARGET_LAT_MEAN/,
   'latitude gradient must warm the equator and cool the poles around a zero-mean anomaly');
+/* 0.5.113: the equator-pole contrast follows the mean climate (polar
+   amplification): flatter for warm worlds, steeper for cold ones, Earth = 38 K. */
+assert.match(targetSmooth,/function weatherTargetLatGradientK\(/,'zonal contrast must be a function of the mean climate');
+assert.match(targetSmooth,/weatherTargetLatGradientK\(c\.T\)\*\(Math\.pow\(lat,WEATHER_TARGET_LAT_POWER\)-WEATHER_TARGET_LAT_MEAN\)/,
+  'bootstrap profile must use the climate-dependent contrast');
+{
+  const gctx={Math,Number,weatherClamp:(x,a,b)=>Math.max(a,Math.min(b,Number(x)||0)),weatherCoreTargetsForCell:null};
+  vm.createContext(gctx);vm.runInContext(targetSmooth,gctx,{filename:'weather-target-smoothing.js'});
+  assert.ok(Math.abs(gctx.weatherTargetLatGradientK(288.15)-38)<1e-9,'Earth mean must keep the 38 K contrast');
+  assert.ok(gctx.weatherTargetLatGradientK(295.15)<30,'a +22 C world must have a clearly flatter contrast');
+  assert.ok(gctx.weatherTargetLatGradientK(278.15)>45,'a +5 C world must have a steeper contrast');
+  assert.ok(gctx.weatherTargetLatGradientK(400)>=14&&gctx.weatherTargetLatGradientK(120)<=60,'contrast must stay clamped');
+}
 
 /* 0.5.69: one global thermometer is not enough to diagnose frozen worlds. */
 const bands=ctx.planetTemperatureBands(a,axis);
