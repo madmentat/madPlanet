@@ -2,29 +2,14 @@
 float contFreq(){ return mix(0.7, 2.6, uCont); }
 float seaLvl(){ return mix(-0.25, 0.34, uSea); }
 
-/* 0.5.101: cubic-lattice gradient noise has preferred 45°/axis facets.
-   Single weak domain-warp still left triangular coast cuts and dashed
-   iso-seams. Dual-scale warp + two rotated FBM fields break the lattice. */
+/* 0.5.102: continent/island height from simplex FBM + curl domain-warp.
+   Cubic Perlin iso-surfaces had 45°/axis facets (triangular bays, wedge
+   islands). Simplex has no cubic lattice; curl warp is divergence-free. */
 float continentNoise(vec3 p){
-  /* warp 1 — large, strong */
-  vec3 w1 = vec3(fbm(p*0.85 + vec3(1.7,9.2,3.1), 3),
-                 fbm(p*0.85 + vec3(8.3,2.8,5.9), 3),
-                 fbm(p*0.85 + vec3(4.6,7.1,0.7), 3));
-  vec3 q = p + 1.40*w1;
-  /* warp 2 — mid scale */
-  vec3 w2 = vec3(fbm(q*1.55 + vec3(11.3,2.4,7.8), 2),
-                 fbm(q*1.55 + vec3(5.1,13.7,1.9), 2),
-                 fbm(q*1.55 + vec3(9.6,4.2,12.1), 2));
-  q += 0.55*w2;
-  /* two differently oriented FBM — average kills residual lattice axes */
-  float a = fbm(q, 5);
-  /* rotate sample space so cell faces never align */
-  vec3 q2 = q*mat3( 0.36, 0.48,-0.80,
-                   -0.80, 0.60, 0.00,
-                    0.48, 0.64, 0.60) + vec3(17.3, 5.9, 11.1);
-  float b = fbm(q2, 5);
-  float c = mix(a, b, 0.50);
-  c += 0.12*fbm(q*2.9 + vec3(7.0), 3);
+  vec3 w = curlNoise(p*0.65)*1.15 + curlNoise(p*1.55 + vec3(9.1,2.7,5.3))*0.40;
+  vec3 q = p + w;
+  float c = fbmSimplex(q, 5);
+  c += 0.13*fbmSimplex(q*2.85 + vec3(7.0), 3);
   return c;
 }
 float continentH(vec3 dir){
@@ -149,21 +134,10 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   vec3 sN = uRotS * dir;
   vec3 p = sN*contFreq() + uSeedS;
   float c = continentNoise(p);
-  /* islands: same lattice-break treatment as continents */
+  /* islands: simplex + curl warp (same basis as continents) */
   vec3 islP = sN*5.5 + uSeedS*1.7 + vec3(23.1);
-  vec3 islW1 = vec3(fbm(islP*0.9+vec3(2.1,9.4,1.3),3),
-                    fbm(islP*0.9+vec3(7.2,1.8,4.6),3),
-                    fbm(islP*0.9+vec3(3.9,6.5,8.2),3));
-  vec3 islQ = islP + 1.25*islW1;
-  vec3 islW2 = vec3(fbm(islQ*1.7+vec3(14.0),2),
-                    fbm(islQ*1.7+vec3(28.0),2),
-                    fbm(islQ*1.7+vec3(42.0),2));
-  islQ += 0.50*islW2;
-  float islA = fbm(islQ, 5);
-  vec3 islQ2 = islQ*mat3(0.60,-0.80,0.00, 0.48,0.36,0.80, -0.64,-0.48,0.60)
-             + vec3(31.7, 9.3, 19.1);
-  float islB = fbm(islQ2, 5);
-  float isl = mix(islA, islB, 0.50);
+  vec3 islW = curlNoise(islP*0.8)*1.05 + curlNoise(islP*1.7+vec3(4.0))*0.35;
+  float isl = fbmSimplex(islP + islW, 5);
   float islandH = uIsle*0.6*smoothstep(0.14, 0.32, isl);
   float h = c*0.95 + islandH - seaLvl();
   rockOut = 0.0;
