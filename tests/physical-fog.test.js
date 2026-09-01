@@ -27,7 +27,11 @@ ordered(buildPs,['js/weather-cloud-render.js','js/fog-render.js','js/screenshot-
 for(const u of ['uFogTex','uFogTexPrev','uFogBlend'])assert.match(header,new RegExp('\\b'+u+'\\b'));
 assert.ok(!/inversionBelt|coastal\s*=|terminator\s*=/.test(shader),'legacy latitude/coast/terminator fog heuristics must stay retired');
 assert.match(shader,/physicalFogSample/);assert.match(shader,/uRotS\*normalize\(dir\)/);
-assert.match(shader,/mix\(prev,curr,b\)/,'fog must interpolate fixed-tick targets');
+assert.match(shader,/#define FOG_TAP\(D\) mix\([^\n]*uFogTexPrev[^\n]*uFogTex[^\n]*b\)/,
+  'fog samples must interpolate previous/current fixed-tick targets before spatial averaging');
+assert.match(shader,/vec4 c0 = FOG_TAP\(body\)/,'fog center sample must use the interpolated fixed-tick helper');
+assert.match(shader,/c0\.ba = \(c0\.ba \+ c1\.ba \+ c2\.ba \+ c3\.ba \+ c4\.ba\) \* 0\.2/,
+  'soil/temperature channels may spatially average only after temporal interpolation');
 assert.match(shader,/float shaped=max\(0\.0,optical-erosion\)/,'procedural erosion must only subtract from physical fog');
 assert.match(shader,/float density=shaped\*softVisibility\*textureMod/,'procedural texture may modulate already-positive physical fog only');
 const executablePhys=phys.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\/.*$/gm,'$1');
