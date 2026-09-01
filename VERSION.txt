@@ -1,15 +1,14 @@
-VERSION 0.5.116
-Base: 0.5.115
-Changes: Extend the right-side tool rubric with a second eight-slot column and add a lightweight schematic Orbit mode.
-  - the existing eight parameter buttons remain in their original right-hand column; a second eight-slot column appears immediately to the left, aligned above the runtime/performance settings gear
-  - the new Orbit button starts at the top of the new column, leaving seven empty positions available for later tools
-  - all sixteen toolbar positions are draggable; dropping onto an occupied cell swaps the two buttons, while dropping onto an empty cell moves the button there
-  - custom toolbar layout persists in localStorage for this browser/device and never enters the planet seed/hash
-  - empty desktop cells stay visually quiet and become dashed drop targets only while rearranging; narrow-phone layout remains a horizontally scrollable tool strip rather than consuming screen width with two vertical columns
-  - Orbit mode uses a small 2D overlay canvas rather than the main WebGL pass, so it adds negligible rendering cost
-  - the schematic shows the orbital plane, star, current planet position, star direction, orbital quarter marks, orbital normal, physical spin axis and axial-tilt angle
-  - season label, solar declination, orbital distance and year length are derived from the existing season/star/planet physics rather than duplicated UI-only formulas
-  - orbit rendering is inserted before runtime-settings wraps drawFrame, so the orbit marker receives the same continuously scaled simulation clock as the planet while Pause still freezes it
-Regression: toolbar remains responsive and panel positioning still measures the full rubric rectangle; existing group button click handlers survive reparenting into draggable slots.
-Snapshot: 0.5.115 remains the rollback point before the second toolbar column and Orbit schematic.
+VERSION 0.5.117
+Base: 0.5.116
+Changes: Expand the second tool column with draggable Orbit-window behavior plus Ecliptic and Thermal Imager instrument modes.
+  - Orbit remains the first tool in the new left column; Ecliptic and Thermal Imager occupy the next two default cells, leaving five of the sixteen logical toolbar slots empty
+  - existing saved toolbar layouts migrate automatically: new tools take their default free cells or the first available empty cells without resetting the user's arrangement
+  - Orbit window now has a compact title bar and close control and can be dragged by pointer/touch; its last position is saved locally and clamped back into the viewport after resize
+  - Ecliptic mode draws a transparent projected instrument layer over the live planet: physical spin axis, equatorial great circle, ecliptic great circle and the current axial-obliquity angle follow the actual camera viewpoint
+  - Thermal Imager recolors the planet disk from the existing Weather Core surface-temperature field stored in the shared fog/soil cubemap A channel (180..380 K), rather than adding a second temperature model or CPU upload
+  - thermal palette includes fine 20 K isolines and a compact 180/280/380 K legend; clouds and ordinary lighting cannot hide the diagnostic surface temperature
+  - Orbit, Ecliptic and Thermal modes are display-only state and never enter the world hash/seed
+  - all three instrument modules are wrapped before runtime-settings so scaled simulation time and Pause remain coherent with the existing frame architecture
+Regression: both bash and PowerShell builders include the new thermal shader and instrument modules in deterministic order; the existing sixteen-slot drag/swap toolbar contract remains intact.
+Snapshot: 0.5.116 remains the rollback point before draggable Orbit and the Ecliptic/Thermal instruments.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
