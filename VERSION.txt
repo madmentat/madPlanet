@@ -1,14 +1,13 @@
-VERSION 0.5.117
-Base: 0.5.116
-Changes: Expand the second tool column with draggable Orbit-window behavior plus Ecliptic and Thermal Imager instrument modes.
-  - Orbit remains the first tool in the new left column; Ecliptic and Thermal Imager occupy the next two default cells, leaving five of the sixteen logical toolbar slots empty
-  - existing saved toolbar layouts migrate automatically: new tools take their default free cells or the first available empty cells without resetting the user's arrangement
-  - Orbit window now has a compact title bar and close control and can be dragged by pointer/touch; its last position is saved locally and clamped back into the viewport after resize
-  - Ecliptic mode draws a transparent projected instrument layer over the live planet: physical spin axis, equatorial great circle, ecliptic great circle and the current axial-obliquity angle follow the actual camera viewpoint
-  - Thermal Imager recolors the planet disk from the existing Weather Core surface-temperature field stored in the shared fog/soil cubemap A channel (180..380 K), rather than adding a second temperature model or CPU upload
-  - thermal palette includes fine 20 K isolines and a compact 180/280/380 K legend; clouds and ordinary lighting cannot hide the diagnostic surface temperature
-  - Orbit, Ecliptic and Thermal modes are display-only state and never enter the world hash/seed
-  - all three instrument modules are wrapped before runtime-settings so scaled simulation time and Pause remain coherent with the existing frame architecture
-Regression: both bash and PowerShell builders include the new thermal shader and instrument modules in deterministic order; the existing sixteen-slot drag/swap toolbar contract remains intact.
-Snapshot: 0.5.116 remains the rollback point before draggable Orbit and the Ecliptic/Thermal instruments.
+VERSION 0.5.118
+Base: 0.5.117
+Changes: Add an optional schematic orbit line to the main scene, controlled from inside the draggable Orbit instrument window.
+  - Orbit mini-map gains a compact "Орбита в основной сцене" toggle rather than consuming another toolbar cell
+  - when enabled, a lightweight full-screen 2D instrument overlay projects a warm orbital line around the system star while the normal photorealistic WebGL planet render stays untouched
+  - the schematic ellipse is anchored to the same star direction used by the sky pass, oriented from the physical ecliptic plane, and mathematically constrained to pass through the current planet at screen centre
+  - the line is intentionally not astronomical scale: it behaves like a diagram/field-line aid, with a faint glow, solid near side, dashed far side, star marker and a small current-planet marker
+  - the scene orbit is visible only while Orbit mode itself is open; closing Orbit hides it immediately while remembering the toggle preference for the next opening
+  - the toggle preference is stored in localStorage for this browser/device and never enters planet state, hash or seed
+  - Orbit window height expands only enough for the new switch; the existing drag handle, close button and saved window position continue to work
+Regression: bash and PowerShell builders load orbit-scene-path.js between Orbit drag behavior and the other instrument overlays; tests guard star anchoring, physical ecliptic orientation, planet-through-ellipse geometry and local display-only persistence.
+Snapshot: 0.5.117 remains the rollback point before the main-scene orbit-line option.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
