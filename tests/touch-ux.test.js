@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const ux = fs.readFileSync(path.join(root,'js/touch-ux.js'),'utf8');
+const pause = fs.readFileSync(path.join(root,'js/pause-ui.js'),'utf8');
 const camera = fs.readFileSync(path.join(root,'js/camera.js'),'utf8');
 const buildPs = fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 const buildSh = fs.readFileSync(path.join(root,'build.sh'),'utf8');
@@ -59,5 +60,14 @@ assert.ok(ux.includes('!gesture.startInPanel'),
   'a free-space tap outside the panel must be distinguishable from a swipe');
 assert.ok(ux.includes("btn.textContent=mode === 'sun' ? '☀ Звезда' : '◉ Планета'"),
   'the mobile-accessible rotation-mode button must expose both states');
+
+/* 0.5.111 regression: on portrait tablets the bottom utility bar spans almost
+   the whole screen, so corner buttons must be lifted above it rather than
+   painted over the controls. Phones have two stacked bottom rows and need a
+   larger pause clearance while their hamburger remains top-center. */
+assert.match(pause,/@media \(min-width:701px\) and \(orientation:portrait\)[\s\S]*\.pause-btn[\s\S]*bottom:calc\(var\(--safe-b\) \+ 58px\)[\s\S]*\.rub-toggle[\s\S]*bottom:calc\(var\(--safe-b\) \+ 58px\)/,
+  'portrait tablet pause and hamburger must clear the bottom utility bar');
+assert.match(pause,/@media \(max-width:700px\)[\s\S]*\.pause-btn\{bottom:calc\(var\(--safe-b\) \+ 102px\)\}/,
+  'phone pause must clear both stacked bottom control rows');
 
 console.log('touch-ux.test.js: OK');
