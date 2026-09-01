@@ -1,9 +1,8 @@
-VERSION 0.5.96
-Base: 0.5.95
-Changes: Coast "whiskers" and non-closing island edges persisted. FD step up to ~1° of arc bridged entire coast features; bump on the shoreline turned residual gradient error into silhouette nicks; weak tectonic ridges could grow barely-positive land spikes into the ocean.
+VERSION 0.5.97
+Base: 0.5.96
+Changes: Ice / cryosphere islands looked like Malevich geometry (cubes, triangles, non-closing coasts) independent of Tectonics. Root cause: surface-artifact-prelude.glsl re-binarized continuous cubemap coverage with smoothstep(0.5±fwidth), exposing the underlying cube-face grid as hard polygons.
 Fix:
-  surface.glsl — hard-cap FD eps (~0.25°), shoreLock (no bump on waterline), reduced bump gain, pixel coast AA retained
-  terrain.glsl — tighter seamGate, mountOut only when land already above sea (ss(0.01,0.06,h)), weaker trench near sea level
-Validation: seed 29222792 and prior coast-cut seeds — no radial whiskers from coast into ocean, island silhouettes continuous.
-Snapshots: snapshot/0.5.95-pre-coast-lock is the rollback point.
+  - cryoSurfaceTextureAA now keeps continuous coverage (soft heel only, no 0.5 threshold)
+  - CRYO_GPU_UPSCALE 5→7 and slightly softer visualCoverage thresholds in cryosphere-gpu.js
+Snapshots: snapshot/0.5.96-pre-cryo-soft is the rollback point.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
