@@ -1,14 +1,15 @@
-VERSION 0.5.115
-Base: 0.5.114
-Changes: Add program-level runtime settings and direct simulation-speed controls without putting device policy into the planet seed.
-  - new settings button sits immediately left of the hamburger/menu button; on phones it follows the same top-center layout and on portrait tablets it follows the lifted bottom-right controls
-  - new speed cluster sits beside Pause with slower / current multiplier / faster controls; supported rates are x0.25, x0.5, x1, x2 and x4, with the center badge resetting to x1
-  - visual simulation time is now a continuous synthetic clock: planet rotation, cloud motion, storms and other uTime effects change speed every frame without introducing tick stepping; camera orbit/zoom inertia stays real-time
-  - Weather Core model time per physical tick is user-selectable from 30 s, 1, 2, 3 or 5 simulated minutes; the upper bound remains the proven 300 s integration step
-  - speed multiplier changes requested Weather Core cadence between 4 s and 250 ms, but cooperative scheduling still skips delayed work instead of replaying catch-up ticks
-  - performance panel adds Auto / Quality / Balanced / Performance / Custom profiles, target FPS, adaptive-resolution toggle, render-scale min/max, Weather Core grid override (Auto/24/28/32/36 per cube face), and interaction-priority weather deferral
-  - settings persist in localStorage for this browser/device and do not enter the world hash/seed; changing the Weather Core grid recreates the physical grid on the next tick
-  - diagnostics expose current renderScale, frame-rate EMA, active Weather Core grid, Weather tick cost, deviceMemory and WebGL version while the settings panel is open
-Regression: runtime settings are built between base render and per-frame weather bridges so GPU target blending keeps real wall time while shader simulation receives scaled model time; all final policy hooks install after smooth-motion/pause wrappers.
-Snapshot: 0.5.114 remains the rollback point before user-configurable runtime time/performance controls.
+VERSION 0.5.116
+Base: 0.5.115
+Changes: Extend the right-side tool rubric with a second eight-slot column and add a lightweight schematic Orbit mode.
+  - the existing eight parameter buttons remain in their original right-hand column; a second eight-slot column appears immediately to the left, aligned above the runtime/performance settings gear
+  - the new Orbit button starts at the top of the new column, leaving seven empty positions available for later tools
+  - all sixteen toolbar positions are draggable; dropping onto an occupied cell swaps the two buttons, while dropping onto an empty cell moves the button there
+  - custom toolbar layout persists in localStorage for this browser/device and never enters the planet seed/hash
+  - empty desktop cells stay visually quiet and become dashed drop targets only while rearranging; narrow-phone layout remains a horizontally scrollable tool strip rather than consuming screen width with two vertical columns
+  - Orbit mode uses a small 2D overlay canvas rather than the main WebGL pass, so it adds negligible rendering cost
+  - the schematic shows the orbital plane, star, current planet position, star direction, orbital quarter marks, orbital normal, physical spin axis and axial-tilt angle
+  - season label, solar declination, orbital distance and year length are derived from the existing season/star/planet physics rather than duplicated UI-only formulas
+  - orbit rendering is inserted before runtime-settings wraps drawFrame, so the orbit marker receives the same continuously scaled simulation clock as the planet while Pause still freezes it
+Regression: toolbar remains responsive and panel positioning still measures the full rubric rectangle; existing group button click handlers survive reparenting into draggable slots.
+Snapshot: 0.5.115 remains the rollback point before the second toolbar column and Orbit schematic.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
