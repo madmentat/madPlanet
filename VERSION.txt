@@ -1,13 +1,10 @@
-VERSION 0.5.110
-Base: 0.5.109
-Changes: Move the anti-circular polar-cap fix into the physical ocean/sea-ice system instead of relying on a rendered polar warp.
-  - add wind-driven surface currents derived from the resolved Weather Core wind field with hemispheric Ekman deflection
-  - advect mixed-layer heat anisotropically along connected wet cubed-sphere edges, so the freezing isotherm is no longer forced to remain a latitude ring
-  - add conservative sea-ice drift using ocean current plus a small direct wind-drift component; ice can form tongues, bays, leads and displaced pack instead of a static polar disk
-  - keep land ice controlled by snowfall, temperature and terrain; the ocean-current path never paints or deforms land ice directly
-  - use the existing wet-edge graph and coastline mask, so continents and basin geometry naturally interrupt/redirect the transport rather than introducing another latitude mask
-  - retain the 0.5.109 large-scale display warp only as a visual reconstruction aid; the physical cryosphere now has its own non-zonal evolution underneath it
-  - keep the implementation deterministic, fixed-tick and independent of render FPS; no Math.random or per-frame ocean work
-Regression: add ocean-circulation.test.js covering build order, deterministic current generation, conservative SST heat exchange and conservative sea-ice volume drift.
-Snapshot: 0.5.109 remains the rollback point before physical ocean-current/pack-ice transport.
+VERSION 0.5.111
+Base: 0.5.110
+Changes: Keep the pause and hamburger controls clear of the bottom utility panel on portrait devices.
+  - on portrait tablets wider than 700 CSS px, lift both bottom-corner buttons by 58 px so they sit just above the desktop-style utility bar instead of covering it
+  - preserve the existing left/right corner placement: pause stays bottom-left and hamburger stays bottom-right
+  - on narrow phones, keep the hamburger at its existing top-center position and lift pause by 102 px to clear both the bottom rubric row and the horizontally scrolling utility bar
+  - leave landscape/desktop pause placement unchanged
+Regression: extend touch-ux.test.js with layout guards for tablet and phone bottom-control clearance.
+Snapshot: 0.5.110 remains the rollback point before this responsive control-placement adjustment.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
