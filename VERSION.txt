@@ -1,13 +1,14 @@
-VERSION 0.5.118
-Base: 0.5.117
-Changes: Add an optional schematic orbit line to the main scene, controlled from inside the draggable Orbit instrument window.
-  - Orbit mini-map gains a compact "Орбита в основной сцене" toggle rather than consuming another toolbar cell
-  - when enabled, a lightweight full-screen 2D instrument overlay projects a warm orbital line around the system star while the normal photorealistic WebGL planet render stays untouched
-  - the schematic ellipse is anchored to the same star direction used by the sky pass, oriented from the physical ecliptic plane, and mathematically constrained to pass through the current planet at screen centre
-  - the line is intentionally not astronomical scale: it behaves like a diagram/field-line aid, with a faint glow, solid near side, dashed far side, star marker and a small current-planet marker
-  - the scene orbit is visible only while Orbit mode itself is open; closing Orbit hides it immediately while remembering the toggle preference for the next opening
-  - the toggle preference is stored in localStorage for this browser/device and never enters planet state, hash or seed
-  - Orbit window height expands only enough for the new switch; the existing drag handle, close button and saved window position continue to work
-Regression: bash and PowerShell builders load orbit-scene-path.js between Orbit drag behavior and the other instrument overlays; tests guard star anchoring, physical ecliptic orientation, planet-through-ellipse geometry and local display-only persistence.
-Snapshot: 0.5.117 remains the rollback point before the main-scene orbit-line option.
+VERSION 0.5.119
+Base: 0.5.118
+Changes: Recompose the smartphone portrait interface into a compact right-aligned service cluster and a four-row bottom dock.
+  - Android/narrow portrait layout is now handled by one late mobile policy module instead of unrelated legacy exceptions from the shell, runtime settings and Pause modules
+  - hamburger moves to the actual safe top-right corner; program settings and Pause sit immediately to its left, with the simulation-speed cluster on the same right-aligned row when width permits
+  - on very narrow portrait screens (<=380 CSS px) only the wider speed control drops to a second right-aligned row; the three compact service buttons remain in the first row
+  - all sixteen logical rubric slots are presented as an 8x2 bottom grid with adaptive 34..40 px cells, eliminating horizontal tool scrolling in portrait; empty slots retain layout space and appear only as drag targets while rearranging
+  - the utility bar becomes two fixed rows below the tool grid: Ring/Stars/Detail/Plates toggles on the third visual row and Seed/Reroll/Random/Screenshot actions on the fourth/bottom row
+  - the whole four-row dock respects Android safe-area insets; hiding the rubric slides both tool and utility regions fully off-screen rather than leaving parts exposed
+  - parameter panels, runtime settings and the Thermal legend are lifted above the complete bottom dock so controls are never covered by the new grid
+  - desktop, landscape-phone and portrait-tablet layout contracts remain unchanged; this policy is scoped to max-width 700 px plus portrait orientation
+Regression: mobile-portrait-layout.js loads after pause-ui.js so its CSS is authoritative over all dynamically created controls; a dedicated regression test guards top service ordering, 8x2 rubric geometry, narrow-screen speed fallback and the two utility rows.
+Snapshot: 0.5.118 remains the rollback point before the compact Android portrait dock.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
