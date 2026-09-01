@@ -4,6 +4,7 @@ const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const smooth=read('js/smooth-motion-ui.js');
+const weatherCore=read('js/weather-core.js');
 const prelude=read('shaders/surface-artifact-prelude.glsl');
 const postlude=read('shaders/surface-artifact-postlude.glsl');
 const surface=read('shaders/surface.glsl');
@@ -22,16 +23,39 @@ assert.match(smooth,/return \(uaMobile \|\| coarse \|\| compact\) \? SMOOTH_MOBI
   'mobile/coarse devices must use the tuned compact Weather Core');
 
 /* Motion-first mobile policy: stay near the 60 Hz budget and allow quality to
-   react while pinch/drag increases fragment cost. */
+   react while pinch/drag increases fragment cost. Scope the old early-return
+   regression specifically to tuneRenderScale: 0.5.114 deliberately blocks
+   WEATHER PHYSICS during pointer interaction, which must not be confused with
+   freezing adaptive render quality. */
 assert.match(smooth,/SMOOTH_MOBILE_FRAME_MS = 18\.0/,'mobile renderer should target roughly 50-60 fps');
 assert.match(smooth,/SMOOTH_MOBILE_SCALE_MIN = deviceMemory <= 4 \? 0\.60 : 0\.68/,
   'mobile renderer needs enough scale headroom to recover close-zoom frame pacing');
-assert.doesNotMatch(smooth,/pointers\.size>0\)return/,
+const tuneStart=smooth.indexOf("if(typeof tuneRenderScale === 'function'){");
+const tuneEnd=smooth.indexOf('/* ----- top-left live telemetry',tuneStart);
+assert.ok(tuneStart>=0&&tuneEnd>tuneStart,'tuneRenderScale override block expected');
+const tuneBlock=smooth.slice(tuneStart,tuneEnd);
+assert.doesNotMatch(tuneBlock,/pointers\.size>0\)return/,
   'adaptive quality must not freeze exactly while the user is pinching/dragging');
-assert.match(smooth,/const interacting=/,'interaction-aware degradation policy expected');
-assert.match(smooth,/qualityCooldown=interacting\?72:45/,
+assert.match(tuneBlock,/const interacting=/,'interaction-aware degradation policy expected');
+assert.match(tuneBlock,/qualityCooldown=interacting\?72:45/,
   'interaction downscale must be controlled rather than oscillating every sample');
-assert.match(smooth,/qualityCooldown=120/,'quality recovery should stay slow');
+assert.match(tuneBlock,/qualityCooldown=120/,'quality recovery should stay slow');
+
+/* 0.5.114: fixed weather cadence must not become a visible one-second input
+   interrupt. Physics is scheduled cooperatively outside active interaction,
+   while fixed-step determinism and no-catch-up semantics remain intact. */
+assert.match(weatherCore,/WEATHER_CORE_DESKTOP_N = 36/,'desktop Weather Core should use the lighter synoptic grid');
+assert.doesNotMatch(weatherCore,/setInterval\s*\(\s*weatherCoreTick/,
+  'Weather Core must not use a rigid one-second setInterval interrupt');
+assert.match(weatherCore,/requestIdleCallback/,'Weather Core should use idle scheduling when the browser supports it');
+assert.match(weatherCore,/weatherCoreInteractionBusy/,'Weather Core scheduler must defer to active camera interaction');
+assert.match(smooth,/function weatherCoreInteractionBusy\(/,'smooth layer must publish the interaction-priority hook');
+assert.match(smooth,/const smoothVisualPending=\{cloud:null,fog:null,cryo:null\}/,
+  'weather visual targets must be coalesced instead of uploaded in one fixed-tick burst');
+assert.match(smooth,/smoothWeatherCloudGpuUploadNow\(core\);[\s\S]*smoothScheduleVisualPublish\(0\);[\s\S]*return;/,
+  'cloud publication should yield before the following visual target');
+assert.match(smooth,/smoothFogGpuUploadNow\(core\);[\s\S]*smoothScheduleVisualPublish\(0\);[\s\S]*return;/,
+  'fog publication should yield before the following visual target');
 
 /* The ice texture may interpolate spatially and temporally only as a scalar
    boundary field. Since 0.5.98 the surface samples it through an explicit
