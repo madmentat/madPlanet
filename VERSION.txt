@@ -1,9 +1,8 @@
-VERSION 0.5.105
-Base: 0.5.104
-Changes: Finger-like coastal tongues and huge flat table-mountains at uniform height (seed 79773558, high Tectonics).
-  - narrower orogenic belt width
-  - mountains: multi-scale ridged peaks, almost no base fill (no mud-clump plateaus)
-  - crest falloff away from plate seam → narrow range chains
-  - milder continent domain-warp (0.55→0.40) to reduce elongated coastal tongues
-Snapshots: snapshot/0.5.104-pre-peaks
+VERSION 0.5.106
+Base: 0.5.105
+Changes: Restore classic continent/island appearance (0.5.67–0.5.86 recipe) on simplex basis.
+  - continent: domain-warp 0.9 + 5 octaves + 0.14 mid detail (exact classic structure)
+  - islands: freq 5.5, soft threshold around 0.22 (classic), softstep not hard max
+  - keep 0.5.105 peaked narrow tectonic ranges (no table-mountains)
+Snapshots: snapshot/0.5.105-pre-classic-look
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
