@@ -40,7 +40,14 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     float h1 = terrain(normalize(n0 + tg*eps), rr1, mm1, ll1);
     float h2 = terrain(normalize(n0 + bt*eps), rr2, mm2, ll2);
     gradH = length(vec2(h1-h, h2-h))/eps;
-    float bmp = (0.03 + 0.095*uTect) * (1.0 + 1.3*(1.0-ss(1.7, 3.4, uCamDist)));
+    /* 0.5.90: Tectonics must not amplify normals over the whole planet.
+       Full 0.095 response is kept only where there is real tectonic relief
+       (mount) or we are near an actual plate boundary. Deep interiors stay
+       at the neutral 0.03 base gain so ordinary FBM gradients cannot be
+       turned into smooth curved stripes merely by raising the slider. */
+    float localTectSupport = max(ss(0.01, 0.08, mount),
+                                 1.0 - ss(0.05, 0.20, seamNearCenter));
+    float bmp = (0.03 + 0.095*uTect*localTectSupport) * (1.0 + 1.3*(1.0-ss(1.7, 3.4, uCamDist)));
     nS = normalize(n0 - (tg*(h1-h) + bt*(h2-h)) * (bmp/eps));
   }
 

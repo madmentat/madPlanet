@@ -1,11 +1,8 @@
-VERSION 0.5.89
-Base: 0.5.88
-Changes: Residual smooth curved stripes remained after the 0.5.87 pairCompetition experiment and the 0.5.88 real-seam routing fix. This release combines the two strongest remaining ideas instead of weakening all terrain globally.
-Physical relief support: keep pairCompetitive=280, then additionally multiply belt.x / belt.z / leeOut by a broad real-boundary support seamGate = 1 - ss(0.075,0.240,gSeamNear). This adopts Grok's useful 0.5.87b insight that tectonic height should not survive deep inside a plate, but deliberately avoids Grok's much narrower exp(-28*gSeamNear), which would squeeze mountain systems into boundary ribbons.
-Normal-path fix: the Tectonics slider no longer amplifies finite-difference normals for every land pixel on the planet. During surface.glsl only, uTect is remapped through local support from actual mount/ridge relief or proximity to the real centre-point seam. Genuine tectonic terrain keeps the existing 0.095 full-strength bump response; deep plate interiors fall back to the neutral 0.03 base normal gain instead of magnifying unrelated base-terrain gradients into arcs.
-Seam integrity: the 0.5.88 removal of the fake mount-derived gSeamNear macro remains intact. Plate diagnostics and volcanism continue to consume the real nearest/second-nearest boundary snapshot.
-Regression: added tectonic-interior-artifacts.test.js. It guards the broad real-seam physical gate, forbids Grok's overly narrow exp(-28*gSeamNear) form, verifies the surface-only local normal support and ensures the uTect remap is scoped away after surface.glsl.
-Validation: use the previously problematic seed/area, zoom in and sweep Tectonics 0% -> 100%. Distant smooth arcs should no longer become stronger merely because Tectonics is raised. Real mountain systems and actual plate-margin structure should still strengthen. With Plates visible, diagnostic lines must still coincide with colour boundaries.
-Retained: 0.5.88 real seam routing, 0.5.87 stronger pairCompetition, 0.5.86 nearest/second-nearest diagnostics, and all prior performance/cryosphere/weather/extreme-temperature fixes.
-Snapshots: snapshot/0.5.88 is the rollback point before this combined fix. Create snapshot/0.5.89 only after the final develop head passes CI.
+VERSION 0.5.90
+Base: 0.5.89
+Changes: The normal-path fix described in 0.5.89 was missing from surface.glsl. The global bump gain (0.03 + 0.095*uTect) was still applied to every land pixel, so raising Tectonics continued to amplify ordinary base-terrain FBM gradients into residual smooth curved stripes far from plate boundaries.
+Actual implementation: localTectSupport = max(ss(0.01,0.08,mount), 1.0 - ss(0.05,0.20,seamNearCenter)). The Tectonics contribution to finite-difference normal strength is now gated by real tectonic height or proximity to a genuine plate margin. Deep plate interiors keep only the neutral 0.03 base gain.
+Validation: seed 90636862 (or any previously problematic area), sweep Tectonics 0% -> 100% with Plates off. Distant smooth arcs must no longer strengthen merely because the slider is raised. Real mountain systems and plate-margin structure must still respond.
+Snapshots: snapshot/0.5.89-pre-normal-fix is the rollback point before this change.
+Retained: all prior pairCompetitive, broad seamGate and diagnostic fixes from 0.5.86-0.5.89.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
