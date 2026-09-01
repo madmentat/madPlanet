@@ -1,5 +1,9 @@
-VERSION 0.5.104
-Base: 0.5.103
-Changes: 0.5.103 strong curl warp + anisotropic island stretch + plateau reshape smeared continents (stretched streaks). Revert land formation to mild isotropic domain-warp on simplex FBM — same structure that looked natural in older builds, without cubic lattice artifacts.
-Snapshots: snapshot/0.5.103-pre-no-stretch
+VERSION 0.5.105
+Base: 0.5.104
+Changes: Finger-like coastal tongues and huge flat table-mountains at uniform height (seed 79773558, high Tectonics).
+  - narrower orogenic belt width
+  - mountains: multi-scale ridged peaks, almost no base fill (no mud-clump plateaus)
+  - crest falloff away from plate seam → narrow range chains
+  - milder continent domain-warp (0.55→0.40) to reduce elongated coastal tongues
+Snapshots: snapshot/0.5.104-pre-peaks
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
