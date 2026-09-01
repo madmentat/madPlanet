@@ -163,7 +163,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float snowMicro = 0.88 + 0.12*(0.5+0.5*fbm(sN*11.0+uSeedS+vec3(31.0),3));
   float snowM = clamp(landCryoPhys*snowMicro, 0.0, 1.0);
   if(mount > 0.02){
-    float rough = 0.5+0.5*fbm(sN*26.0+uSeedS*1.6+vec3(211.0,3));
+    float rough = 0.5+0.5*fbm(sN*26.0+uSeedS*1.6+vec3(211.0),3);
     float steepBare = ss(1.1, 3.4, gradH);
     float bare = clamp(steepBare*0.75 + (1.0-rough)*0.55, 0.0, 1.0);
     snowM *= 1.0 - bare*ss(0.02, 0.13, mount)*0.85;
