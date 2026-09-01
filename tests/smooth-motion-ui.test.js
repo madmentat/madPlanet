@@ -3,8 +3,10 @@ const fs=require('node:fs');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
+const stripComments=t=>t.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\n)\s*\/\/[^\n]*/g,'$1');
 const smooth=read('js/smooth-motion-ui.js');
 const weatherCore=read('js/weather-core.js');
+const weatherExecutable=stripComments(weatherCore);
 const prelude=read('shaders/surface-artifact-prelude.glsl');
 const postlude=read('shaders/surface-artifact-postlude.glsl');
 const surface=read('shaders/surface.glsl');
@@ -44,11 +46,11 @@ assert.match(tuneBlock,/qualityCooldown=120/,'quality recovery should stay slow'
 /* 0.5.114: fixed weather cadence must not become a visible one-second input
    interrupt. Physics is scheduled cooperatively outside active interaction,
    while fixed-step determinism and no-catch-up semantics remain intact. */
-assert.match(weatherCore,/WEATHER_CORE_DESKTOP_N = 36/,'desktop Weather Core should use the lighter synoptic grid');
-assert.doesNotMatch(weatherCore,/setInterval\s*\(\s*weatherCoreTick/,
+assert.match(weatherExecutable,/WEATHER_CORE_DESKTOP_N = 36/,'desktop Weather Core should use the lighter synoptic grid');
+assert.doesNotMatch(weatherExecutable,/setInterval\s*\(\s*weatherCoreTick/,
   'Weather Core must not use a rigid one-second setInterval interrupt');
-assert.match(weatherCore,/requestIdleCallback/,'Weather Core should use idle scheduling when the browser supports it');
-assert.match(weatherCore,/weatherCoreInteractionBusy/,'Weather Core scheduler must defer to active camera interaction');
+assert.match(weatherExecutable,/requestIdleCallback/,'Weather Core should use idle scheduling when the browser supports it');
+assert.match(weatherExecutable,/weatherCoreInteractionBusy/,'Weather Core scheduler must defer to active camera interaction');
 assert.match(smooth,/function weatherCoreInteractionBusy\(/,'smooth layer must publish the interaction-priority hook');
 assert.match(smooth,/const smoothVisualPending=\{cloud:null,fog:null,cryo:null\}/,
   'weather visual targets must be coalesced instead of uploaded in one fixed-tick burst');
