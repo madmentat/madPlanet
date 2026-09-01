@@ -1,10 +1,9 @@
-VERSION 0.5.112
-Base: 0.5.111
-Changes: Make polar ice geographic instead of a latitude circle after every Random world.
-  - new js/ocean-heat-transport.js: persistent surface heat forcing resolved from the actual cubed-sphere geography — warm inflow only along an open equatorward ocean pathway, warm east side / cold west side of each basin, maritime spill-over onto nearby coasts, and thinner greenhouse column over high terrain
-  - the forcing is a zero-mean redistribution inside every latitude band and globally, so climateModel().T and the zonal bootstrap stay the headline; its steady-state anomaly Q/lambda is applied at Weather Core creation and maintained by the same flux every fixed tick
-  - sea-ice skin, sea-ice growth, snow line and albedo feedback now read a temperature that varies by basin, coast and plateau, so the cap forms tongues, bays and an eccentric outline from the first frame
-  - cryosphere-edge-display.js: retire the 0.5.109 display-side meridional warp that displaced ice off its own coastlines; sample the physical field at the true direction, keep only shoreline-scale edge noise
-Regression: add tests/ocean-heat-transport.test.js (closure, basin-side asymmetry, landlocked polar sea, elevation, maritime coast, bootstrap and rebuild continuity); update cryosphere tests for the retired warp.
-Snapshot: 0.5.111 remains the rollback point before geographic polar ice.
+VERSION 0.5.113
+Base: 0.5.112
+Changes: Stop polar caps from growing without limit and make the two hemispheres differ.
+  - new js/atmospheric-heat-transport.js: energy-balance diffusion of surface heat along the cubed-sphere edge graph (D = 0.55 W m^-2 K^-1 on Earth, scaled by the atmospheric column cp p / g and planet radius); conservative and stability-capped per edge
+  - polar cells previously sat at -80..-150 W m^-2 net radiation with nothing to balance it, so every cap kept growing at ~0.8 K/day regardless of the mean climate; poleward transport now pays that deficit as it does on a real planet
+  - seasonal bootstrap at Weather Core creation: the steady anomaly of the current declination relative to the annual-mean daily insolation is applied (land ~0.75, ocean ~0.12 response), so the winter cap is larger than the summer cap from the first frame
+Regression: add tests/atmospheric-heat-transport.test.js (conservation, pole warming, airless and 90-bar limits, seasonal asymmetry, wrapper integration).
+Snapshot: 0.5.112 remains the rollback point before atmospheric heat transport.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
