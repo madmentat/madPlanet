@@ -1,8 +1,9 @@
-VERSION 0.5.97
-Base: 0.5.96
-Changes: Ice / cryosphere islands looked like Malevich geometry (cubes, triangles, non-closing coasts) independent of Tectonics. Root cause: surface-artifact-prelude.glsl re-binarized continuous cubemap coverage with smoothstep(0.5±fwidth), exposing the underlying cube-face grid as hard polygons.
+VERSION 0.5.98
+Base: 0.5.97
+Changes: Perfect triangular green islands (seed e.g. 74152889, +15C) — real land, not ice. Root cause: island height used hard max(isl-0.22,0) on raw cubic-lattice FBM; a single noise-cell peak becomes a triangular wedge on the sphere.
 Fix:
-  - cryoSurfaceTextureAA now keeps continuous coverage (soft heel only, no 0.5 threshold)
-  - CRYO_GPU_UPSCALE 5→7 and slightly softer visualCoverage thresholds in cryosphere-gpu.js
-Snapshots: snapshot/0.5.96-pre-cryo-soft is the rollback point.
+  terrain.glsl — domain-warp island FBM, 5 octaves, smoothstep(0.16,0.30) heel instead of hard max
+  surface-artifact-prelude.glsl — no more #define texture(); explicit cryoSurfaceSample()
+  surface.glsl — call cryoSurfaceSample for cryosphere only
+Snapshots: snapshot/0.5.97-pre-island-warp is the rollback point.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
