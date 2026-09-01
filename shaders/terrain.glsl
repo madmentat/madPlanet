@@ -132,8 +132,18 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   vec3 q = p + 0.9*w;
   float c = fbm(q,5);
   c += 0.14*fbm(q*3.1+vec3(7.0),3);
-  float isl = fbm(sN*5.5 + uSeedS*1.7 + vec3(23.1),4);
-  float h = c*0.95 + uIsle*0.6*max(isl-0.22,0.0) - seaLvl();
+  /* 0.5.98: island FBM was sampled on the raw cubic lattice with a hard
+     max(isl-0.22,0). Near threshold a single noise cell peak becomes a
+     triangular/wedge-shaped island (Malevich geometry). Domain-warp the
+     island field, rotate sample axes, and use a soft heel so the zero
+     contour is not a lattice corner. */
+  vec3 islP = sN*5.5 + uSeedS*1.7 + vec3(23.1);
+  vec3 islW = vec3(fbm(islP+vec3(2.1,9.4,1.3),2),
+                   fbm(islP+vec3(7.2,1.8,4.6),2),
+                   fbm(islP+vec3(3.9,6.5,8.2),2));
+  float isl = fbm(islP + 0.85*islW, 5);
+  float islandH = uIsle*0.6*smoothstep(0.16, 0.30, isl);
+  float h = c*0.95 + islandH - seaLvl();
   rockOut = 0.0;
   mountOut = 0.0;
   leeOut = 0.0;
