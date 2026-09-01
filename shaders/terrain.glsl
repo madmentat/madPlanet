@@ -18,7 +18,7 @@ float continentNoise(vec3 p){
   q += 0.55*w2;
   /* two differently oriented FBM — average kills residual lattice axes */
   float a = fbm(q, 5);
-  /* rotate sample space ~golden-angle-ish so cell faces never align */
+  /* rotate sample space so cell faces never align */
   vec3 q2 = q*mat3( 0.36, 0.48,-0.80,
                    -0.80, 0.60, 0.00,
                     0.48, 0.64, 0.60) + vec3(17.3, 5.9, 11.1);
@@ -82,48 +82,67 @@ vec3 tectonicBelt(vec3 sN){
     vec3 diagDbT = diagDb-sN*dot(diagDb,sN);
     float diagTl = length(diagDbT);
     vec3 diagDir = diagDbT/max(diagTl,1e-4);
-    float diagConv = dot(nearVel-secondVel, diagDir);
+    float diagValid = ss(0.06,0.32,diagTl);
     gSeamNear = max(0.0,(dsecond-dmin)/diagBase);
+    float diagConv = dot(cross(nearVel-secondVel,sN),diagDir)*diagValid;
     gSeamConv = clamp(diagConv*2.4,-1.0,1.0);
   }
 
-  float belt = 0.0, ridge = 0.0, lee = 0.0;
-  float seamNum = 0.0, seamDen = 0.0;
-  for(int i=0;i<uPlateN;i++){
-    for(int j=i+1;j<uPlateN;j++){
-      float di = -dot(sN, uPlateP[i].xyz) - uPlateP[i].w;
-      float dj = -dot(sN, uPlateP[j].xyz) - uPlateP[j].w;
-      float pairCompetitive = exp(-280.0*(di*di + dj*dj));
-      if(pairCompetitive < 1e-5) continue;
+  const float REACH = 0.62;
+  float num = 0.0, den = 1e-6, leeNum = 0.0, seamNum = 0.0;
+  float ruptureField = clamp(0.52*seg + 0.28*orogN + 0.20*(0.5+0.5*wv2.z),0.0,1.0);
+  float rupture = 0.18 + 0.82*ss(0.26,0.66,ruptureField);
 
-      float base = max(length(uPlateP[i].xyz-uPlateP[j].xyz), 1e-4);
-      vec3 db = uPlateP[j].xyz - uPlateP[i].xyz;
-      vec3 dbT = db - sN*dot(db,sN);
+  for(int i=0;i<uPlateN;i++){
+    vec3 pi = uPlateP[i].xyz;
+    float di = -dot(sN, pi) - uPlateP[i].w - dRef;
+    if(di > REACH) continue;
+    for(int j=i+1;j<uPlateN;j++){
+      vec3 pj = uPlateP[j].xyz;
+      float dj = -dot(sN, pj) - uPlateP[j].w - dRef;
+      float sum2 = di + dj;
+      if(sum2 > REACH) continue;
+      float wgt = exp(-sum2*9.0) * ss(REACH, REACH*0.7, sum2);
+      float pairCompetitive = exp(-280.0*(di*di + dj*dj));
+
+      vec3 db = pj - pi;
+      float base = max(length(db), 1e-4);
+      vec3 dbT = db - sN*dot(db, sN);
       float dbTl = length(dbT);
       vec3 bdir = dbT/max(dbTl, 1e-4);
+      float bValid = ss(0.06, 0.32, dbTl);
 
-      float seamS = (di - dj) / base;
+      float seamS = (dj - di)/base;
+      float seamWarp = 0.052*dot(wv2,bdir) + 0.020*dot(wv,bdir);
+      seamS += seamWarp;
       float seam = abs(seamS);
-      float side = sign(seamS+1e-9);
 
-      float conv = dot(uPlateW[i].xyz - uPlateW[j].xyz, bdir);
+      float conv = dot(cross(uPlateW[i].xyz - uPlateW[j].xyz, sN), bdir)*bValid;
       float convC = clamp(conv*2.4, -1.0, 1.0);
       float bwEff = bw*(0.66 + 1.00*abs(convC));
-      float gate = exp(-seam/max(bwEff,1e-4));
-      float rupture = mix(0.55, 1.0, 0.5+0.5*fbm(sN*4.5+uSeedS*2.1+vec3(float(i)*3.1,float(j)*7.3,11.0), 2));
+      float sb = seam/bwEff;
+      float band = exp(-sb*sb);
+      float over = (uPlateP[i].w >= uPlateP[j].w) ? 1.0 : -1.0;
+      float sS = seamS*over;
+      float su = (sS - 0.36*bwEff)/bwEff;
+      float arc = exp(-su*su);
+      float trench = band*rupture;
 
-      float contrib = gate * rupture * (0.55 + 0.90*abs(convC));
+      float side = clamp(seamS/0.04, -1.0, 1.0);
       float lee = max(conv, 0.0) * ss(0.10, 0.70, dot(bdir*side, -windS))
                 * exp(-seam/0.095) * rupture * pairCompetitive;
 
-      float signBelt = (convC >= 0.0) ? 1.0 : -1.0;
+      float contrib = (convC > 0.0)
+        ? convC*(arc*(0.56+0.44*rupture) - 0.035*trench*rupture)
+        : convC*band*(0.16+0.44*rupture);
       contrib *= pairCompetitive;
-      belt += contrib * signBelt;
-      ridge += contrib * abs(convC);
+      num    += wgt*contrib;
+      leeNum += wgt*lee;
       seamNum+= wgt*pairCompetitive*seam;
+      den    += wgt;
     }
   }
-  return vec3(belt, ridge, lee);
+  return vec3(num/den, seamNum/den, clamp(leeNum/den, 0.0, 1.0));
 }
 
 float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut){
