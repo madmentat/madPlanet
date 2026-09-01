@@ -1,10 +1,10 @@
-VERSION 0.5.94
-Base: 0.5.93
-Changes: Coastline and peninsula silhouettes still showed razor cuts independent of Tectonics (seeds 8127344, 33018067). Explicit finite differences — even Frisvad ONB with central samples — can invent a planar cut when the tangent frame or sample offsets mis-align with the raster. Continent FBM itself is continuous.
+VERSION 0.5.95
+Base: 0.5.94
+Changes: Screen-space dFdx/dFdy normals (0.5.94) produced V-shaped dotted seams, triangular facets and cut rivers whenever dFdx(n0) and dFdy(n0) were nearly parallel. Continent height is continuous FBM; those were pure normal singularities.
 Fix in surface.glsl:
-  - normals from screen-space dFdx/dFdy of the centre height and of n0 (no extra terrain samples, no explicit tangent basis)
-  - coast AA from fwidth(h) instead of FD gradH
-localTectSupport bump gate retained. Pause/zoom unchanged.
-Validation: seeds 8127344 and 33018067 at Tectonics 0% and 100%; peninsula/island silhouettes must no longer be truncated by a straight line.
-Snapshots: snapshot/0.5.93-pre-screen-normals is the rollback point.
+  - restore Frisvad ONB + central finite differences for normals
+  - coast AA uses pure screen-pixel width (tHit*uPixA), independent of gradH
+localTectSupport retained. Pause/zoom unchanged.
+Validation: seeds 30241529, 26596513, 28226818 — no V-dotted seams, no triangular land cuts, rivers continuous.
+Snapshots: snapshot/0.5.94-pre-stable-normals is the rollback point.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
