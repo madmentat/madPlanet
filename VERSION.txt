@@ -1,8 +1,14 @@
-VERSION 0.5.106
-Base: 0.5.105
-Changes: Restore classic continent/island appearance (0.5.67–0.5.86 recipe) on simplex basis.
-  - continent: domain-warp 0.9 + 5 octaves + 0.14 mid detail (exact classic structure)
-  - islands: freq 5.5, soft threshold around 0.22 (classic), softstep not hard max
-  - keep 0.5.105 peaked narrow tectonic ranges (no table-mountains)
-Snapshots: snapshot/0.5.105-pre-classic-look
+VERSION 0.5.107
+Base: 0.5.106
+Changes: Restore the believable pre-Grok world morphology while retaining the later anti-artifact rendering foundation.
+  - keep 3D simplex for continent/island macro geography so cubic-lattice 45-degree facets and triangular coast cuts do not return
+  - normalize fbmSimplex by 0.50 before applying the classic 0.5.67-0.5.86 coefficients; raw simplex is about twice the amplitude of old noise3 and made the nominal 0.9 warp behave like a much stronger deformation
+  - restore classic continent recipe: 0.9 domain warp, 5-octave body, 0.14 mid-scale detail on the normalized simplex basis
+  - restore classic island abundance/profile: frequency 5.5 and max(isl-0.22,0), now safe from cubic wedge islands because the carrier is simplex
+  - restore broad 0.5.86 orogenic envelope and mountain morphology: bw 0.073, ridged 6.6/3, two irregular fold fields, 1.38 mountain profile and classic coastal uplift/rift response
+  - retain pairCompetitive=280 and the true nearest/second-nearest plate seam; retain only a very broad deep-interior seam guard so it cannot squeeze legitimate mountain systems into boundary ribbons
+  - keep the post-0.5.99 geographic ONB / symmetric finite-difference normal system and post-0.5.100 cubemap-biome seam suppression
+  - remove the accidental double spatial Tectonics normal remap; surface.glsl remains locally supported, while the prelude only restores mountain normal amplitude
+Regression: add terrain-classic-look.test.js and update tectonic-interior-artifacts.test.js so future artifact fixes cannot silently replace the planet's established large-scale visual character.
+Snapshots: snapshot/0.5.106 is the rollback point before this restoration. Create snapshot/0.5.107 only after final CI passes.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
