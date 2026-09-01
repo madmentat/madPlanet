@@ -6,6 +6,7 @@ const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const smooth=read('js/smooth-motion-ui.js');
 const prelude=read('shaders/surface-artifact-prelude.glsl');
 const postlude=read('shaders/surface-artifact-postlude.glsl');
+const surface=read('shaders/surface.glsl');
 const buildSh=read('build.sh');
 const buildPs=read('build.ps1');
 
@@ -33,16 +34,18 @@ assert.match(smooth,/qualityCooldown=interacting\?72:45/,
 assert.match(smooth,/qualityCooldown=120/,'quality recovery should stay slow');
 
 /* The ice texture may interpolate spatially and temporally only as a scalar
-   boundary field; the shader resolves it into opaque material coverage. */
+   boundary field. Since 0.5.98 the surface samples it through an explicit
+   helper; never hijack the global texture() builtin again. */
 assert.match(smooth,/gl\.TEXTURE_MIN_FILTER,gl\.LINEAR/,'cryosphere source must no longer expose NEAREST texel stairs');
 assert.match(smooth,/0\.5\+\(raw-edgeNoise\)\*slope/,'transitional cryosphere must publish a signed edge field');
 assert.match(smooth,/SMOOTH_MOBILE_CRYO_PUBLISH_MS = 2400/,
-  'mobile must not rebuild the expensive 4x cryosphere display cubemap every second');
+  'mobile must not rebuild the expensive cryosphere display cubemap every second');
 assert.match(smooth,/base\*5\.0/,'cryosphere edge motion must interpolate between slow visual publishes');
-assert.match(prelude,/vec4 cryoSurfaceTextureAA/,'surface cryosphere AA helper missing');
-assert.match(prelude,/fwidth\(q\)\*0\.72/,'cryosphere edge must use screen-space derivative width');
-assert.match(prelude,/#define texture\(TEX,COORD\) cryoSurfaceTextureAA/,'AA helper must intercept only the surface texture read');
-assert.match(postlude,/#undef texture/,'surface texture macro must not leak into later shader modules');
+assert.match(prelude,/vec4 cryoSurfaceSample\(samplerCube tex, vec3 dir\)/,'direct surface cryosphere sampling helper missing');
+assert.match(prelude,/smoothstep\(vec4\(0\.02\), vec4\(0\.18\), q\)/,'cryosphere helper must keep the continuous soft heel');
+assert.match(surface,/cryoSurfaceSample\(uCryosphereTex, normalize\(sN\)\)/,'surface must use the scoped cryosphere helper');
+assert.doesNotMatch(prelude,/#define\s+texture\(/,'global texture() macro must stay retired');
+assert.doesNotMatch(postlude,/#undef\s+texture/,'postlude must not pretend texture() is still hijacked');
 
 /* Requested live readout under the world label. */
 for(const text of ['FPS','T̄','ЗВЕЗДА','ОРБИТА'])assert.ok(smooth.includes(text),'missing live telemetry label: '+text);
