@@ -33,7 +33,9 @@ assert.ok(ctx.fogGpuSurfaceTemp01(core,3)<0.05,'-160 C must survive as an explic
 assert.ok(ctx.fogGpuSurfaceTemp01(core,4)>0.90,'+627 C must survive as an explicit hot tail, not clip to 380 K');
 
 assert.match(surface,/vec4 surfaceWx = physicalFogSample\(n0\)/,'surface must consume interpolated Weather Core surface state');
-assert.match(surface,/float soilMoistPhys = clamp\(surfaceWx\.b/,'surface drought must use physical soil moisture');
+assert.match(surface,/float soilCont = clamp\(/,'continuous sub-cell soil envelope must exist to suppress cubemap face seams');
+assert.match(surface,/float soilMoistPhys = mix\(soilCont, clamp\(surfaceWx\.b,0\.0,1\.0\), 0\.50\)/,
+  'surface drought must blend physical soil moisture with a continuous seam-safe envelope rather than expose coarse cubemap cells directly');
 assert.match(surface,/float tempCode = clamp\(surfaceWx\.a/,'surface must decode the physical temperature channel');
 assert.match(surface,/mix\(80\.0,180\.0,tempCode\/0\.05\)/,'surface must decode the deep-cold temperature tail');
 assert.match(surface,/mix\(380\.0,1000\.0,\(tempCode-0\.90\)\/0\.10\)/,'surface must decode the extreme-hot temperature tail');
