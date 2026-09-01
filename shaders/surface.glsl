@@ -22,24 +22,28 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   else
     surfaceK = mix(380.0,1000.0,(tempCode-0.90)/0.10);
 
-  /* 0.5.96: coast whiskers / non-closing edges.
-     Cap FD eps, disable bump on waterline (shoreLock), lower gain. */
+  /* 0.5.99: Frisvad ONB branches on n0.z and is discontinuous across the
+     entire great circle n0.z=0. That seam is a visible oval/circular lighting
+     arc on the disk after planet rotation — independent of Tectonics, ice,
+     or islands. Use a geographic ONB (east/north from uAxis) so the only
+     singularities are the two geographic poles, not a whole meridian. */
   vec3 nS = n0;
   float gradH = 0.0;
   float eps = clamp(tHit*uPixA*1.5, 0.0004, 0.0045);
   float shoreLock = ss(0.012, 0.045, abs(h));
   if(h > -0.05 && shoreLock > 0.01){
+    /* geographic tangent frame: bt ~ north, tg ~ east */
+    vec3 north = uAxis - n0*dot(uAxis, n0);
+    float n2 = dot(north, north);
     vec3 tg, bt;
-    if(n0.z < 0.0){
-      float a = 1.0/(1.0 - n0.z);
-      float b = n0.x*n0.y*a;
-      tg = vec3(1.0 - n0.x*n0.x*a, -b, n0.x);
-      bt = vec3(b, n0.y*n0.y*a - 1.0, -n0.y);
+    if(n2 > 1.0e-8){
+      bt = north * inversesqrt(n2);
+      tg = cross(bt, n0);
     }else{
-      float a = 1.0/(1.0 + n0.z);
-      float b = -n0.x*n0.y*a;
-      tg = vec3(1.0 - n0.x*n0.x*a, b, -n0.x);
-      bt = vec3(b, 1.0 - n0.y*n0.y*a, -n0.y);
+      /* geographic pole: fall back to a stable world axis */
+      vec3 a = (abs(n0.y) < 0.9) ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0);
+      tg = normalize(cross(a, n0));
+      bt = cross(n0, tg);
     }
     float rrA, rrB, rrC, rrD, mmA, mmB, mmC, mmD, llA, llB, llC, llD;
     float hA = terrain(normalize(n0 + tg*eps), rrA, mmA, llA);
