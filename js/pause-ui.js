@@ -1,8 +1,8 @@
 /* ============ 0.5.92: pause all simulation processes for clean screenshots ============ */
 /*
-   Freezes the simulation clock, camera inertia, derived-parameter relaxation
-   and (indirectly) time-driven weather / cloud motion. Rendering continues so
-   the current frame stays on screen for screenshots.
+   Freezes the simulation clock, derived-parameter relaxation and time-driven
+   weather / cloud / planet motion. Camera navigation (zoom, orbit) stays
+   active so the user can frame a screenshot while paused.
 
    Placement is opposite the hamburger (rub-toggle):
      - landscape / wide viewports: top-right
@@ -54,7 +54,7 @@
   btn.id = 'pauseBtn';
   btn.type = 'button';
   btn.setAttribute('aria-label', 'Пауза');
-  btn.title = 'Пауза (остановить все процессы)';
+  btn.title = 'Пауза (остановить симуляцию)';
   btn.innerHTML = `
     <svg class="ico-pause" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <rect x="3.5" y="2.5" width="3" height="11" rx="0.8" fill="currentColor"/>
@@ -71,7 +71,7 @@
     const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
     if(on){
       pauseStartedAt = now;
-      /* kill camera inertia immediately */
+      /* stop free-spin inertia; deliberate drag/zoom still work */
       if(typeof cam !== 'undefined' && cam){
         cam.vyaw = 0; cam.vpitch = 0;
       }
@@ -84,7 +84,7 @@
     state.paused = on;
     btn.classList.toggle('active', on);
     btn.setAttribute('aria-label', on ? 'Продолжить' : 'Пауза');
-    btn.title = on ? 'Продолжить' : 'Пауза (остановить все процессы)';
+    btn.title = on ? 'Продолжить' : 'Пауза (остановить симуляцию)';
   }
 
   btn.addEventListener('click', (e) => {
@@ -102,16 +102,27 @@
     setPaused(!state.paused);
   });
 
-  /* ----- wrap the main loop so physics freezes while paused ----- */
+  /* ----- wrap the main loop: freeze simulation clock, keep camera live ----- */
   if(typeof loop === 'function'){
     const loopBeforePause = loop;
     loop = function(now){
       if(state.paused){
-        /* keep drawing the frozen frame; do not advance physics */
+        const dt = Math.min(Math.max(0, now - lastNow), 100);
         lastNow = now;
+
+        /* Camera navigation stays active while paused.
+           Zoom (cam.tDist) and orbit from pointer events must still converge. */
+        if(typeof cam !== 'undefined' && cam){
+          if(typeof pointers !== 'undefined' && pointers && pointers.size === 0){
+            /* no free-spin on pause, but keep any residual damping harmless */
+            cam.vyaw = 0; cam.vpitch = 0;
+          }
+          cam.dist += (cam.tDist - cam.dist) * (1 - Math.pow(0.0001, dt/1000));
+        }
+
         fitCanvas();
         if(typeof drawFrame === 'function'){
-          /* pass a frozen "now" so uTime stays constant */
+          /* frozen simulation time so uTime / rotations do not advance */
           const frozenNow = pauseStartedAt - pauseAccum;
           drawFrame(frozenNow);
         }
