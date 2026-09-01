@@ -1,5 +1,8 @@
-VERSION 0.5.101
-Base: 0.5.100
-Changes: Triangular coast cuts + dashed geometric seams (seed 14739216) are iso-surface facets of cubic-lattice gradient noise, not tectonics/normals/cubemap. continentNoise() uses dual-scale domain warp (1.40+0.55) and averages two rotated FBM fields; islands get the same treatment. tectonicBelt restored (compile fix). Wider coast AA.
-Snapshots: snapshot/0.5.100-pre-lattice-break
+VERSION 0.5.102
+Base: 0.5.101
+Changes: Cubic-lattice Perlin still produced triangular coast cuts and wedge islands after dual domain-warp (seed 50250203). Root cause is the cubic cell structure itself — iso-surfaces inherit preferred axes.
+Fix:
+  noise.glsl — 3D simplex noise (Ashima/McEwan) + fbmSimplex
+  terrain.glsl — continentNoise and islands use simplex FBM + curl domain-warp (no cubic lattice)
+Snapshots: snapshot/0.5.101-pre-simplex
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
