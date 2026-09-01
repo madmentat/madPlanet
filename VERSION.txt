@@ -1,9 +1,5 @@
 VERSION 0.5.101
 Base: 0.5.100
-Changes: Triangular coast cuts + dashed geometric seams (seed 14739216 and earlier) persisted after tectonics/normals/cubemap fixes. Root cause is cubic-lattice gradient noise: iso-surfaces of Perlin-on-cube have preferred 45°/axis facets that read as Malevich triangles and knife lines on the coastline — independent of Tectonics.
-Fix in terrain.glsl:
-  continentNoise() — dual-scale domain warp (1.40 + 0.55) + average of two rotated FBM fields
-  islands — same dual-warp + rotated FBM treatment
-  surface.glsl — slightly wider coastline AA
-Snapshots: snapshot/0.5.100-pre-lattice-break is the rollback point.
+Changes: Triangular coast cuts + dashed geometric seams (seed 14739216) are iso-surface facets of cubic-lattice gradient noise, not tectonics/normals/cubemap. continentNoise() uses dual-scale domain warp (1.40+0.55) and averages two rotated FBM fields; islands get the same treatment. tectonicBelt restored (compile fix). Wider coast AA.
+Snapshots: snapshot/0.5.100-pre-lattice-break
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
