@@ -33,8 +33,12 @@ float continentH(vec3 dir){
    0.5.87 A/B: test Grok's stronger local-competition gate in isolation.
    Raise exp(-130*...) to exp(-280*...) so remote plate pairs die off much
    faster, but deliberately keep the existing surface bump gain unchanged.
-   If the ghost arcs disappear, the pair gate was the cause rather than the
-   overall strength of tectonic normal mapping. */
+
+   0.5.89: retain the useful part of Grok's second experiment, but avoid its
+   very narrow exp(-28*gSeamNear) corridor. Physical tectonic relief now gets a
+   broad smooth support from the REAL nearest/second-nearest plate boundary:
+   full strength near the margin, then a continuous fade to zero inside the
+   plate. Remote all-pair micro-relief can no longer survive deep in a plate. */
 float gSeamNear, gSeamConv;
 vec3  gPlateTint;
 
@@ -178,6 +182,15 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   }
 
   if(uTect > 0.01){
+    /* Keep tectonic height tied to a broad neighbourhood of the real plate
+       margin. Unlike Grok's exp(-28*gSeamNear), this has a full-strength core
+       and a wide Hermite falloff, so continental mountain systems are not
+       collapsed into razor-thin boundary ribbons. */
+    float seamGate = 1.0 - ss(0.075,0.240,gSeamNear);
+    belt.x *= seamGate;
+    belt.z *= seamGate;
+    leeOut *= seamGate;
+
     if(belt.x > 0.0){
       float peaks = ridged(sN*6.6 + uSeedS*1.9, 3);
       float foldA = 0.5 + 0.5*noise3(sN*13.5 + uSeedS*2.2 + vec3(97.0,13.0,251.0));
