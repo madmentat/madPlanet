@@ -1,18 +1,19 @@
-/* ============ 0.5.81: hard opaque polar ice edge ============ */
+/* ============ 0.5.81 / 0.5.108: hard opaque polar ice edge ============ */
 /*
    Physical snow/land-ice and sea-ice remain continuous area fractions in the
    low-resolution Weather Core. Display is deliberately different: a surface
    sample is either opaque ice or exposed land/water. Fractional physics must
    never turn into a translucent white fog bank around a polar cap.
 
-   The geographic decision is made with seamless 3-D value noise evaluated
-   from sphere direction, so it rotates with the planet and has no cube-face,
-   latitude or screen axes. Dense continental ice remains solid. Partial sea
-   ice becomes opaque floes/open leads. Very sparse sea ice below 15% is not
-   displayed as part of the coherent ice edge.
+   0.5.108: the previous dense-land shortcut (raw >= 0.70 => solid) exposed an
+   almost latitude-only physical isocontour as a suspiciously perfect circle.
+   The visible cap edge is now resolved by a coherent, seamless 3-D geographic
+   threshold much deeper into the physical ice field. Very dense core ice is
+   still guaranteed solid, but the outer cap can form bays, peninsulas and ice
+   tongues without changing the authoritative cryosphere mass or temperature.
 */
 
-const CRYOSPHERE_EDGE_DISPLAY_MODEL=3;
+const CRYOSPHERE_EDGE_DISPLAY_MODEL=4;
 let cryoDisplayMeanK=288.15;
 
 function cryoDisplayHash3(ix,iy,iz,seed){
@@ -40,56 +41,75 @@ function cryoDisplayRotate(x,y,z){
   return [0.36*x+0.48*y+0.80*z,-0.80*x+0.60*y,-0.48*x-0.64*y+0.60*z];
 }
 
+/* A deliberately low-frequency-dominant spherical field. The first two bands
+   deform the cap on continental/regional scales; the latter two only roughen
+   the shoreline. No latitude, cubemap-face or screen coordinate participates. */
 cryoGpuEdgeNoise=function(seed,face,x,y,N){
   if(typeof weatherFaceDir!=='function')return 0.5;
   const u=2*(x+0.5)/N-1,v=2*(y+0.5)/N-1,d=weatherFaceDir(face,u,v);
   const p=(seed|0)*0.000173;
   const r=cryoDisplayRotate(d[0],d[1],d[2]);
   const s=cryoDisplayRotate(r[0],r[1],r[2]);
-  const a=cryoDisplayNoise3(d[0]*6.7+p,d[1]*6.7-p*0.7,d[2]*6.7+p*1.3,seed^0x1731);
-  const b=cryoDisplayNoise3(r[0]*15.1-p*1.1,r[1]*15.1+p*0.5,r[2]*15.1-p*1.7,seed^0x51f1);
-  const c=cryoDisplayNoise3(s[0]*33.7+p*1.9,s[1]*33.7-p*1.4,s[2]*33.7+p*0.3,seed^0x9e37);
-  return Math.max(0,Math.min(1,0.56*a+0.30*b+0.14*c));
+  const broad=cryoDisplayNoise3(d[0]*2.35+p,d[1]*2.35-p*0.7,d[2]*2.35+p*1.3,seed^0x1731);
+  const regional=cryoDisplayNoise3(r[0]*5.40-p*1.1,r[1]*5.40+p*0.5,r[2]*5.40-p*1.7,seed^0x51f1);
+  const local=cryoDisplayNoise3(s[0]*13.7+p*1.9,s[1]*13.7-p*1.4,s[2]*13.7+p*0.3,seed^0x9e37);
+  const fine=cryoDisplayNoise3(d[0]*31.1-p*2.3,d[1]*31.1+p*1.6,d[2]*31.1-p*0.9,seed^0x6d2b);
+  const n=0.48*broad+0.29*regional+0.16*local+0.07*fine;
+  return Math.max(0.08,Math.min(0.92,0.10+0.82*n));
 };
 
-/* User calibration: around a +15 C mean climate, trim only the transitional
-   outer coverage by about ten percent. Dense core ice is deliberately exempt,
-   and the correction fades away for substantially colder/hotter climates. */
+/* User calibration: around a +15 C mean climate, trim the transitional outer
+   cap by about ten percent. The correction fades away in markedly colder or
+   hotter climates and never removes a truly saturated physical ice core. */
 function cryoDisplayTemperateTrimWeight(T){
   T=Number(T);if(!Number.isFinite(T))T=288.15;
   const d=Math.abs(T-288.15);
   return 1-cryoDisplayFade(d/18.0);
 }
 
-/* Fraction -> BINARY spatial coverage. No feather. A physical 35% cell becomes
-   an arrangement of opaque ice and exposed surface, never 35%-white pixels. */
+/* Fraction -> BINARY spatial coverage. No feather and no opacity interpolation.
+   A physical 70% polar cell is no longer forced solid merely because it crossed
+   one latitude-like isocontour: it is resolved against coherent geography. */
 cryoGpuVisualCoverage=function(raw,edgeNoise,sea){
   raw=Math.max(0,Math.min(1,Number(raw)||0));
   edgeNoise=Math.max(0,Math.min(1,Number(edgeNoise)||0.5));
   if(raw<=0.008)return 0;
-  if(!sea && raw>=0.70)return 1;
-  if(sea && raw>=0.985)return 1;
+  if(raw>=0.995)return 1;
   const temperate=cryoDisplayTemperateTrimWeight(cryoDisplayMeanK);
   raw*=1-0.10*temperate;
   if(sea && raw<0.15)return 0;
   return raw>=edgeNoise?1:0;
 };
 
-/* Sample the climate once per cryosphere rebuild, never once per texel. */
+/* Sample the climate once per cryosphere rebuild, never once per texel. Also
+   compute edge geography through almost the full transitional land-ice range;
+   the old base bridge skipped edgeNoise above rawLand=0.82, which resurrected
+   a smooth circular dense-cap contour even after the 0.70 shortcut was removed. */
 if(typeof cryoGpuReadCurrent==='function'){
-  const cryoGpuReadCurrentBeforeHardEdge=cryoGpuReadCurrent;
   cryoGpuReadCurrent=function(core){
     if(typeof climateModel==='function'){
       const c=climateModel();
       if(c&&Number.isFinite(Number(c.T)))cryoDisplayMeanK=Number(c.T);
     }
-    return cryoGpuReadCurrentBeforeHardEdge(core);
+    const srcN=core.N,N=cryoGpuN,scale=N/srcN,seed=core.seed|0;
+    for(let face=0;face<6;face++){
+      const land=cryoGpuCurrLand[face],sea=cryoGpuCurrSea[face];
+      for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+        const fx=(x+0.5)/scale-0.5,fy=(y+0.5)/scale-0.5;
+        const rawLand=cryoGpuBilerp(core,face,fx,fy,false),rawSea=cryoGpuBilerp(core,face,fx,fy,true);
+        const needsNoise=(rawLand>0.008&&rawLand<0.995)||(rawSea>0.02&&rawSea<0.995);
+        const edge=needsNoise?cryoGpuEdgeNoise(seed,face,x,y,N):0.5;
+        const dst=(N-1-y)*N+x;
+        land[dst]=cryoGpuVisualCoverage(rawLand,edge,false);
+        sea[dst]=cryoGpuVisualCoverage(rawSea,edge,true);
+      }
+    }
   };
 }
 
 /* Even a binary CPU mask becomes grey if the GPU linearly filters neighbouring
-   texels. The render map is already 5x the Weather Core resolution, so nearest
-   sampling gives a much better solid ice edge without increasing physics cost. */
+   texels. Keep nearest sampling: geometric irregularity comes from the dense
+   spherical display mask, not from translucent interpolation. */
 if(typeof cryoGpuEnsure==='function'){
   const cryoGpuEnsureBeforeHardEdge=cryoGpuEnsure;
   cryoGpuEnsure=function(N){
