@@ -1,4 +1,4 @@
-/* ============ 0.5.83 / 0.5.84: smooth frame pacing + compact live telemetry ============ */
+/* ============ 0.5.83 / 0.5.84 / 0.5.114: smooth frame pacing + compact live telemetry ============ */
 /*
    0.5.83 fixed the worst landscape-tablet cadence mismatch. 0.5.84 follows
    the FPS counter evidence: close zoom still increases fragment cost, while
@@ -16,6 +16,14 @@
    but that also prevented the renderer from responding exactly when a pinch
    made the planet fill the screen and fragment cost jumped. One occasional
    controlled scale change is less objectionable than sustained 20-30 fps.
+
+   0.5.114 removes the remaining one-second cadence spike from the visible
+   path. Weather integration stays fixed-step, but cloud/fog/cryosphere target
+   publication is coalesced and drained in separate idle turns. Pointer/wheel
+   activity gets priority over both physics and visual publication, so a mouse
+   drag or pinch cannot be interrupted by a periodic weather callback. New
+   seeds and first-frame textures still publish synchronously because showing
+   stale fields from another world would be worse than a one-time setup cost.
 */
 
 const SMOOTH_MOBILE_FRAME_MS = 18.0; /* ~56 fps target, with 60 Hz headroom */
@@ -23,6 +31,8 @@ const SMOOTH_DESKTOP_FRAME_MS = 16.7;
 const SMOOTH_MOBILE_SCALE_MIN = deviceMemory <= 4 ? 0.60 : 0.68;
 const SMOOTH_MOBILE_WEATHER_N = deviceMemory <= 4 ? 24 : 28;
 const SMOOTH_MOBILE_CRYO_PUBLISH_MS = 2400;
+const SMOOTH_DESKTOP_CRYO_PUBLISH_MS = 1800;
+const SMOOTH_INTERACTION_GRACE_MS = 150;
 
 /* Landscape tablets used to miss the <=700px media query and pay desktop
    Weather Core cost. Coarse pointer / mobile UA are the important signals. */
@@ -90,7 +100,7 @@ if(typeof cryoGpuBlendAt === 'function'){
   cryoGpuBlendAt=function(nowMs){
     if(!cryoGpuHasFrame)return 1;
     const base=Math.max(1,Number(cryoGpuBlendDurationMs)||1);
-    const duration=mobileDevice?Math.max(850,Math.min(1900,base*5.0)):Math.max(220,base);
+    const duration=mobileDevice?Math.max(850,Math.min(1900,base*5.0)):Math.max(420,Math.min(1500,base*2.6));
     const t=Math.max(0,Math.min(1,(Number(nowMs)-cryoGpuBlendStartMs)/duration));
     return t*t*(3-2*t);
   };
@@ -100,17 +110,174 @@ if(typeof cryoGpuBlendAt === 'function'){
    physics source because it builds a 4x display cubemap with seamless projected
    sampling. Ice does not need a brand-new visual target every real second.
    Clouds/fog keep their normal cadence; only this slow surface phase is
-   published every ~2.4 s on mobile, with the smooth edge interpolation above. */
+   published every ~2.4 s on mobile and ~1.8 s on desktop, with the smooth edge
+   interpolation above. */
 if(typeof cryoGpuUpload === 'function'){
   const cryoGpuUploadBeforeSmoothCadence=cryoGpuUpload;
   let smoothCryoLastPublishMs=-1e12;
   cryoGpuUpload=function(core){
     const now=(typeof cryoGpuNowMs==='function')?cryoGpuNowMs():((typeof performance!=='undefined')?performance.now():Date.now());
     const sameSeed=cryoGpuHasFrame && Number(cryoGpuLastSeed)===(core?.seed|0);
-    if(mobileDevice && sameSeed && now-smoothCryoLastPublishMs<SMOOTH_MOBILE_CRYO_PUBLISH_MS)return false;
+    const minInterval=mobileDevice?SMOOTH_MOBILE_CRYO_PUBLISH_MS:SMOOTH_DESKTOP_CRYO_PUBLISH_MS;
+    if(sameSeed && now-smoothCryoLastPublishMs<minInterval)return false;
     const ok=cryoGpuUploadBeforeSmoothCadence(core);
     if(ok)smoothCryoLastPublishMs=now;
     return ok;
+  };
+}
+
+/* ----- interaction priority ------------------------------------------------
+   Pointer events already change camera targets independently of Weather Core.
+   This small grace window tells the cooperative weather scheduler that the
+   user is still interacting even between wheel events / immediately after a
+   pointer-up. No preventDefault and no input semantics live here. */
+let smoothInteractionUntilMs=0;
+function smoothMotionNowMs(){
+  return (typeof performance!=='undefined'&&performance&&typeof performance.now==='function')
+    ?performance.now():Date.now();
+}
+function smoothMarkInteraction(extraMs=SMOOTH_INTERACTION_GRACE_MS){
+  smoothInteractionUntilMs=Math.max(smoothInteractionUntilMs,smoothMotionNowMs()+Math.max(0,Number(extraMs)||0));
+}
+function weatherCoreInteractionBusy(nowMs){
+  const now=Number.isFinite(Number(nowMs))?Number(nowMs):smoothMotionNowMs();
+  if(typeof document!=='undefined'&&document.hidden)return true;
+  if(typeof state!=='undefined'&&state&&state.paused)return true;
+  if(typeof pointers!=='undefined'&&pointers&&pointers.size>0)return true;
+  return now<smoothInteractionUntilMs;
+}
+if(typeof canvas!=='undefined'&&canvas&&typeof canvas.addEventListener==='function'){
+  canvas.addEventListener('pointerdown',()=>smoothMarkInteraction(220),{passive:true});
+  canvas.addEventListener('pointermove',()=>{
+    if(typeof pointers!=='undefined'&&pointers&&pointers.size>0)smoothMarkInteraction(140);
+  },{passive:true});
+  canvas.addEventListener('pointerup',()=>smoothMarkInteraction(180),{passive:true});
+  canvas.addEventListener('pointercancel',()=>smoothMarkInteraction(180),{passive:true});
+  canvas.addEventListener('wheel',()=>smoothMarkInteraction(260),{passive:true});
+}
+
+/* ----- fixed-tick -> visual publication queue ------------------------------
+   weather-cloud-gpu.js, fog-gpu.js and cryosphere-gpu.js intentionally call
+   their upload functions from the final fixed-step wrapper. Rebinding those
+   function names here changes only WHEN the target is published; the physics
+   arrays and the upload algorithms remain untouched. First frame, seed change
+   and texture-size change stay synchronous. Normal fixed ticks only coalesce a
+   latest target and schedule one idle publication at a time. */
+let smoothWeatherCloudGpuUploadNow=null;
+let smoothFogGpuUploadNow=null;
+let smoothCryoGpuUploadNow=null;
+const smoothVisualPending={cloud:null,fog:null,cryo:null};
+let smoothVisualIdleHandle=0;
+let smoothVisualWakeTimer=0;
+
+function smoothVisualHasPending(){
+  return !!(smoothVisualPending.cloud||smoothVisualPending.fog||smoothVisualPending.cryo);
+}
+function smoothScheduleVisualPublish(delayMs=0){
+  if(!smoothVisualHasPending())return;
+  if(smoothVisualIdleHandle||smoothVisualWakeTimer)return;
+  const delay=Math.max(0,Number(delayMs)||0);
+  if(delay>0){
+    smoothVisualWakeTimer=setTimeout(()=>{
+      smoothVisualWakeTimer=0;
+      smoothScheduleVisualPublish(0);
+    },delay);
+    return;
+  }
+  const run=(deadline)=>{
+    smoothVisualIdleHandle=0;
+    smoothVisualWakeTimer=0;
+    smoothDrainVisualPublish(deadline);
+  };
+  if(typeof requestIdleCallback==='function'){
+    smoothVisualIdleHandle=requestIdleCallback(run,{timeout:700});
+  }else{
+    /* One task after the current turn rather than three uploads in the weather
+       callback. Subsequent channels are scheduled in separate turns. */
+    smoothVisualWakeTimer=setTimeout(()=>run(null),16);
+  }
+}
+function smoothDrainVisualPublish(deadline){
+  if(!smoothVisualHasPending())return;
+  const now=smoothMotionNowMs();
+  if(weatherCoreInteractionBusy(now)){
+    smoothScheduleVisualPublish(90);
+    return;
+  }
+  if(deadline&&!deadline.didTimeout&&deadline.timeRemaining()<3){
+    smoothScheduleVisualPublish(24);
+    return;
+  }
+
+  /* Publish cheap moving-atmosphere targets first. Each branch returns so the
+     next target lands in another idle turn instead of rebuilding every texture
+     in one long task. */
+  if(smoothVisualPending.cloud&&smoothWeatherCloudGpuUploadNow){
+    const core=smoothVisualPending.cloud;
+    smoothVisualPending.cloud=null;
+    smoothWeatherCloudGpuUploadNow(core);
+    smoothScheduleVisualPublish(0);
+    return;
+  }
+  if(smoothVisualPending.fog&&smoothFogGpuUploadNow){
+    const core=smoothVisualPending.fog;
+    smoothVisualPending.fog=null;
+    smoothFogGpuUploadNow(core);
+    smoothScheduleVisualPublish(0);
+    return;
+  }
+  if(smoothVisualPending.cryo&&smoothCryoGpuUploadNow){
+    /* Cryosphere reconstruction is the expensive publication. If recent frame
+       pacing is already poor, wait for a calmer turn unless idle timeout says
+       we have postponed long enough. */
+    const frameHealthy=(typeof frameMsEwma!=='number')||frameMsEwma<(mobileDevice?27:22);
+    if(!frameHealthy&&deadline&&!deadline.didTimeout){
+      smoothScheduleVisualPublish(120);
+      return;
+    }
+    const core=smoothVisualPending.cryo;
+    const ok=smoothCryoGpuUploadNow(core);
+    if(ok!==false)smoothVisualPending.cryo=null;
+    smoothScheduleVisualPublish(ok===false?180:0);
+  }
+}
+
+if(typeof weatherCloudGpuUpload==='function'){
+  smoothWeatherCloudGpuUploadNow=weatherCloudGpuUpload;
+  weatherCloudGpuUpload=function(core){
+    if(!core?.N)return false;
+    const seed=core.seed|0;
+    const immediate=!weatherCloudGpuHasFrame||!weatherCloudGpuTex||!weatherCloudGpuTexPrev||
+      weatherCloudGpuN!==core.N||weatherCloudGpuLastSeed!==seed;
+    if(immediate)return smoothWeatherCloudGpuUploadNow(core);
+    smoothVisualPending.cloud=core;
+    smoothScheduleVisualPublish(0);
+    return true;
+  };
+}
+if(typeof fogGpuUpload==='function'){
+  smoothFogGpuUploadNow=fogGpuUpload;
+  fogGpuUpload=function(core){
+    if(!core?.N)return false;
+    const seed=core.seed|0;
+    const immediate=!fogGpuHasFrame||!fogGpuTex||!fogGpuTexPrev||fogGpuN!==core.N||fogGpuLastSeed!==seed;
+    if(immediate)return smoothFogGpuUploadNow(core);
+    smoothVisualPending.fog=core;
+    smoothScheduleVisualPublish(0);
+    return true;
+  };
+}
+if(typeof cryoGpuUpload==='function'){
+  smoothCryoGpuUploadNow=cryoGpuUpload;
+  cryoGpuUpload=function(core){
+    if(!core?.N)return false;
+    const seed=core.seed|0;
+    const targetN=(typeof cryoGpuDisplayResolution==='function')?cryoGpuDisplayResolution(core.N):cryoGpuN;
+    const immediate=!cryoGpuHasFrame||!cryoGpuTex||cryoGpuN!==targetN||cryoGpuLastSeed!==seed;
+    if(immediate)return smoothCryoGpuUploadNow(core);
+    smoothVisualPending.cryo=core;
+    smoothScheduleVisualPublish(0);
+    return true;
   };
 }
 
@@ -199,4 +366,5 @@ if(typeof drawFrame === 'function'){
 if(typeof document!=='undefined')document.addEventListener('visibilitychange',()=>{
   smoothTelemetryFrames=0;
   smoothTelemetryLastMs=(typeof performance!=='undefined'?performance.now():Date.now());
+  if(!document.hidden&&smoothVisualHasPending())smoothScheduleVisualPublish(40);
 });
