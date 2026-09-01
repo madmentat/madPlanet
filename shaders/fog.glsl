@@ -1,30 +1,38 @@
-/* ============ 0.5.56 / 0.5.72 physical near-surface fog ============ */
+/* ============ 0.5.56 / 0.5.72 / 0.5.100 physical near-surface fog ============ */
 /*
    Fog geography comes only from the persistent Weather Core state. The GPU
    interpolates previous/current fixed-tick cubemaps and may only *erode* or
    texture an existing optical field; noise is never allowed to create fog in
    a physically clear region.
 
-   0.5.60 removed the old optical<0.002 binary contour. With an RGBA8
-   low-resolution cubemap that cutoff exposed the finite support of a single
-   bilinear texel as a rectangle/cross. Weak fog now fades continuously and a
-   low-frequency subtractive erosion breaks residual grid-shaped edges.
-
-   0.5.72 gives fog its own render-only switch. Hiding low clouds must no longer
-   also hide fog, and hiding fog must not touch physical condensation/state.
+   0.5.60 removed the old optical<0.002 binary contour.
+   0.5.72 gives fog its own render-only switch.
+   0.5.100: B/A channels (soil moisture, surface temperature) drive land biomes.
+   Cube-face edges of the low-res cubemap painted great-circle seams through
+   rivers. Average only B/A over a small tetrahedron; R/G fog stays sharp.
 */
 
 vec4 physicalFogSample(vec3 dir){
   vec3 body=normalize(uRotS*normalize(dir));
   float b=clamp(uFogBlend,0.0,1.0);
+  /* 0.5.100: R/G (fog) stay single-tap. B/A (soil moisture + surface temp)
+     drive land biomes; cube-face edges of the low-res weather cubemap were
+     painting great-circle seams straight through rivers and continents.
+     Average B/A over a few-degree tetrahedron to hide face boundaries. */
 #if __VERSION__ >= 300
-  vec4 prev=texture(uFogTexPrev,body);
-  vec4 curr=texture(uFogTex,body);
+  #define FOG_TAP(D) mix(texture(uFogTexPrev,(D)), texture(uFogTex,(D)), b)
 #else
-  vec4 prev=textureCube(uFogTexPrev,body);
-  vec4 curr=textureCube(uFogTex,body);
+  #define FOG_TAP(D) mix(textureCube(uFogTexPrev,(D)), textureCube(uFogTex,(D)), b)
 #endif
-  return mix(prev,curr,b);
+  vec4 c0 = FOG_TAP(body);
+  const float o = 0.014;
+  vec3 e1 = normalize(body + vec3( o,  o, 0.0));
+  vec3 e2 = normalize(body + vec3(-o,  o, 0.0));
+  vec3 e3 = normalize(body + vec3(0.0,-o,  o));
+  vec3 e4 = normalize(body + vec3(0.0,-o, -o));
+  vec4 c1 = FOG_TAP(e1), c2 = FOG_TAP(e2), c3 = FOG_TAP(e3), c4 = FOG_TAP(e4);
+  c0.ba = (c0.ba + c1.ba + c2.ba + c3.ba + c4.ba) * 0.2;
+  return c0;
 }
 
 vec3 fogLayer(vec3 dir,float foot){

@@ -1,6 +1,8 @@
-VERSION 0.5.99
-Base: 0.5.98
-Changes: Circular/oval lighting arcs and hard geometric coast cuts persisted (e.g. seed 76801061). Root cause: Frisvad ONB for finite-difference normals branches on n0.z and is discontinuous across the whole great circle n0.z=0. After uRotS that seam is a visible oval on the planet disk — independent of Tectonics, ice, and islands.
-Fix: surface.glsl — geographic ONB (east/north from uAxis); only singularities at geographic poles.
-Snapshots: snapshot/0.5.98-pre-geo-onb is the rollback point.
+VERSION 0.5.100
+Base: 0.5.99
+Changes: Straight knife-cut seams through rivers/land (e.g. seed 58532301) persisted after ONB/island/cryo fixes. Root cause: land biomes used soil moisture + surface temperature from the low-res fog/weather cubemap (channels B/A). Cubemap face edges project as great circles and appear as hard linear cuts across continuous FBM rivers and continents — independent of Tectonics.
+Fix:
+  fog.glsl — physicalFogSample averages B/A over a few-degree tetrahedron (R/G fog stays single-tap)
+  surface.glsl — mix ≥45% continuous FBM into soil moisture and surface temperature so cube faces cannot own albedo
+Snapshots: snapshot/0.5.99-pre-cubemap-biome is the rollback point.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
