@@ -1,10 +1,10 @@
-VERSION 0.5.111
-Base: 0.5.110
-Changes: Keep the pause and hamburger controls clear of the bottom utility panel on portrait devices.
-  - on portrait tablets wider than 700 CSS px, lift both bottom-corner buttons by 58 px so they sit just above the desktop-style utility bar instead of covering it
-  - preserve the existing left/right corner placement: pause stays bottom-left and hamburger stays bottom-right
-  - on narrow phones, keep the hamburger at its existing top-center position and lift pause by 102 px to clear both the bottom rubric row and the horizontally scrolling utility bar
-  - leave landscape/desktop pause placement unchanged
-Regression: extend touch-ux.test.js with layout guards for tablet and phone bottom-control clearance.
-Snapshot: 0.5.110 remains the rollback point before this responsive control-placement adjustment.
+VERSION 0.5.112
+Base: 0.5.111
+Changes: Make polar ice geographic instead of a latitude circle after every Random world.
+  - new js/ocean-heat-transport.js: persistent surface heat forcing resolved from the actual cubed-sphere geography — warm inflow only along an open equatorward ocean pathway, warm east side / cold west side of each basin, maritime spill-over onto nearby coasts, and thinner greenhouse column over high terrain
+  - the forcing is a zero-mean redistribution inside every latitude band and globally, so climateModel().T and the zonal bootstrap stay the headline; its steady-state anomaly Q/lambda is applied at Weather Core creation and maintained by the same flux every fixed tick
+  - sea-ice skin, sea-ice growth, snow line and albedo feedback now read a temperature that varies by basin, coast and plateau, so the cap forms tongues, bays and an eccentric outline from the first frame
+  - cryosphere-edge-display.js: retire the 0.5.109 display-side meridional warp that displaced ice off its own coastlines; sample the physical field at the true direction, keep only shoreline-scale edge noise
+Regression: add tests/ocean-heat-transport.test.js (closure, basin-side asymmetry, landlocked polar sea, elevation, maritime coast, bootstrap and rebuild continuity); update cryosphere tests for the retired warp.
+Snapshot: 0.5.111 remains the rollback point before geographic polar ice.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

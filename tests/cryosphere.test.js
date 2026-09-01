@@ -33,14 +33,16 @@ assert.match(gpu,/R\/G = previous land-cryosphere \/ sea-ice coverage/);
 assert.match(gpu,/B\/A = current\s+land-cryosphere \/ sea-ice coverage/);
 
 /* Physical grid remains coarse; the display reconstruction is a dense visual
-   bridge. 0.5.97 moved the base bridge to model 5 / 7x; 0.5.109 keeps the
-   opaque edge but also displaces the global polar snow line by broad sectors. */
+   bridge. 0.5.97 moved the base bridge to model 5 / 7x; 0.5.112 keeps the
+   opaque edge and samples the physical field at its true direction, because
+   polar geography now comes from ocean-heat-transport.js physics. */
 assert.match(gpu,/CRYO_GPU_MODEL=5/,'current cryosphere GPU bridge must use model v5');
 assert.match(gpu,/CRYO_GPU_UPSCALE=7/,'render cryosphere must reconstruct at 7x physical grid resolution');
 assert.match(gpu,/cryoGpuBilerp/,'display grid must interpolate the physical field before geographic resolution');
-assert.match(edge,/CRYOSPHERE_EDGE_DISPLAY_MODEL=5/,'0.5.109 global-warp opaque polar edge wrapper missing');
-assert.match(edge,/CRYO_CAP_GLOBAL_WARP_MAX_RAD=0\.18/,'polar cap must be allowed a clearly visible continental-scale displacement');
-assert.match(edge,/cryoDisplayWarpDirection/,'polar display must displace the physical sampling direction rather than only roughen the same ring');
+assert.match(edge,/CRYOSPHERE_EDGE_DISPLAY_MODEL=6/,'0.5.112 geographic opaque polar edge wrapper missing');
+assert.doesNotMatch(edge,/cryoDisplayWarpDirection|CRYO_CAP_GLOBAL_WARP_MAX_RAD/,'polar display must not displace the physical sampling direction');
+assert.ok(buildSh.indexOf('js/ocean-heat-transport.js')>buildSh.indexOf('js/ocean-circulation.js'),'shell build must load geographic heat forcing after circulation');
+assert.ok(buildPs.indexOf('js/ocean-heat-transport.js')>buildPs.indexOf('js/ocean-circulation.js'),'PowerShell build must load geographic heat forcing after circulation');
 assert.match(edge,/cryoGpuVisualCoverage=function/,'fractional physical coverage must have a separate final visual resolver');
 assert.match(edge,/cryoGpuEdgeNoise=function/,'ice-sheet edge needs seamless irregular breakup instead of cube-cell geometry');
 for(const f of ['2.35','5.40','13.7','31.1'])assert.ok(edge.includes(f),'missing polar-edge geographic scale '+f);

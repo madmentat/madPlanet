@@ -61,6 +61,7 @@ tests=(
   tests/ocean-thermal.test.js
   tests/cryosphere.test.js
   tests/ocean-circulation.test.js
+  tests/ocean-heat-transport.test.js
   tests/cryosphere-seams.test.js
   tests/cryosphere-hard-edge.test.js
   tests/physical-fog.test.js
