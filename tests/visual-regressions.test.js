@@ -102,7 +102,8 @@ assert.match(surface, /float steepBare = /, 'ridges must lose snow on steep face
 assert.match(terrainSrc, /uPlateP\[i\]\.w/, 'plates need a size weight: equal cells look artificial');
 assert.match(terrainSrc, /gSeamNear = max\(0\.0,\(dsecond-dmin\)\/diagBase\)/, 'plate seam display must coincide with the actual nearest-site colour boundary');
 assert.match(terrainSrc, /float pairCompetitive = exp\(-280\.0\*\(di\*di \+ dj\*dj\)\)/, 'non-neighbour plate pairs must be strongly suppressed before they can engrave ghost bisectors');
-assert.match(surface, /float bmp = \(0\.03 \+ 0\.095\*uTect\)/, '0.5.87 A/B must keep the existing tectonic bump gain unchanged');
+assert.match(surface, /float localTectSupport = max\(/, 'tectonic normal gain must be locally supported, not global across the whole plate');
+assert.match(surface, /float bmp = \(0\.02 \+ 0\.06\*uTect\*localTectSupport\)/, 'modern stable normal path must retain local tectonic support');
 assert.ok(!/seamVisW|seamVisNum|seamConvNum/.test(terrainCode), 'all-pair seam display recreates intersecting ghost plate lines');
 assert.ok(!/seam < gSeamNear/.test(terrainCode), 'hard single-pair relief selection recreates razor-thin Voronoi artifacts');
 assert.match(surface, /if\(uPlatesOn > 0\.5\)/, 'plate schematic overlay missing');
