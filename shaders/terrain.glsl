@@ -12,33 +12,9 @@ float continentH(vec3 dir){
 }
 
 /* ---------- тектоника ----------
-   0.5.84: the weighted-Voronoi plate network remains only the macro-scale
-   organiser. The actual seam coordinate is displaced after a plate pair is
-   known, so the analytic spherical arc cannot survive as a visible terrain
-   stripe. Long belts are further broken by a 3-D rupture field.
-
-   0.5.85: do not introduce a second artificial contour around that belt.
-   Previous terrain() enabled tectonic relief only when abs(belt.x)>0.004.
-   That tiny height discontinuity was strongly magnified by finite-difference
-   normals and by the Tectonics-dependent bump gain, producing smooth dark or
-   light arcs around mountain systems. Relief now approaches zero continuously.
-
-   0.5.86: all-pair blending must not create "ghost boundaries" between two
-   plates that are not the locally competing Voronoi cells. Such pairwise
-   bisectors can cross inside an unrelated plate, exactly matching the reported
-   smooth intersecting arcs. The visible plate boundary is now derived from the
-   first/second nearest weighted sites, while relief from every all-pair term is
-   smoothly attenuated unless BOTH members are locally competitive.
-
-   0.5.87 A/B: test Grok's stronger local-competition gate in isolation.
-   Raise exp(-130*...) to exp(-280*...) so remote plate pairs die off much
-   faster, but deliberately keep the existing surface bump gain unchanged.
-
-   0.5.89: retain the useful part of Grok's second experiment, but avoid its
-   very narrow exp(-28*gSeamNear) corridor. Physical tectonic relief now gets a
-   broad smooth support from the REAL nearest/second-nearest plate boundary:
-   full strength near the margin, then a continuous fade to zero inside the
-   plate. Remote all-pair micro-relief can no longer survive deep in a plate. */
+   0.5.84–0.5.89: weighted-Voronoi organiser, continuous belt, no ghost arcs.
+   0.5.96: mount only on land already above sea so weak belt ridges cannot
+   grow barely-positive whiskers out into the ocean. */
 float gSeamNear, gSeamConv;
 vec3  gPlateTint;
 
@@ -62,9 +38,6 @@ vec3 tectonicBelt(vec3 sN){
   float bw = 0.073*(0.45 + 1.15*seg)*(0.60 + 1.15*orogN);
   vec3 windS = normalize(cross(uRotS*uAxis, sN) + vec3(1e-6));
 
-  /* dRef stays differentiable for the physical all-pair blend. In parallel,
-     dmin/dsecond track the real displayed weighted-Voronoi cell and its nearest
-     competitor only. Order-statistic identities never feed terrain height. */
   float dmin = 1e9, dsecond = 1e9;
   float dRef = -dot(sN, uPlateP[0].xyz) - uPlateP[0].w;
   vec3 nearSite = uPlateP[0].xyz, secondSite = uPlateP[0].xyz;
@@ -88,9 +61,6 @@ vec3 tectonicBelt(vec3 sN){
     float diagTl = length(diagDbT);
     vec3 diagDir = diagDbT/max(diagTl,1e-4);
     float diagValid = ss(0.06,0.32,diagTl);
-    /* Difference between the nearest and second-nearest weighted sites is zero
-       exactly on a REAL cell boundary. Unlike the old all-pair average, this
-       cannot draw pairwise bisectors through a third plate. */
     gSeamNear = max(0.0,(dsecond-dmin)/diagBase);
     float diagConv = dot(cross(nearVel-secondVel,sN),diagDir)*diagValid;
     gSeamConv = clamp(diagConv*2.4,-1.0,1.0);
@@ -111,12 +81,6 @@ vec3 tectonicBelt(vec3 sN){
       float sum2 = di + dj;
       if(sum2 > REACH) continue;
       float wgt = exp(-sum2*9.0) * ss(REACH, REACH*0.7, sum2);
-
-      /* A pair may be geometrically close enough to enter the broad all-pair
-         blend yet still be separated here by a third, nearer plate. Its own
-         pairwise bisector is then NOT a physical plate boundary. Keep the
-         differentiable all-pair reference, but suppress that ghost relief in
-         amplitude (not in den, where normalisation would cancel the gate). */
       float pairCompetitive = exp(-280.0*(di*di + dj*dj));
 
       vec3 db = pj - pi;
@@ -182,11 +146,10 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
   }
 
   if(uTect > 0.01){
-    /* Keep tectonic height tied to a broad neighbourhood of the real plate
-       margin. Unlike Grok's exp(-28*gSeamNear), this has a full-strength core
-       and a wide Hermite falloff, so continental mountain systems are not
-       collapsed into razor-thin boundary ribbons. */
-    float seamGate = 1.0 - ss(0.075,0.240,gSeamNear);
+    /* 0.5.96: keep orogeny on real margins only; kill thin radial whiskers
+       that used to march from a coast into the ocean when a weak belt.x
+       ridge crossed sea level. */
+    float seamGate = 1.0 - ss(0.055,0.180,gSeamNear);
     belt.x *= seamGate;
     belt.z *= seamGate;
     leeOut *= seamGate;
@@ -197,12 +160,14 @@ float terrain(vec3 dir, out float rockOut, out float mountOut, out float leeOut)
       float foldB = 0.5 + 0.5*noise3(sN*27.0 + uSeedS*3.4 + vec3(181.0,317.0,43.0));
       float folds = clamp(0.62*foldA + 0.38*foldB,0.0,1.0);
       float ramp = belt.x*belt.x;
-      mountOut = uTect * ramp * (0.34 + 0.66*peaks) * (0.58 + 0.42*folds) * 1.38;
+      mountOut = uTect * ramp * (0.34 + 0.66*peaks) * (0.58 + 0.42*folds) * 1.20;
       rockOut = ramp * (0.30 + 0.70*peaks);
-      mountOut *= mix(0.40, 1.0, ss(-0.05, 0.03, h));
+      /* only raise land that is already clearly above sea; never grow a
+         whisker of barely-positive height out into the ocean */
+      mountOut *= ss(0.01, 0.06, h);
       h += mountOut;
     } else if(belt.x < 0.0){
-      h -= uTect * belt.x*belt.x * 0.075;
+      h -= uTect * belt.x*belt.x * 0.055 * ss(0.0, 0.05, -h);
     }
   }
   if(h > -0.06) h += 0.02*fbm(sN*12.0+uSeedS,2);
