@@ -6,6 +6,7 @@ const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const grid=read('js/rubric-grid.js');
 const orbit=read('js/orbit-overlay.js');
 const orbitDrag=read('js/orbit-overlay-drag.js');
+const orbitScene=read('js/orbit-scene-path.js');
 const ecliptic=read('js/ecliptic-overlay.js');
 const thermal=read('js/thermal-display.js');
 const thermalShader=read('shaders/thermal.glsl');
@@ -14,8 +15,8 @@ const buildSh=read('build.sh');
 const buildPs=read('build.ps1');
 
 function ordered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
-ordered(buildSh,['js/ui.js','js/rubric-grid.js','js/render.js','js/orbit-overlay.js','js/orbit-overlay-drag.js','js/ecliptic-overlay.js','js/thermal-display.js','js/runtime-settings.js'],'shell instrument order');
-ordered(buildPs,['js/ui.js','js/rubric-grid.js','js/render.js','js/orbit-overlay.js','js/orbit-overlay-drag.js','js/ecliptic-overlay.js','js/thermal-display.js','js/runtime-settings.js'],'PowerShell instrument order');
+ordered(buildSh,['js/ui.js','js/rubric-grid.js','js/render.js','js/orbit-overlay.js','js/orbit-overlay-drag.js','js/orbit-scene-path.js','js/ecliptic-overlay.js','js/thermal-display.js','js/runtime-settings.js'],'shell instrument order');
+ordered(buildPs,['js/ui.js','js/rubric-grid.js','js/render.js','js/orbit-overlay.js','js/orbit-overlay-drag.js','js/orbit-scene-path.js','js/ecliptic-overlay.js','js/thermal-display.js','js/runtime-settings.js'],'PowerShell instrument order');
 ordered(buildSh,['shaders/sphere.glsl','shaders/thermal.glsl','shaders/main.glsl'],'shell thermal shader order');
 ordered(buildPs,['shaders/sphere.glsl','shaders/thermal.glsl','shaders/main.glsl'],'PowerShell thermal shader order');
 
@@ -43,6 +44,16 @@ assert.match(orbitDrag,/orbit-overlay-head/,'Orbit window must have a dedicated 
 assert.match(orbitDrag,/pointerdown/,'Orbit window must support pointer/touch dragging');
 assert.match(orbitDrag,/madPlanet\.orbitOverlay\.pos\.v1/,'Orbit window position must persist locally');
 assert.match(orbitDrag,/window\.__madPlanetOrbitOverlay\?\.setEnabled\(false\)/,'Orbit title bar close control must use the existing overlay state');
+
+assert.match(orbitScene,/Орбита в основной сцене/,'Orbit mini-map must expose the scene-orbit toggle');
+assert.match(orbitScene,/madPlanet\.orbitOverlay\.scenePath\.v1/,'scene-orbit preference must persist locally');
+assert.match(orbitScene,/window\.__madPlanetOrbitOverlay\?\.isEnabled/,'scene orbit must disappear when Orbit mode is closed');
+assert.match(orbitScene,/Math\.cos\(sunEl\)\*Math\.sin\(sunAz\)/,'scene orbit must anchor to the same system-star direction as the sky pass');
+assert.match(orbitScene,/planetPhysics\(\)\.axialTiltDeg/,'scene orbit orientation must follow the physical ecliptic plane');
+assert.match(orbitScene,/Math\.sqrt\(ex\*ex\+\(ey\*ey\)\/\(q\*q\)\)/,'schematic ellipse must be constrained through the current planet position');
+assert.match(orbitScene,/rgba\(232,163,92,\.34\).*\[5,6\]/s,'far side of scene orbit must be visually distinguished');
+assert.match(orbitScene,/window\.__madPlanetOrbitScenePath/,'scene orbit must expose a diagnostic display API');
+assert.ok(!/state\.[A-Za-z0-9_]*orbit/i.test(orbitScene),'scene-orbit display state must not enter planet state/hash');
 
 assert.match(ecliptic,/eclipticOverlayBtn/,'Ecliptic tool must bind to its rubric button');
 assert.match(ecliptic,/drawPlane\(cx,cy,r,axis/,'Ecliptic overlay must draw the equatorial plane');
