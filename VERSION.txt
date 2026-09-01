@@ -1,10 +1,10 @@
-VERSION 0.5.92
-Base: 0.5.91
-Changes: Pause button that freezes all simulation processes for clean screenshots.
-Placement opposite the hamburger (rub-toggle):
-  - landscape / wide: top-right
-  - portrait / narrow: bottom-left
-While paused: simulation clock, planet/cloud rotation, weather physics, derived slider relaxation and camera inertia are frozen. Rendering continues so the current frame remains visible. Resume restores the clock without a jump. Spacebar toggles pause when focus is not in an input.
-Snapshots: snapshot/0.5.91-pre-pause is the rollback point.
-Retained: stabilised tangent basis (0.5.91), localTectSupport bump gate (0.5.90) and prior tectonic fixes.
+VERSION 0.5.93
+Base: 0.5.92
+Changes: Island silhouettes were still razor-cut by a thin vertical line (seed 8127344) even at Tectonics=0. One-sided finite differences along an explicit tangent frame could invent a one-sided cliff when neighbouring height samples disagreed.
+Fix in surface.glsl normals:
+  1) Frisvad orthonormal basis (continuous except the single south pole)
+  2) central differences (±eps on both axes) instead of one-sided +eps samples
+localTectSupport bump gate retained. Pause/zoom behaviour unchanged.
+Validation: seed 8127344, same camera; the island must no longer be truncated by a vertical line at Tectonics 0% and 100%.
+Snapshots: snapshot/0.5.92-pre-dfdx-normals is the rollback point.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
