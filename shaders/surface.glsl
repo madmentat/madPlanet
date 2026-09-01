@@ -8,7 +8,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float seamConvCenter = gSeamConv;
   vec3 plateTintCenter = gPlateTint;
   vec3 sN = uRotS*n0;
-  vec4 cryoTex = texture(uCryosphereTex, normalize(sN));
+  vec4 cryoTex = cryoSurfaceSample(uCryosphereTex, normalize(sN));
   float landCryoPhys = mix(cryoTex.r, cryoTex.b, uCryosphereBlend);
   float seaIcePhys = mix(cryoTex.g, cryoTex.a, uCryosphereBlend);
   vec4 surfaceWx = physicalFogSample(n0);
