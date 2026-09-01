@@ -99,7 +99,7 @@ const dense=surface.indexOf('alb = mix(alb, denseC');
 const inlandWater=surface.indexOf('vec3 inlandWater=');
 const inlandIce=surface.indexOf('vec3 inlandIce=');
 const snow=surface.indexOf('alb = mix(alb, snowC, snowM);');
-const volcano=surface.indexOf('/* ---- вулканизм ----');
+const volcano=surface.indexOf('float volc = 0.0;');
 assert.ok(dense>=0&&inlandWater>dense&&inlandIce>inlandWater&&snow>inlandIce,
   'cryosphere must be composited after vegetation and both liquid/frozen inland hydrology');
 assert.ok(volcano>snow,'active volcanic surface may break through final snow layer, not be buried by later biome paint');
