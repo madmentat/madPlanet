@@ -48,10 +48,16 @@ assert.match(orbitDrag,/window\.__madPlanetOrbitOverlay\?\.setEnabled\(false\)/,
 assert.match(orbitScene,/Орбита в основной сцене/,'Orbit mini-map must expose the scene-orbit toggle');
 assert.match(orbitScene,/madPlanet\.orbitOverlay\.scenePath\.v1/,'scene-orbit preference must persist locally');
 assert.match(orbitScene,/window\.__madPlanetOrbitOverlay\?\.isEnabled/,'scene orbit must disappear when Orbit mode is closed');
-assert.match(orbitScene,/Math\.cos\(sunEl\)\*Math\.sin\(sunAz\)/,'scene orbit must anchor to the same system-star direction as the sky pass');
+assert.match(orbitScene,/Math\.cos\(sunEl\)\*Math\.sin\(sunAz\)/,'scene orbit must use the same physical system-star direction as the sky pass');
 assert.match(orbitScene,/planetPhysics\(\)\.axialTiltDeg/,'scene orbit orientation must follow the physical ecliptic plane');
-assert.match(orbitScene,/Math\.sqrt\(ex\*ex\+\(ey\*ey\)\/\(q\*q\)\)/,'schematic ellipse must be constrained through the current planet position');
-assert.match(orbitScene,/rgba\(232,163,92,\.34\).*\[5,6\]/s,'far side of scene orbit must be visually distinguished');
+assert.match(orbitScene,/const HUD_RADIUS_FRACTION=0\.23/,'scene orbit must use a fixed screen-space navigation radius');
+assert.match(orbitScene,/const radial=norm\(\[-sun\[0\],-sun\[1\],-sun\[2\]\]\)/,'current planet must define the star-to-planet radial basis');
+assert.match(orbitScene,/orbitNormalThroughRadial/,'displayed orbital plane must contain the current star-planet radius vector');
+assert.match(orbitScene,/points\[0\]\.x=planetScreen\[0\];points\[0\]\.y=planetScreen\[1\]/,'current orbit point must be pinned exactly to planet screen centre');
+assert.match(orbitScene,/Deliberately omit cam\.dist/,'zoom must be intentionally excluded from navigation-orbit scale');
+assert.doesNotMatch(orbitScene,/Math\.sqrt\(ex\*ex\+\(ey\*ey\)\/\(q\*q\)\)/,'singular projected-star radius solve must not return');
+assert.doesNotMatch(orbitScene,/FOCAL\*dot\(sun/,'scene orbit must not size itself from perspective star projection');
+assert.match(orbitScene,/rgba\(255,184,88,\.34\).*\[4,5\]/s,'far side of stabilized orbit must remain visually distinguished');
 assert.match(orbitScene,/window\.__madPlanetOrbitScenePath/,'scene orbit must expose a diagnostic display API');
 assert.ok(!/state\.[A-Za-z0-9_]*orbit/i.test(orbitScene),'scene-orbit display state must not enter planet state/hash');
 
