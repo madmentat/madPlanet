@@ -1,10 +1,11 @@
-/* ============ 0.5.118 / 0.5.121 / 0.5.122: stabilized Keplerian orbit HUD ============ */
+/* ============ 0.5.118 / 0.5.121 / 0.5.122 / 0.5.124: stabilized Keplerian orbit HUD ============ */
 /*
    Main-scene orbit is navigation symbology, not astronomical scale. Its major
-   axis stays fixed in screen space, but the shape and focus now use the same
-   seeded eccentricity/Kepler solution as the seasonal physics. The current
-   planet is forced to exact screen centre every frame. The schematic sun is
-   drawn last at the orbital focus, naturally occluding the line behind it.
+   axis stays fixed in screen space. Physical timing/radius use the real seeded
+   Kepler orbit, while shape/focus use the shared visual-e mapping so ordinary
+   planetary eccentricities do not read as a displaced circle at HUD scale.
+   The current planet is forced to exact screen centre every frame. The
+   schematic sun is drawn last at the displayed focus, occluding the line.
 */
 (function installOrbitScenePath(){
   if(typeof document==='undefined'||typeof drawFrame!=='function')return;
@@ -108,21 +109,22 @@
     const nu=o.trueAnomaly,c=Math.cos(nu),s=Math.sin(nu);
     const peri=norm(add(mul(radial,c),mul(tangent,-s)));
     const quad=norm(add(mul(radial,s),mul(tangent,c)));
-    const b=Math.sqrt(Math.max(0.04,1-o.e*o.e));
-    const current=add(mul(peri,Math.cos(o.eccentricAnomaly)-o.e),mul(quad,b*Math.sin(o.eccentricAnomaly)));
+    const visualE=(typeof orbitDisplayEccentricity==='function')?orbitDisplayEccentricity(o.e):o.e;
+    const b=Math.sqrt(Math.max(0.04,1-visualE*visualE));
+    const current=add(mul(peri,Math.cos(o.eccentricAnomaly)-visualE),mul(quad,b*Math.sin(o.eccentricAnomaly)));
     const radius=hudRadius(sz),cur2=projectUnit(current,basis);
     const starScreen=[planetScreen[0]-radius*cur2[0],planetScreen[1]-radius*cur2[1]];
     const points=[];
     for(let i=0;i<=ORBIT_SAMPLES;i++){
       const E=2*Math.PI*i/ORBIT_SAMPLES;
-      const p3=add(mul(peri,Math.cos(E)-o.e),mul(quad,b*Math.sin(E)));
+      const p3=add(mul(peri,Math.cos(E)-visualE),mul(quad,b*Math.sin(E)));
       const p2=projectUnit(p3,basis),depth=dot(sub(p3,current),basis.fwd);
       points.push({x:starScreen[0]+radius*p2[0],y:starScreen[1]+radius*p2[1],depth});
     }
     let nearest=0,best=Infinity;
     for(let i=0;i<points.length;i++){const dx=points[i].x-planetScreen[0],dy=points[i].y-planetScreen[1],d=dx*dx+dy*dy;if(d<best){best=d;nearest=i;}}
     points[nearest].x=planetScreen[0];points[nearest].y=planetScreen[1];
-    return {planetScreen,starScreen,points,radius,normal:n,currentIndex:nearest};
+    return {planetScreen,starScreen,points,radius,normal:n,currentIndex:nearest,visualE};
   }
   function pathAll(points){ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);for(let i=1;i<points.length;i++)ctx.lineTo(points[i].x,points[i].y);}
   function pathDepth(points,near){
@@ -160,7 +162,7 @@
 
     if(sz.w>420){
       const labelPoint=pts[Math.round(ORBIT_SAMPLES*0.56)];ctx.font='8px ui-monospace,monospace';ctx.fillStyle='rgba(255,194,108,.50)';ctx.textAlign='left';
-      ctx.fillText('ОРБИТА · e '+o.e.toFixed(3),labelPoint.x+6,labelPoint.y-5);
+      ctx.fillText('ОРБИТА · e '+o.e.toFixed(3)+' · схема',labelPoint.x+6,labelPoint.y-5);
       ctx.fillStyle='rgba(255,193,105,.64)';ctx.fillText('☉',s[0]+10,s[1]-8);
     }
     ctx.restore();canvas.classList.add('on');wasVisible=true;
