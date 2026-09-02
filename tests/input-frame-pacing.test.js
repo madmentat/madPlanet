@@ -16,7 +16,7 @@ ordered(buildPs,["'js/smooth-motion-ui.js'","'js/input-frame-pacing.js'","'js/sc
 assert.match(camera,/getCoalescedEvents/,'Chromium coalesced pointer samples must be consumed');
 assert.match(camera,/if\(applyFinal\)cameraProcessPointerEvent\(e,false\);[\s\S]*pointers\.delete\(e\.pointerId\)/,
   'pointerup final coordinates must be applied before capture state is deleted');
-assert.match(camera,/CAMERA_INPUT_MAX_STEP_RAD=0\.16/,'queued drag must have a bounded per-frame angular step');
+assert.match(camera,/CAMERA_INPUT_MAX_STEP_RAD=0\.16/,'base queued drag must retain a bounded fallback angular step');
 assert.match(camera,/cameraPendingYaw\+=dyaw/,'pointer motion must accumulate independently of render cadence');
 assert.match(camera,/cameraReleaseVYaw/,'inertia must be staged until the visible drag queue is drained');
 assert.match(camera,/if\(pointers\.size===0&&!cameraInputPending\(\)/,
@@ -24,15 +24,17 @@ assert.match(camera,/if\(pointers\.size===0&&!cameraInputPending\(\)/,
 
 assert.match(pacing,/navigator\.scheduling\.isInputPending/,'Chromium pending-input scheduler hint must be used when available');
 assert.match(pacing,/includeContinuous:true/,'continuous mouse\/touch motion must count as pending input');
-assert.match(pacing,/cameraInputStep\(\)/,'queued input must drain immediately before camera matrices are drawn');
+assert.match(pacing,/cameraInputStep\(span\)/,'queued input must receive the actual visible frame span immediately before camera matrices are drawn');
 assert.match(pacing,/weatherCoreInteractionBusy=function/,'Weather Core interaction guard must include queued/browser input');
 assert.match(pacing,/smoothDrainVisualPublish=function/,'deferred visual uploads must yield to queued input');
 assert.match(pacing,/interacting&&span>28/,'a long interaction frame should trigger early adaptive-quality response');
 assert.ok(!/readPixels|gl\.finish\(/.test(pacing),'frame pacing must not introduce synchronous GPU stalls');
 
-/* Functional short-flick regression: no pointermove at all. pointerup is the
-   first event whose coordinates differ from pointerdown, and it still has to
-   rotate the camera on the next visible input step. */
+/* Functional short-flick regression for the base input queue: no pointermove at
+   all. pointerup is the first event whose coordinates differ from pointerdown,
+   and it still has to rotate the camera on the next visible input step. The
+   later frame-pacing-polish regression separately verifies its tighter,
+   frame-time-aware drain ceiling. */
 const listeners={};
 const canvas={
   style:{},classList:{add(){},remove(){}},
@@ -56,8 +58,8 @@ const queued=ctx.window.__madPlanetCameraInput.queued;
 assert.ok(Math.abs(queued.yaw)>0.5,'pointerup-only flick must queue its full final displacement');
 ctx.window.__madPlanetCameraInput.step();
 const yaw1=vm.runInContext('cam.yaw',ctx);
-assert.ok(Math.abs(yaw1-yaw0)>0.10,'first visible frame must respond to the short flick');
-assert.ok(Math.abs(yaw1-yaw0)<=0.160001,'one delayed event batch must not teleport farther than the frame cap');
+assert.ok(Math.abs(yaw1-yaw0)>0.10,'first visible base-queue step must respond to the short flick');
+assert.ok(Math.abs(yaw1-yaw0)<=0.160001,'base queue must retain its fallback frame cap before late pacing overrides it');
 assert.ok(ctx.window.__madPlanetCameraInput.pending(),'large delayed flick should remain queued for following frames');
 
 console.log('input-frame-pacing.test.js: OK');
