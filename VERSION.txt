@@ -1,13 +1,14 @@
-VERSION 0.5.129
-Base: 0.5.128
-Changes: Make visible polar ice thermodynamically consistent with the final rendered surface temperature and reduce over-solid thin sea-ice caps.
-  - close the snow/land-ice/sea-ice phase balance once more after late atmospheric/ocean heat transport and polar-continent modules, so heat introduced after the original cryosphere step is spent on latent melting before the final surface is published
-  - while snow or glacier ice remains, late positive sensible heat clamps landSurfaceTemp to the 0 C melting boundary until the available ice mass is actually consumed
-  - while bulk sea ice remains, late positive sensible heat melts thickness first and keeps SST at the seawater freezing boundary (~-1.8 C); only after all ice has melted may leftover heat warm open water above that point
-  - republish cryosphere coverage and polar surfaceSkinTemp after the late phase closure, so fog GPU, thermal imagery and the physical probe all receive the same final thermodynamic state
-  - widen thickness-to-sea-ice-area e-folding from the old display shortcut to 0.35 m: ~10 cm new ice now leaves broad leads, while ~1 m still gives a compact pack; deep supercooling can still close the surface through the existing thermodynamic skin floor
-  - Thermal mode samples the exact dense binary cryosphere display mask and clamps visible snow/ice pixels to <=0 C before mountain/lava refinements, preventing linear temperature filtering from painting a white ice pixel at +2..+4 C near a coarse Weather Core boundary
-  - retain energy conservation: the new late closure consumes only sensible heat already present in the final land/ocean reservoirs and converts the corresponding snow/ice mass to liquid; it does not invent cooling or delete H2O
-Regression: cryosphere-phase-consistency.test.js checks late land/sea latent-heat closure, thin-vs-compact sea-ice area response, removal of fully melted thin ice and exact Thermal/cryosphere phase consistency.
-Snapshot: 0.5.128 remains the rollback point before the final-tick cryosphere phase closure and less aggressive thin-ice coverage.
+VERSION 0.5.130
+Base: 0.5.129
+Changes: Restore physically generated temperate and mid-latitude cloud cover by coupling resolved ascent to condensation instead of requiring whole-column surface-temperature supersaturation.
+  - add conservative lifting condensation from fronts, cyclones and orographic ascent: diagnose LCL from local RH, lift a fractional parcel, cool it at dry/moist adiabatic lapse rates and transfer only available vapor into physical cloud condensate
+  - use existing frontVerticalVelocity/frontStrength, systemVerticalVelocity/cycloneStrength and orographicVerticalVelocity/orographicRoughness; no latitude cloud mask or decorative storm-track band is introduced
+  - anticyclonic subsidence strongly suppresses the ascending cloud fraction, retaining physically clearer subtropical/high-pressure regions while allowing humid frontal storm tracks to cloud over
+  - damp overlap with the existing deep-convective plume microphysics so synoptic lift and thunderstorms do not condense the same sub-grid parcel twice
+  - publish resolvedLiftCloudPotential/area/depth/condensation-rate diagnostics and feed only that physical diagnosis into the inertial cloud visual response, preventing coarse-cell RH below 0.78 from instantly erasing a real lifting cloud
+  - preserve local/global H2O conservation and existing latent heating: every kilogram of new cloud water is removed from vaporColumn, and condApplyLatentHeat remains the single latent-heat path
+  - keep the new work off render FPS: the coupling is a deterministic O(N) pass inside the existing fixed Weather Core condensation step and skips dry/non-lifting cells before expensive LCL/saturation calculations
+  - calibration reference follows observed Earth climatology rather than a hard-coded map: cloud-rich tropical convergence and mid-latitude storm tracks, with relatively clearer descending subtropics
+Regression: resolved-lift-clouds.test.js checks sub-saturated frontal cloud formation, exact H2O conservation, no-lift/dry-air rejection, anticyclonic suppression, visual persistence coupling and build order.
+Snapshot: 0.5.129 remains the rollback point before resolved lifting condensation.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
