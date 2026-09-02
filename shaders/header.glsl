@@ -66,6 +66,12 @@ uniform float uFogBlend;
    The renderer interpolates them with uCryosphereBlend. */
 uniform samplerCube uCryosphereTex;
 uniform float uCryosphereBlend;
+/* 0.5.131 runoff-driven river bridge. R/G are previous channel/lake support,
+   B/A current. The CPU owns topology/discharge; the shader only resolves the
+   sub-grid visual channel inside physically permitted drainage corridors. */
+uniform samplerCube uRiverTex;
+uniform float uRiverBlend;
+uniform float uRiverPhysicsOn;
 uniform vec4  uCycA[5];   /* 0.5.52 bridge: xyz lightning centre, w stays 0 */
 uniform vec4  uCycB[5];   /* x radius, y flash rate, z electrical strength, w phase */
 uniform int   uPlateN;    /* число тектонических плит */
