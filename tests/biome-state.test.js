@@ -39,8 +39,11 @@ assert.match(surface,/float soilMoistPhys = mix\(soilCont, clamp\(surfaceWx\.b,0
 assert.match(surface,/float tempCode = clamp\(surfaceWx\.a/,'surface must decode the physical temperature channel');
 assert.match(surface,/mix\(80\.0,180\.0,tempCode\/0\.05\)/,'surface must decode the deep-cold temperature tail');
 assert.match(surface,/mix\(380\.0,1000\.0,\(tempCode-0\.90\)\/0\.10\)/,'surface must decode the extreme-hot temperature tail');
-assert.match(surface,/float floodplain = 1\.0-ss\(/,'river floodplain wetness must exist');
-assert.match(surface,/float lakeMargin = ss\(/,'lake-adjacent wetness must exist');
+assert.match(surface,/float floodplainProc = 1\.0-ss\(/,'sub-grid river floodplain morphology must exist');
+assert.match(surface,/float floodplainPhys = max\([^\n]*physRiverHalo/,'physical river corridor must own floodplain wetness');
+assert.match(surface,/float floodplain = mix\(floodplainProc,floodplainPhys,uRiverPhysicsOn\)/,'physical/legacy floodplain selection missing');
+assert.match(surface,/float lakeMarginProc = ss\(/,'sub-grid lake-adjacent wetness must exist');
+assert.match(surface,/float lakeMargin = mix\(lakeMarginProc,[^\n]*lakePhys/,'physical lake support must own lake-adjacent wetness');
 assert.match(surface,/float hydroWet = clamp\(/,'hydrology must feed ecological wetness');
 assert.match(surface,/float ecoPatch = clamp\(/,'fine sub-cell ecological breakup missing');
 assert.match(surface,/float localWetGain = mix\(/,'coarse Weather Core wetness must be an envelope, not the visible biome mask');
@@ -63,8 +66,10 @@ assert.match(surface,/alb=mix\(alb,heatGround,heatSterile\*land\)/,'extreme heat
 
 /* Lake freeze morphology follows basin depth near the phase boundary, while a
    deep-cold local floor closes sub-grid hydrology that the coarse physics grid
-   cannot resolve. */
-assert.match(surface,/float lakeInterior = ss\(lth\+0\.045,lth\+0\.16,lakeN\)/,'lake basin needs a shore-to-interior proxy');
+   cannot resolve. Physical lakes use their resolved interior support instead
+   of allowing the old FBM basin to decide lake existence. */
+assert.match(surface,/float lakeInteriorProc = ss\(lth\+0\.045,lth\+0\.16,lakeN\)/,'legacy lake basin still supplies sub-grid shore texture');
+assert.match(surface,/float lakeInterior = mix\(lakeInteriorProc,ss\(0\.30,0\.76,lakePhys\),uRiverPhysicsOn\)/,'physical lake interior must replace procedural basin ownership');
 assert.match(surface,/float lakeFreezeLo = mix\(272\.2,268\.5,lakeInterior\)/,'shallow lake margins must receive the warmer freeze threshold');
 assert.match(surface,/float lakeFreezeHi = mix\(273\.9,271\.8,lakeInterior\)/,'deep lake centre must lag the shore during initial freeze-up');
 assert.match(surface,/float lakeFreeze = max\(deepColdIce,1\.0-ss\(lakeFreezeLo,lakeFreezeHi,ecologyK\)\)/,'deep cold must close lakes regardless of sub-grid mapping');
@@ -86,10 +91,11 @@ assert.doesNotMatch(surface,/shoreBiasedSea\*iceMicro/,'bathymetry must not be c
 assert.match(surface,/if\(ice > 0\.5\)\{[\s\S]*?oc = iceCol;/,'covered ocean samples must receive solid ice colour');
 assert.match(surface,/oc=mix\(dryBed,oc,hotLiquidGate\)/,'hot ocean geometry must render a dry basin rather than blue liquid');
 
-/* Hydrology noise is moved before biome colour and reused later. Do not pay
-   twice for river/lake FBM just to green the banks. */
-assert.equal((surface.match(/float rn = fbm\(/g)||[]).length,1,'river geometry should be evaluated once');
-assert.equal((surface.match(/float lakeN = fbm\(/g)||[]).length,1,'lake geometry should be evaluated once');
+/* Hydrology noise is evaluated once and reused as sub-grid texture. It may no
+   longer own river/lake placement when the physical bridge is enabled. */
+assert.equal((surface.match(/float rn = fbm\(/g)||[]).length,1,'river sub-grid geometry should be evaluated once');
+assert.equal((surface.match(/float lakeN = fbm\(/g)||[]).length,1,'lake sub-grid geometry should be evaluated once');
+assert.match(surface,/riverGeomPhys = max\(physRiverCore,riverGeomProc\*physRiverHalo\)/,'physical river core must survive procedural edge breakup');
 const hydro=surface.indexOf('float riverWarpX');
 const drought=surface.indexOf('float drought =');
 const biome=surface.indexOf('vec3 SAND=');
