@@ -28,6 +28,7 @@ tests=(
   tests/runtime-settings.test.js
   tests/rubric-orbit-ui.test.js
   tests/mobile-portrait-layout.test.js
+  tests/thermal-celsius.test.js
   tests/visual-regressions.test.js
   tests/tectonic-morphology.test.js
   tests/tectonic-cell-seams.test.js
