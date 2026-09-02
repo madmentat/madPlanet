@@ -26,6 +26,8 @@ tests=(
   tests/performance-guards.test.js
   tests/smooth-motion-ui.test.js
   tests/input-frame-pacing.test.js
+  tests/frame-pacing-polish.test.js
+  tests/climate-consistency.test.js
   tests/runtime-settings.test.js
   tests/rubric-orbit-ui.test.js
   tests/mobile-portrait-layout.test.js
