@@ -1,17 +1,22 @@
-/* ============ 0.5.122: deterministic Keplerian eccentricity ============ */
+/* ============ 0.5.122 / 0.5.124: deterministic Keplerian eccentricity ============ */
 /*
    The orbit-distance slider is the semi-major axis. Each world seed gets a
-   deterministic, moderate eccentricity so random planets are no longer locked
-   to perfect circles. The distribution is deliberately biased toward low e:
-   most temperate rocky worlds stay fairly circular, while visibly elliptical
-   Mars-like cases remain possible without producing cometary extremes.
+   deterministic, moderate eccentricity. 0.5.124 keeps genuinely near-circular
+   cases possible, but removes the previous heavy bias toward tiny e values so
+   Random produces a broader family of planetary orbits.
 
-   These helpers contain orbital geometry only. Seasonal forcing is connected
-   later, after seasons.js owns the model clock.
+   Physical climate uses the real e below. HUD drawings use a separate,
+   explicitly schematic visual eccentricity mapping: low/moderate planetary e
+   values make geometrically almost circular ellipses (b/a=sqrt(1-e^2)), which
+   is physically correct but unreadable on a 200 px instrument. The visual map
+   exaggerates shape only; periapsis, apoapsis, Kepler timing and 1/r^2 forcing
+   always use the physical e.
 */
-const ORBIT_ECCENTRICITY_MODEL=1;
-const ORBIT_ECCENTRICITY_MIN=0.010;
-const ORBIT_ECCENTRICITY_MAX=0.180;
+const ORBIT_ECCENTRICITY_MODEL=2;
+const ORBIT_ECCENTRICITY_MIN=0.006;
+const ORBIT_ECCENTRICITY_MAX=0.220;
+const ORBIT_VISUAL_E_MIN=0.360;
+const ORBIT_VISUAL_E_MAX=0.620;
 
 function orbitHash01(seed,salt=0){
   let x=((seed|0)^0x6d2b79f5^(salt|0))>>>0;
@@ -22,7 +27,15 @@ function orbitHash01(seed,salt=0){
 }
 function orbitEccentricityForSeed(seed){
   const u=orbitHash01(seed,0x1735a9d);
-  return ORBIT_ECCENTRICITY_MIN+(ORBIT_ECCENTRICITY_MAX-ORBIT_ECCENTRICITY_MIN)*Math.pow(u,1.65);
+  /* A mild low-e bias, not the old 1.65 power that made almost every Random
+     world visually Earth-like. */
+  return ORBIT_ECCENTRICITY_MIN+(ORBIT_ECCENTRICITY_MAX-ORBIT_ECCENTRICITY_MIN)*Math.pow(u,1.10);
+}
+function orbitDisplayEccentricity(e){
+  e=Math.max(0,Math.min(ORBIT_ECCENTRICITY_MAX,Number(e)||0));
+  if(e<=0)return 0;
+  const u=Math.max(0,Math.min(1,(e-ORBIT_ECCENTRICITY_MIN)/(ORBIT_ECCENTRICITY_MAX-ORBIT_ECCENTRICITY_MIN)));
+  return ORBIT_VISUAL_E_MIN+(ORBIT_VISUAL_E_MAX-ORBIT_VISUAL_E_MIN)*Math.sqrt(u);
 }
 function orbitNormalizeAngle(a){
   const tau=2*Math.PI;
@@ -114,5 +127,6 @@ if(typeof syncDynamicLabels==='function'){
 }
 window.__madPlanetOrbitEccentricity={
   forSeed:orbitEccentricityForSeed,stateFromMeanAnomaly:orbitStateFromMeanAnomaly,
-  instantFluxEarth:orbitInstantFluxEarth,current:currentOrbitEccentricity
+  instantFluxEarth:orbitInstantFluxEarth,current:currentOrbitEccentricity,
+  displayEccentricity:orbitDisplayEccentricity
 };
