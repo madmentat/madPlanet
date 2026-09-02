@@ -1,16 +1,15 @@
-VERSION 0.5.122
-Base: 0.5.121
-Changes: Add deterministic elliptical orbits, couple orbital distance to climate forcing, add a sun focus marker to the main-scene orbit HUD, and make the Thermal Imager scale draggable.
-  - every world seed now resolves a reproducible moderate orbital eccentricity in the range e=0.010..0.180, biased toward near-circular terrestrial-style systems rather than comet-like extremes
-  - the distance control remains the semi-major axis a; periapsis and apoapsis are derived as a(1-e) and a(1+e)
-  - Kepler's equation is solved for eccentric anomaly and true anomaly so visual orbital position and star distance are no longer advanced as a uniform circular angle
-  - Weather Core seasonal snapshots receive instantaneous stellar forcing proportional to 1/r^2; periapsis therefore heats more strongly than apoapsis and eccentricity can alter weather/climate evolution
-  - the existing Kepler year period from semi-major axis and stellar mass remains unchanged
-  - Orbit mini-map now draws a real ellipse with the star at one focus, current Kepler position, current radius r, eccentricity e and the existing axial/season diagnostics
-  - main-scene Orbit HUD keeps the stable fixed screen-space scale from 0.5.121 but now uses the same eccentricity and Kepler position as the physical model
-  - a compact schematic sun marker is drawn at the HUD ellipse focus after the orbit line, so the orbit visually passes behind the sun instead of through its centre
-  - current planet remains pinned exactly to screen centre; camera zoom still cannot resize the navigation orbit
-  - Thermal Imager legend can now be dragged with mouse or touch, is clamped to the viewport and remembers its position in localStorage
-Regression: orbit-eccentricity.test.js validates deterministic e bounds, Kepler convergence, periapsis/apoapsis radii, stronger periapsis flux, Weather Core 1/r^2 forcing and shared physical eccentricity across both orbit displays. rubric-orbit-ui.test.js additionally guards the sun-focus occlusion and persistent thermal-legend dragging.
-Snapshot: 0.5.121 remains the rollback point before eccentric orbital climate forcing and draggable thermal scale.
+VERSION 0.5.123
+Base: 0.5.122
+Changes: Correct polar surface thermodynamics exposed by the Thermal Imager by separating radiating surface-skin temperature from ocean SST and restoring Antarctica-like continental cooling.
+  - add a distinct surfaceSkinTemp field: open ocean still reports SST, while sea-ice-covered water exposes the temperature of the top ice surface rather than the near-freezing mixed layer below it
+  - sea-ice skin temperature is thermally coupled to basal SST through ice thickness, follows local air temperature and receives an additional bounded radiative drop in polar darkness; thick winter ice can therefore be tens of degrees colder than the water beneath it
+  - the visible/radiating skin temperature is fed back into local outgoing-longwave calculations on the next fixed Weather Core tick instead of treating basal SST as the radiating surface beneath sea ice
+  - Thermal Imager GPU publication now packs surfaceSkinTemp when available, so the IR view no longer paints frozen polar oceans at about -1.8 C merely because the underlying seawater is pinned near its freezing point
+  - user-facing broad surface-temperature diagnostics now read the visible/radiating skin field; ocean physics keeps seaSurfaceTemp as the authoritative mixed-layer reservoir
+  - add absolute terrain lapse-rate cooling at 6.0 K/km up to 5 km, outside the zero-mean geographic heat-redistribution term, so broad high plateaus no longer lose their elevation cooling when a latitude-band mean is removed
+  - add a bounded stable polar boundary-layer/inversion correction over continental high latitudes, strengthened by snow/land ice and polar darkness and disabled on genuinely hot worlds
+  - the new polar land term is bootstrapped on world creation and maintained as a slow physical surface-budget forcing rather than a shader-only colour correction
+  - an Earth-like high polar plateau around 3.5 km receives roughly 30+ K of additional surface cooling beyond the old zonal baseline, allowing Antarctica/Vostok-like -45..-55 C states and colder winter excursions while low polar oceans remain moderated by sea ice and ocean heat capacity
+Regression: polar-surface-thermodynamics.test.js validates plateau lapse cooling, stable polar inversion, thermally decoupled sea-ice skin temperature, skin-driven OLR and GPU thermography. Both builders guard module order around atmospheric transport and fog GPU publication.
+Snapshot: 0.5.122 remains the rollback point before explicit polar surface-skin thermodynamics.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
