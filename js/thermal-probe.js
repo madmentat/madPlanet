@@ -62,8 +62,8 @@
     const cp=Math.cos(cam.pitch),sp=Math.sin(cam.pitch);
     const pos=[cam.dist*cp*Math.sin(cam.yaw),cam.dist*sp,cam.dist*cp*Math.cos(cam.yaw)];
     const fwd=norm([-pos[0],-pos[1],-pos[2]]);
-    const rgt=norm([fwd[2],0,-fwd[0]]);
-    /* Same orientation as render.js: rgt = normalize(cross(fwd,[0,1,0])). */
+    /* render.js uses rgt = normalize(cross(fwd,[0,1,0])). */
+    const rgt=norm([-fwd[2],0,fwd[0]]);
     const up=[rgt[1]*fwd[2]-rgt[2]*fwd[1],rgt[2]*fwd[0]-rgt[0]*fwd[2],rgt[0]*fwd[1]-rgt[1]*fwd[0]];
     const local=norm([pointer.uvX,pointer.uvY,(typeof FOCAL==='number'?FOCAL:1.025)]);
     const rd=norm([
@@ -105,10 +105,10 @@
   }
   function sampleFieldLinear(core,field,dir){
     if(!core?.N||!field||field.length!==core.count)return NaN;
-    const q=faceUv(dir),N=core.N,fx=(q.u+1)*0.5*N-0.5,fy=(q.v+1)*0.5*N-0.5;
-    const x0=clamp(Math.floor(fx),0,N-1),y0=clamp(Math.floor(fy),0,N-1);
-    const x1=clamp(x0+1,0,N-1),y1=clamp(y0+1,0,N-1);
-    const tx=clamp(fx-Math.floor(fx),0,1),ty=clamp(fy-Math.floor(fy),0,1),base=q.face*N*N;
+    const q=faceUv(dir),N=core.N;
+    const fx=clamp((q.u+1)*0.5*N-0.5,0,N-1),fy=clamp((q.v+1)*0.5*N-0.5,0,N-1);
+    const x0=Math.floor(fx),y0=Math.floor(fy),x1=Math.min(N-1,x0+1),y1=Math.min(N-1,y0+1);
+    const tx=fx-x0,ty=fy-y0,base=q.face*N*N;
     const a=Number(field[base+y0*N+x0]),b=Number(field[base+y0*N+x1]);
     const c=Number(field[base+y1*N+x0]),d=Number(field[base+y1*N+x1]);
     if(![a,b,c,d].every(Number.isFinite))return NaN;
@@ -118,7 +118,7 @@
     const core=(typeof weatherCore!=='undefined')?weatherCore:null;if(!core?.count||!body)return NaN;
     const field=(core.surfaceSkinTemp&&core.surfaceSkinTemp.length===core.count)?core.surfaceSkinTemp:core.surfaceTemp;
     if(!field)return NaN;
-    /* Match physicalFogSample()'s temperature seam smoothing footprint. */
+    /* Match physicalFogSample()'s temperature seam-smoothing footprint. */
     const o=0.014,dirs=[body,addOffset(body,o,o,0),addOffset(body,-o,o,0),addOffset(body,0,-o,o),addOffset(body,0,-o,-o)];
     let sum=0,n=0;for(const d of dirs){const T=sampleFieldLinear(core,field,d);if(Number.isFinite(T)){sum+=T;n++;}}
     return n?sum/n:NaN;
