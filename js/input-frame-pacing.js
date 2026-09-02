@@ -1,4 +1,4 @@
-/* ============ 0.5.127: lossless input + motion-first frame pacing ============ */
+/* ============ 0.5.127 / 0.5.128: lossless input + motion-first frame pacing ============ */
 /*
    Rendering can be late; input must not disappear because of that. camera.js
    owns lossless/coalesced pointer sampling. This late layer connects its queue
@@ -6,9 +6,8 @@
    over Weather Core / deferred visual publication.
 
    A low FPS value is preferable to a large spatial discontinuity. We therefore
-   drain at most camera.js's bounded angular chunk per visible frame. During
-   active/queued interaction an isolated long frame may also lower renderScale
-   immediately instead of waiting for the normal ~45-frame GPU sampling cycle.
+   drain the queued motion through cameraInputStep(frameSpan), letting the final
+   pacing layer choose a smaller time-aware angular budget on slow frames.
 */
 (function installInputFramePacing(){
   if(typeof drawFrame!=='function')return;
@@ -56,16 +55,19 @@
     if(Number.isFinite(n))lastFrameNow=n;
 
     /* Drain before the underlying draw computes camera matrices. This makes a
-       pointerup-only flick visible on the very next rendered frame. */
-    if(typeof cameraInputStep==='function')cameraInputStep();
+       pointerup-only flick visible on the very next rendered frame. The frame
+       span is passed through so slow frames use a smaller spatial step rather
+       than looking like camera teleports. */
+    if(typeof cameraInputStep==='function')cameraInputStep(span);
 
-    const interacting=(typeof cameraInputBusy==='function')?cameraInputBusy():
-      (typeof pointers!=='undefined'&&pointers&&pointers.size>0);
+    const interacting=(typeof cameraMotionActive==='function')?cameraMotionActive():
+      ((typeof cameraInputBusy==='function')?cameraInputBusy():
+        (typeof pointers!=='undefined'&&pointers&&pointers.size>0));
     if(interacting&&span>28&&typeof fullShaderDone==='boolean'&&fullShaderDone&&
        typeof tuneRenderScale==='function'&&typeof qualityCooldown==='number'&&qualityCooldown<=0){
-      /* One immediate controlled degradation after a real long frame. The
-         normal tuneRenderScale policy supplies its own cooldown, so this cannot
-         oscillate or resize the framebuffer every pointer sample. */
+      /* One controlled degradation after a real long frame. The final pacing
+         policy clamps the size of each backing-store change so quality cannot
+         visibly pop by 20-25% in one frame. */
       const observed=Math.max(span,(typeof frameMsEwma==='number'?frameMsEwma:span));
       tuneRenderScale(observed);
     }
@@ -74,6 +76,7 @@
 
   window.__madPlanetInputFramePacing={
     inputPending:browserInputPending,
-    cameraBusy:()=>typeof cameraInputBusy==='function'&&cameraInputBusy()
+    cameraBusy:()=>typeof cameraMotionActive==='function'?cameraMotionActive():
+      (typeof cameraInputBusy==='function'&&cameraInputBusy())
   };
 })();
