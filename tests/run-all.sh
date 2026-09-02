@@ -25,6 +25,7 @@ tests=(
   tests/build-integrity.test.js
   tests/performance-guards.test.js
   tests/smooth-motion-ui.test.js
+  tests/input-frame-pacing.test.js
   tests/runtime-settings.test.js
   tests/rubric-orbit-ui.test.js
   tests/mobile-portrait-layout.test.js
