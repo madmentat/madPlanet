@@ -1,16 +1,14 @@
-/* ============ 0.5.117 / 0.5.120 physical surface thermal view ============ */
+/* ============ 0.5.117 / 0.5.120 / 0.5.124 physical surface thermal view ============ */
 /*
    Weather Core publishes surface temperature in the A channel of the shared
    fog/soil cubemap using the piecewise 80..180 / 180..380 / 380..1000 K
-   encoding from fog-gpu.js. The thermal instrument must decode that exact
-   format; treating the byte as a linear 180..380 K value clips extreme worlds.
+   encoding from fog-gpu.js. The thermal instrument decodes that exact format.
 
-   Active volcanic vents are sub-grid features: a 32..36 cell Weather Core
-   cannot resolve a lava throat that is only a few render pixels wide. Thermal
-   mode therefore adds a local surface-skin heat term from the exact same
-   deterministic volcanic mask used by the visible surface. This does not alter
-   the global climate reservoir; it is the resolved radiating skin temperature
-   of lava/vents layered on top of the Weather Core background field.
+   0.5.124 fixes the diagnostic palette itself: the old legend had to include
+   lava up to +1200 C and therefore compressed almost the entire terrestrial
+   climate range into one cyan strip. Most colour resolution is now reserved
+   for -100..+60 C. A narrow hot tail still reaches active lava, which remains
+   a sub-grid skin-temperature overlay rather than a whole Weather Core cell.
 */
 uniform float uThermalOn;
 
@@ -21,15 +19,15 @@ float thermalDecodeSurfaceK(float code){
   return mix(380.0,1000.0,(code-0.90)/0.10);
 }
 
-/* Preserve most palette precision for ordinary climate temperatures, while
-   reserving a hot tail for furnaces and lava. Celsius and Kelvin have the same
-   interval size, so only the displayed zero point changes. */
+/* Instrument coordinate, deliberately NOT linear in the full physical range.
+   78% of the palette resolves -100..+60 C, where weather/ice diagnostics live.
+   Temperatures above +150 C occupy only the last 10% and are chiefly volcanic. */
 float thermalDisplayCoordK(float K){
-  K=clamp(K,80.0,1473.15);
-  if(K < 180.0) return 0.08*clamp((K-80.0)/100.0,0.0,1.0);
-  if(K <= 380.0) return 0.08 + 0.70*clamp((K-180.0)/200.0,0.0,1.0);
-  if(K <= 1000.0) return 0.78 + 0.16*clamp((K-380.0)/620.0,0.0,1.0);
-  return 0.94 + 0.06*clamp((K-1000.0)/473.15,0.0,1.0);
+  float C=clamp(K-273.15,-193.15,1200.0);
+  if(C < -100.0) return 0.04*clamp((C+193.15)/93.15,0.0,1.0);
+  if(C <= 60.0) return 0.04 + 0.78*clamp((C+100.0)/160.0,0.0,1.0);
+  if(C <= 150.0) return 0.82 + 0.08*clamp((C-60.0)/90.0,0.0,1.0);
+  return 0.90 + 0.10*clamp((C-150.0)/1050.0,0.0,1.0);
 }
 
 vec3 thermalPalette(float t){
@@ -69,10 +67,6 @@ float thermalInstrumentSurfaceK(vec3 n0,float encodedTemp){
   float baseK=thermalDecodeSurfaceK(encodedTemp);
   float volc=thermalVolcanicMask(n0);
   if(volc<=0.001)return baseK;
-  /* Active basaltic/rhyolitic lava commonly radiates at many hundreds to over
-     a thousand Celsius. uLava is visual activity/brightness, so map it to a
-     plausible resolved skin-temperature envelope without heating the whole
-     Weather Core cell. */
   float lavaK=mix(873.15,1473.15,clamp(uLava,0.0,1.0)); /* 600..1200 °C */
   float hotK=mix(baseK,max(baseK,lavaK),pow(volc,0.58));
   return hotK;
@@ -82,10 +76,10 @@ vec3 thermalSurfaceColorK(float K){
   float t=thermalDisplayCoordK(K);
   vec3 c=thermalPalette(t);
   float C=K-273.15;
-  /* 20 °C contours in the climate range, wider 100 °C contours in the hot
-     volcanic tail. The interval is numerically identical to kelvin. */
-  float stepC=(C<=120.0)?20.0:100.0;
+  /* 10 C contours in the climate range make polar gradients legible; the hot
+     volcanic tail keeps wide 100 C bands so lava does not turn into noise. */
+  float stepC=(C<=80.0)?10.0:100.0;
   float band=abs(fract((C+200.0)/stepC)-0.5);
   float contour=smoothstep(0.035,0.090,band);
-  return c*mix(0.78,1.0,contour);
+  return c*mix(0.80,1.0,contour);
 }
