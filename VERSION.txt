@@ -1,15 +1,16 @@
-VERSION 0.5.123
-Base: 0.5.122
-Changes: Correct polar surface thermodynamics exposed by the Thermal Imager by separating radiating surface-skin temperature from ocean SST and restoring Antarctica-like continental cooling.
-  - add a distinct surfaceSkinTemp field: open ocean still reports SST, while sea-ice-covered water exposes the temperature of the top ice surface rather than the near-freezing mixed layer below it
-  - sea-ice skin temperature is thermally coupled to basal SST through ice thickness, follows local air temperature and receives an additional bounded radiative drop in polar darkness; thick winter ice can therefore be tens of degrees colder than the water beneath it
-  - the visible/radiating skin temperature is fed back into local outgoing-longwave calculations on the next fixed Weather Core tick instead of treating basal SST as the radiating surface beneath sea ice
-  - Thermal Imager GPU publication now packs surfaceSkinTemp when available, so the IR view no longer paints frozen polar oceans at about -1.8 C merely because the underlying seawater is pinned near its freezing point
-  - user-facing broad surface-temperature diagnostics now read the visible/radiating skin field; ocean physics keeps seaSurfaceTemp as the authoritative mixed-layer reservoir
-  - add absolute terrain lapse-rate cooling at 6.0 K/km up to 5 km, outside the zero-mean geographic heat-redistribution term, so broad high plateaus no longer lose their elevation cooling when a latitude-band mean is removed
-  - add a bounded stable polar boundary-layer/inversion correction over continental high latitudes, strengthened by snow/land ice and polar darkness and disabled on genuinely hot worlds
-  - the new polar land term is bootstrapped on world creation and maintained as a slow physical surface-budget forcing rather than a shader-only colour correction
-  - an Earth-like high polar plateau around 3.5 km receives roughly 30+ K of additional surface cooling beyond the old zonal baseline, allowing Antarctica/Vostok-like -45..-55 C states and colder winter excursions while low polar oceans remain moderated by sea ice and ocean heat capacity
-Regression: polar-surface-thermodynamics.test.js validates plateau lapse cooling, stable polar inversion, thermally decoupled sea-ice skin temperature, skin-driven OLR and GPU thermography. Both builders guard module order around atmospheric transport and fog GPU publication.
-Snapshot: 0.5.122 remains the rollback point before explicit polar surface-skin thermodynamics.
+VERSION 0.5.124
+Base: 0.5.123
+Changes: Make orbital shape readable in the HUD and recalibrate polar/thermal diagnostics exposed by real-world testing.
+  - keep physical Kepler eccentricity separate from display shape; climate, periapsis/apoapsis, orbital timing and 1/r^2 forcing continue to use the physical e
+  - broaden seeded physical eccentricity to e=0.006..0.220 with only a mild low-e bias so Random produces more varied but still planetary orbits
+  - add a shared visual eccentricity mapping e_vis=0.36..0.62 for the mini-map and main-scene navigation orbit; ordinary e values that are mathematically almost circular now render as clearly readable ellipses
+  - both orbit displays label the physical e and explicitly identify the drawn orbit as a schematic; the main-scene planet remains pinned to screen centre and the sun remains at the displayed focus
+  - recalibrate Thermal Imager colour allocation: most palette resolution now covers -100..+60 C instead of being compressed by the +1200 C lava tail
+  - climate-range contours tighten from 20 C to 10 C while volcanic temperatures keep a separate compressed hot tail up to +1200 C
+  - legend now exposes <=-100, -50, 0, +50 and +1200 C reference points so Antarctic-class cold is visually distinguishable from merely freezing terrain
+  - add polar continentality physics: high-latitude land cells surrounded by land receive an additional bounded cold-trap term, strongest over snowy/icy continental interiors and in polar darkness
+  - continental cooling is geography-aware, fades toward coasts/open ocean, is disabled on genuinely hot worlds, and extends the existing surface-energy budget rather than recolouring the renderer
+  - a broad icy polar continent can now run tens of kelvin colder than a maritime polar coast even at the same latitude, complementing the existing plateau lapse-rate and sea-ice skin physics
+Regression: orbit-eccentricity.test.js now separates physical and visual eccentricity contracts; thermal-celsius.test.js guards climate-focused palette allocation; polar-continentality.test.js validates interior-vs-coastal polar cooling and build order.
+Snapshot: 0.5.123 remains the rollback point before HUD eccentricity amplification and stronger continental polar thermodynamics.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
