@@ -63,10 +63,11 @@ assert.match(ecliptic,/projectedBasis/,'Ecliptic geometry must follow the curren
 
 assert.match(thermal,/thermalDisplayBtn/,'Thermal tool must bind to its rubric button');
 assert.match(thermal,/gl\.getUniformLocation\(prog,'uThermalOn'\)/,'Thermal mode must bind its display uniform lazily across shader swaps');
-assert.match(thermal,/180 K/,'Thermal legend must expose the physical lower temperature bound');
-assert.match(thermal,/380 K/,'Thermal legend must expose the physical upper temperature bound');
+assert.match(thermal,/−190 °C/,'Thermal legend must expose its Celsius cold bound');
+assert.match(thermal,/\+1200 °C/,'Thermal legend must expose its Celsius volcanic hot bound');
+assert.ok(!/180 K|380 K/.test(thermal),'Thermal legend must not regress to kelvin labels');
 assert.match(thermalShader,/uniform float uThermalOn/,'Thermal shader display switch missing');
-assert.match(thermalShader,/thermalSurfaceColor/,'Thermal shader palette missing');
+assert.match(thermalShader,/thermalSurfaceColorK/,'Thermal shader palette missing');
 assert.match(mainShader,/physicalFogSample\(n0\)\.a/,'Thermal mode must use Weather Core surface temperature rather than visual colour');
 assert.match(mainShader,/if\(uThermalOn > 0\.5\)/,'Thermal display override missing from planet disk');
 
