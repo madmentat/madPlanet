@@ -37,8 +37,8 @@ assert.match(orbit,/const drawFrameBeforeOrbitOverlay=drawFrame/,'orbit overlay 
 assert.match(orbit,/eccentricSeasonState/,'orbit marker must use the physical Kepler state');
 assert.match(orbit,/seasonAxialTiltDeg/,'axis diagram must use the physical axial tilt');
 assert.match(orbit,/seasonDeclinationRadForPhase/,'diagram must expose seasonal solar declination');
-assert.match(orbit,/orbitDisplayEccentricity/,'mini-map must visually amplify otherwise unreadable low eccentricity');
-assert.match(orbit,/focus=rotatePoint\(cx,cy,-rx\*visualE/,'mini-map star must be placed at the displayed ellipse focus');
+assert.doesNotMatch(orbit,/orbitDisplayEccentricity/,'mini-map must not exaggerate physical eccentricity');
+assert.match(orbit,/focus=rotatePoint\(cx,cy,-rx\*d\.e/,'mini-map star must be placed at the real ellipse focus');
 assert.match(orbit,/canvas\.getContext\('2d'/,'orbit schematic must stay on a cheap 2D overlay canvas');
 assert.ok(!/state\.orbitOverlay\s*=/.test(orbit),'display-only Orbit mode must not enter planet state/hash');
 
@@ -60,8 +60,9 @@ assert.doesNotMatch(orbitScene,/cam\.dist/,'zoom must be excluded from navigatio
 assert.doesNotMatch(orbitScene,/Math\.sqrt\(ex\*ex\+\(ey\*ey\)\/\(q\*q\)\)/,'singular projected-star radius solve must not return');
 assert.doesNotMatch(orbitScene,/FOCAL\*dot\(sun/,'scene orbit must not size itself from perspective star projection');
 assert.match(orbitScene,/orbitEccentricityForSeed/,'scene orbit must use seeded physical eccentricity');
-assert.match(orbitScene,/orbitDisplayEccentricity/,'scene orbit shape must use the shared visual eccentricity mapping');
-assert.match(orbitScene,/const starScreen=\[planetScreen\[0\]-radius\*cur2\[0\]/,'scene orbit must place the schematic sun at the displayed Kepler focus');
+assert.doesNotMatch(orbitScene,/orbitDisplayEccentricity/,'scene orbit shape must not exaggerate eccentricity');
+assert.match(orbitScene,/const b=Math\.sqrt\(Math\.max\(0\.04,1-o\.e\*o\.e\)\)/,'scene orbit minor axis must use physical eccentricity');
+assert.match(orbitScene,/const starScreen=\[planetScreen\[0\]-radius\*cur2\[0\]/,'scene orbit must place the schematic sun at the real Kepler focus');
 assert.match(orbitScene,/ctx\.setLineDash\(\[4,5\]\).*rgba\(255,184,88,\.34\)/s,'far side of stabilized orbit must remain dashed and dim');
 assert.match(orbitScene,/drawNode\(s\[0\],s\[1\],5\.2,'rgba\(255,177,73,\.96\)'\)/,'sun focus must be drawn over the orbit so the line passes behind it');
 assert.match(orbitScene,/window\.__madPlanetOrbitScenePath/,'scene orbit must expose a diagnostic display API');
@@ -78,11 +79,14 @@ assert.match(thermal,/gl\.getUniformLocation\(prog,'uThermalOn'\)/,'Thermal mode
 assert.match(thermal,/≤−100 °C/,'Thermal legend must expose its climate cold range');
 assert.match(thermal,/−50 °C/,'Thermal legend must resolve Antarctic-class temperatures');
 assert.match(thermal,/\+1200 °C/,'Thermal legend must expose its Celsius volcanic hot bound');
+assert.match(thermal,/data-thermal-readout/,'Thermal legend must show live physical minima');
+assert.match(thermal,/mountainSkinMinK/,'Thermal legend must expose mountain minimum');
 assert.ok(!/180 K|380 K/.test(thermal),'Thermal legend must not regress to kelvin labels');
 assert.match(thermal,/madPlanet\.thermalLegend\.pos\.v1/,'thermal legend position must persist locally');
 assert.match(thermal,/legend\.addEventListener\('pointerdown'/,'thermal legend must support mouse/touch dragging');
 assert.match(thermal,/touch-action:none/,'thermal drag must own its touch gesture');
 assert.match(thermalShader,/uniform float uThermalOn/,'Thermal shader display switch missing');
+assert.match(thermalShader,/thermalSubgridMountainCoolingK/,'Thermal shader must resolve cold mountain crests');
 assert.match(thermalShader,/thermalSurfaceColorK/,'Thermal shader palette missing');
 assert.match(mainShader,/physicalFogSample\(n0\)\.a/,'Thermal mode must use Weather Core surface temperature rather than visual colour');
 assert.match(mainShader,/if\(uThermalOn > 0\.5\)/,'Thermal display override missing from planet disk');
