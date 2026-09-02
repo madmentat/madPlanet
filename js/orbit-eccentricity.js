@@ -1,22 +1,23 @@
-/* ============ 0.5.122 / 0.5.124: deterministic Keplerian eccentricity ============ */
+/* ============ 0.5.122 / 0.5.124 / 0.5.125: deterministic Keplerian eccentricity ============ */
 /*
    The orbit-distance slider is the semi-major axis. Each world seed gets a
-   deterministic, moderate eccentricity. 0.5.124 keeps genuinely near-circular
-   cases possible, but removes the previous heavy bias toward tiny e values so
-   Random produces a broader family of planetary orbits.
+   deterministic eccentricity and the same value is used by Kepler timing,
+   periapsis/apoapsis, 1/r^2 climate forcing and BOTH orbit displays.
 
-   Physical climate uses the real e below. HUD drawings use a separate,
-   explicitly schematic visual eccentricity mapping: low/moderate planetary e
-   values make geometrically almost circular ellipses (b/a=sqrt(1-e^2)), which
-   is physically correct but unreadable on a 200 px instrument. The visual map
-   exaggerates shape only; periapsis, apoapsis, Kepler timing and 1/r^2 forcing
-   always use the physical e.
+   0.5.124 briefly exaggerated eccentricity only in the HUD so ordinary
+   planetary ellipses were easier to see. That was a bad diagnostic contract:
+   an orbit instrument must not imply geometry the physical world does not
+   have. 0.5.125 removes that visual remap entirely.
+
+   Mature multi-planet systems are strongly biased toward low eccentricity.
+   Keep a Mercury-like tail possible, but make near-circular terrestrial orbits
+   the normal result. A mathematically perfect circle is deliberately avoided;
+   e=0 has measure zero in a naturally perturbed system anyway.
 */
-const ORBIT_ECCENTRICITY_MODEL=2;
-const ORBIT_ECCENTRICITY_MIN=0.006;
-const ORBIT_ECCENTRICITY_MAX=0.220;
-const ORBIT_VISUAL_E_MIN=0.360;
-const ORBIT_VISUAL_E_MAX=0.620;
+const ORBIT_ECCENTRICITY_MODEL=3;
+const ORBIT_ECCENTRICITY_MIN=0.002;
+const ORBIT_ECCENTRICITY_MAX=0.210;
+const ORBIT_ECCENTRICITY_POWER=2.60;
 
 function orbitHash01(seed,salt=0){
   let x=((seed|0)^0x6d2b79f5^(salt|0))>>>0;
@@ -27,15 +28,12 @@ function orbitHash01(seed,salt=0){
 }
 function orbitEccentricityForSeed(seed){
   const u=orbitHash01(seed,0x1735a9d);
-  /* A mild low-e bias, not the old 1.65 power that made almost every Random
-     world visually Earth-like. */
-  return ORBIT_ECCENTRICITY_MIN+(ORBIT_ECCENTRICITY_MAX-ORBIT_ECCENTRICITY_MIN)*Math.pow(u,1.10);
+  return ORBIT_ECCENTRICITY_MIN+(ORBIT_ECCENTRICITY_MAX-ORBIT_ECCENTRICITY_MIN)*Math.pow(u,ORBIT_ECCENTRICITY_POWER);
 }
+/* Kept only as a compatibility helper for any external/debug code that used
+   the 0.5.124 API. It is intentionally the identity now: display e == real e. */
 function orbitDisplayEccentricity(e){
-  e=Math.max(0,Math.min(ORBIT_ECCENTRICITY_MAX,Number(e)||0));
-  if(e<=0)return 0;
-  const u=Math.max(0,Math.min(1,(e-ORBIT_ECCENTRICITY_MIN)/(ORBIT_ECCENTRICITY_MAX-ORBIT_ECCENTRICITY_MIN)));
-  return ORBIT_VISUAL_E_MIN+(ORBIT_VISUAL_E_MAX-ORBIT_VISUAL_E_MIN)*Math.sqrt(u);
+  return Math.max(0,Math.min(ORBIT_ECCENTRICITY_MAX,Number(e)||0));
 }
 function orbitNormalizeAngle(a){
   const tau=2*Math.PI;
