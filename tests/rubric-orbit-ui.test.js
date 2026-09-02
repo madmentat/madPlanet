@@ -34,9 +34,10 @@ for(const id of ['orbitOverlayBtn','eclipticOverlayBtn','thermalDisplayBtn'])ass
 for(const id of ['action:orbit','action:ecliptic','action:thermal'])assert.ok(grid.includes(id),'instrument must be action tool: '+id);
 
 assert.match(orbit,/const drawFrameBeforeOrbitOverlay=drawFrame/,'orbit overlay must attach to the frame loop');
-assert.match(orbit,/seasonOrbitPhaseRad/,'orbit marker must use the physical seasonal orbit phase');
+assert.match(orbit,/eccentricSeasonState/,'orbit marker must use the physical Kepler state');
 assert.match(orbit,/seasonAxialTiltDeg/,'axis diagram must use the physical axial tilt');
 assert.match(orbit,/seasonDeclinationRadForPhase/,'diagram must expose seasonal solar declination');
+assert.match(orbit,/focus=rotatePoint\(cx,cy,-rx\*d\.e/,'mini-map star must be placed at an ellipse focus');
 assert.match(orbit,/canvas\.getContext\('2d'/,'orbit schematic must stay on a cheap 2D overlay canvas');
 assert.ok(!/state\.orbitOverlay\s*=/.test(orbit),'display-only Orbit mode must not enter planet state/hash');
 
@@ -48,16 +49,19 @@ assert.match(orbitDrag,/window\.__madPlanetOrbitOverlay\?\.setEnabled\(false\)/,
 assert.match(orbitScene,/Орбита в основной сцене/,'Orbit mini-map must expose the scene-orbit toggle');
 assert.match(orbitScene,/madPlanet\.orbitOverlay\.scenePath\.v1/,'scene-orbit preference must persist locally');
 assert.match(orbitScene,/window\.__madPlanetOrbitOverlay\?\.isEnabled/,'scene orbit must disappear when Orbit mode is closed');
-assert.match(orbitScene,/Math\.cos\(sunEl\)\*Math\.sin\(sunAz\)/,'scene orbit must use the same physical system-star direction as the sky pass');
+assert.match(orbitScene,/Math\.cos\(sunEl\)\*Math\.sin\(sunAz\)/,'scene orbit must use the same system-star direction as the sky pass');
 assert.match(orbitScene,/planetPhysics\(\)\.axialTiltDeg/,'scene orbit orientation must follow the physical ecliptic plane');
 assert.match(orbitScene,/const HUD_RADIUS_FRACTION=0\.23/,'scene orbit must use a fixed screen-space navigation radius');
 assert.match(orbitScene,/const radial=norm\(\[-sun\[0\],-sun\[1\],-sun\[2\]\]\)/,'current planet must define the star-to-planet radial basis');
 assert.match(orbitScene,/orbitNormalThroughRadial/,'displayed orbital plane must contain the current star-planet radius vector');
-assert.match(orbitScene,/points\[0\]\.x=planetScreen\[0\];points\[0\]\.y=planetScreen\[1\]/,'current orbit point must be pinned exactly to planet screen centre');
-assert.match(orbitScene,/Deliberately omit cam\.dist/,'zoom must be intentionally excluded from navigation-orbit scale');
+assert.match(orbitScene,/points\[nearest\]\.x=planetScreen\[0\];points\[nearest\]\.y=planetScreen\[1\]/,'current orbit point must be pinned exactly to planet screen centre');
+assert.doesNotMatch(orbitScene,/cam\.dist/,'zoom must be excluded from navigation-orbit scale');
 assert.doesNotMatch(orbitScene,/Math\.sqrt\(ex\*ex\+\(ey\*ey\)\/\(q\*q\)\)/,'singular projected-star radius solve must not return');
 assert.doesNotMatch(orbitScene,/FOCAL\*dot\(sun/,'scene orbit must not size itself from perspective star projection');
+assert.match(orbitScene,/orbitEccentricityForSeed/,'scene orbit must use seeded physical eccentricity');
+assert.match(orbitScene,/const starScreen=\[planetScreen\[0\]-radius\*cur2\[0\]/,'scene orbit must place the schematic sun at the Kepler focus');
 assert.match(orbitScene,/ctx\.setLineDash\(\[4,5\]\).*rgba\(255,184,88,\.34\)/s,'far side of stabilized orbit must remain dashed and dim');
+assert.match(orbitScene,/drawNode\(s\[0\],s\[1\],5\.2,'rgba\(255,177,73,\.96\)'\)/,'sun focus must be drawn over the orbit so the line passes behind it');
 assert.match(orbitScene,/window\.__madPlanetOrbitScenePath/,'scene orbit must expose a diagnostic display API');
 assert.ok(!/state\.[A-Za-z0-9_]*orbit/i.test(orbitScene),'scene-orbit display state must not enter planet state/hash');
 
@@ -72,6 +76,9 @@ assert.match(thermal,/gl\.getUniformLocation\(prog,'uThermalOn'\)/,'Thermal mode
 assert.match(thermal,/−190 °C/,'Thermal legend must expose its Celsius cold bound');
 assert.match(thermal,/\+1200 °C/,'Thermal legend must expose its Celsius volcanic hot bound');
 assert.ok(!/180 K|380 K/.test(thermal),'Thermal legend must not regress to kelvin labels');
+assert.match(thermal,/madPlanet\.thermalLegend\.pos\.v1/,'thermal legend position must persist locally');
+assert.match(thermal,/legend\.addEventListener\('pointerdown'/,'thermal legend must support mouse/touch dragging');
+assert.match(thermal,/touch-action:none/,'thermal drag must own its touch gesture');
 assert.match(thermalShader,/uniform float uThermalOn/,'Thermal shader display switch missing');
 assert.match(thermalShader,/thermalSurfaceColorK/,'Thermal shader palette missing');
 assert.match(mainShader,/physicalFogSample\(n0\)\.a/,'Thermal mode must use Weather Core surface temperature rather than visual colour');
