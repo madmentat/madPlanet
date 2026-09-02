@@ -12,8 +12,10 @@ const surfaceShader=read('shaders/surface.glsl');
 const buildSh=read('build.sh');
 const buildPs=read('build.ps1');
 
-assert.match(thermalUi,/−190 °C/,'thermal legend lower bound must be Celsius');
-assert.match(thermalUi,/\+1200 °C/,'thermal legend lava range must be Celsius');
+assert.match(thermalUi,/≤−100 °C/,'thermal legend must expose the climate cold range');
+assert.match(thermalUi,/−50 °C/,'thermal legend must resolve Antarctic-class temperatures');
+assert.match(thermalUi,/\+50 °C/,'thermal legend must resolve hot terrestrial climate');
+assert.match(thermalUi,/\+1200 °C/,'thermal legend lava range must remain Celsius');
 assert.ok(!/<span>[^<]*\bK<\/span>/.test(thermalUi),'thermal legend must not expose kelvin labels');
 
 assert.match(units,/celsiusFromK/,'shared UI Kelvin-to-Celsius conversion missing');
@@ -25,6 +27,8 @@ assert.match(units,/unit:'°C'/,'public temperature unit must be Celsius');
 assert.match(thermalShader,/thermalDecodeSurfaceK/,'thermal view must decode the packed temperature channel');
 assert.match(thermalShader,/code < 0\.05/,'cold-tail packed-temperature decoding missing');
 assert.match(thermalShader,/code < 0\.90/,'normal/hot packed-temperature decoding missing');
+assert.match(thermalShader,/0\.78\*clamp\(\(C\+100\.0\)\/160\.0/,'most palette range must resolve -100..+60 C climate temperatures');
+assert.match(thermalShader,/float stepC=\(C<=80\.0\)\?10\.0:100\.0/,'climate contours must use ten-degree spacing');
 assert.match(thermalShader,/thermalVolcanicMask/,'volcanic thermal signature missing');
 assert.match(thermalShader,/terrain\(n0,ridge,mount,lee\)/,'thermal volcano mask must follow the rendered terrain geography');
 assert.match(thermalShader,/uVolcano/,'thermal volcanic heat must follow volcanic activity');
