@@ -1,17 +1,14 @@
-VERSION 0.5.131
-Base: 0.5.130
-Changes: Replace decorative river ownership with runoff-driven drainage physics tied to the Weather Core water cycle and resolved terrain.
-  - close precipitation/infiltration/soil storage into a persistent effective-runoff field and route that water over the cubed-sphere macro terrain instead of inventing rivers from a shader noise zero-line
-  - hydro-condition closed depressions with a Priority-Flood pass seeded from the resolved ocean, then build one acyclic downstream drainage edge per land cell and a topological contributing-area/discharge order
-  - convert local runoff from kg/m²/s to physical m³/s using each cell area and planetary radius; accumulated discharge therefore grows downstream as real contributing basins merge
-  - retain finite river memory/baseflow between individual precipitation ticks using soil/humidity-supported unresolved groundwater rather than a random perennial-river source
-  - derive channel width, depth and velocity from discharge power laws in the hydraulic-geometry sense, and publish Q^m S^n stream-power potential for later geomorphic erosion work
-  - derive lake support from hydro-conditioned depression depth plus available discharge, rather than allowing procedural FBM basins to decide whether a lake exists
-  - rasterize the diagnosed cell-to-downstream graph into a denser temporally blended RGBA8 cubemap, producing continuous river corridors across Weather Core cells without square hydrology patches
-  - make the surface shader consume that physical river/lake cubemap as the authoritative topology; the old FBM river/lake functions now only roughen edges and add sub-grid morphology inside physical corridors
-  - let physical river/floodplain support feed riparian wetness and drought resistance, while local freeze/boil thermodynamics continue to decide whether inland water is liquid or frozen
-  - keep drainage/discharge updates on the existing fixed Weather Core cadence; rendering only samples and blends a cubemap, so no CPU hydrology runs per frame
-  - calibration/architecture follows DEM hydrology practice (conditioned elevation -> flow direction -> contributing runoff) and Leopold-Maddock hydraulic geometry rather than a latitude or decorative river mask
-Regression: river-physics.test.js checks Priority-Flood pit escape, acyclic ocean drainage, downstream discharge growth, hydraulic-geometry monotonicity, stream-power response, dry-basin rejection, physical GPU graph rasterization and build/shader wiring. biome-state.test.js now requires physical river/lake corridors to own ecological floodplain wetness.
-Snapshot: 0.5.130 remains the rollback point before runoff-driven visible drainage.
+VERSION 0.5.132
+Base: 0.5.131
+Changes: Remove the tilted chessboard artifact from physical rivers without rolling back runoff-driven drainage.
+  - diagnose the artifact correctly as exposed numerical-grid geometry: 0.5.131 allowed almost every wet Weather Core catchment cell to become a visible channel, then connected those cells through a four-neighbour cubed-sphere stencil
+  - add a dedicated eight-neighbour D8-like river routing stencil across cube-face seams, giving Priority-Flood and steepest-descent routing diagonal choices instead of forcing E/W/N/S Manhattan drainage
+  - keep a single Weather Core cell as a hillslope/catchment element rather than automatically treating its local runoff as a river; visible channel initiation now requires accumulated contributing area plus accumulated discharge
+  - express the channel-initiation thresholds relative to current cell area and climate-supported reference runoff, so desktop/mobile grid resolution and planet radius do not resurrect a dense one-cell river mesh
+  - preserve conservative discharge, hydraulic width/depth/velocity and stream-power calculations from 0.5.131; the refinement changes the resolved channel-support mask, not the water budget
+  - replace straight cell-centre display links with deterministic sub-cell curved segments whose endpoints remain exactly connected at confluences; this hides residual lattice direction while retaining the physical drainage graph
+  - narrow the GPU splat radius so channel corridors read as rivers rather than broad edges of computation cells; lakes retain separate depression/water support
+  - keep all routing/raster work on Weather Core fixed ticks and continue temporal cubemap blending, with no hydrology or texture generation on render FPS
+Regression: river-physics.test.js now requires eight-neighbour routing, contributing-area channel initiation, rejection of a one-cell pseudo-river, survival of a multi-cell trunk, curved graph rasterization and correct build order.
+Snapshot: 0.5.131 remains the rollback point for the first runoff-driven network; 0.5.130 is the pre-physical-river rollback.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
