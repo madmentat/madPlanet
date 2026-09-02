@@ -1,19 +1,20 @@
-/* ============ 0.5.117 / 0.5.120 / 0.5.122 / 0.5.124: thermal imager display mode ============ */
+/* ============ 0.5.117 / 0.5.120 / 0.5.122 / 0.5.124 / 0.5.125: thermal imager display mode ============ */
 (function installThermalDisplay(){
   if(typeof document==='undefined'||typeof drawFrame!=='function'||typeof gl==='undefined')return;
   let enabled=false,boundProgram=null,loc=null;
   const POS_KEY='madPlanet.thermalLegend.pos.v1';
 
   const legend=document.createElement('div');legend.id='thermalLegend';legend.setAttribute('aria-hidden','true');
-  legend.innerHTML='<div class="thermal-scale"></div><div class="thermal-labels"><span style="left:0%">≤−100 °C</span><span style="left:28%">−50 °C</span><span style="left:53%">0 °C</span><span style="left:77%">+50 °C</span><span style="left:100%">+1200 °C</span></div><div class="thermal-caption">климатическая шкала усилена · горячий хвост для лавы</div>';
+  legend.innerHTML='<div class="thermal-scale"></div><div class="thermal-labels"><span style="left:0%">≤−100 °C</span><span style="left:28%">−50 °C</span><span style="left:53%">0 °C</span><span style="left:77%">+50 °C</span><span style="left:100%">+1200 °C</span></div><div class="thermal-caption">температура поверхности · климат + субсеточный рельеф + лава</div><div class="thermal-readout" data-thermal-readout>min — · N — · S — · горы —</div>';
   const style=document.createElement('style');style.id='madplanet-thermal-style';
   style.textContent=`
-    #thermalLegend{position:fixed;z-index:6;left:18px;bottom:calc(var(--safe-b) + 54px);width:250px;padding:8px 10px 7px;border:1px solid rgba(159,194,255,.14);border-radius:10px;background:rgba(7,12,20,.56);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:none;pointer-events:auto;touch-action:none;cursor:grab;box-shadow:0 4px 20px rgba(0,0,0,.28)}
+    #thermalLegend{position:fixed;z-index:6;left:18px;bottom:calc(var(--safe-b) + 54px);width:270px;padding:8px 10px 7px;border:1px solid rgba(159,194,255,.14);border-radius:10px;background:rgba(7,12,20,.56);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:none;pointer-events:auto;touch-action:none;cursor:grab;box-shadow:0 4px 20px rgba(0,0,0,.28)}
     #thermalLegend.on{display:block}#thermalLegend.dragging{cursor:grabbing;border-color:rgba(159,194,255,.32)}
     .thermal-scale{height:8px;border-radius:5px;background:linear-gradient(90deg,rgb(20,3,38) 0%,rgb(20,31,158) 20%,rgb(0,194,230) 42%,rgb(250,230,31) 64%,rgb(245,46,8) 84%,rgb(255,247,229) 100%)}
     .thermal-labels{position:relative;height:13px;margin-top:4px;font:7.5px var(--mono);color:rgba(232,237,245,.72)}.thermal-labels span{position:absolute;transform:translateX(-50%);white-space:nowrap}.thermal-labels span:first-child{transform:none}.thermal-labels span:last-child{transform:translateX(-100%)}
     .thermal-caption{margin-top:3px;font:8px/1.2 var(--sans);letter-spacing:.035em;color:rgba(139,150,168,.76)}
-    @media(max-width:700px){#thermalLegend{left:8px;bottom:calc(var(--safe-b) + 150px);width:230px}.thermal-labels{font-size:7px}}
+    .thermal-readout{margin-top:3px;padding-top:3px;border-top:1px solid rgba(159,194,255,.08);font:7.5px/1.2 var(--mono);color:rgba(232,237,245,.72);white-space:normal}
+    @media(max-width:700px){#thermalLegend{left:8px;bottom:calc(var(--safe-b) + 150px);width:240px}.thermal-labels{font-size:7px}.thermal-readout{font-size:7px}}
   `;document.head.appendChild(style);document.body.appendChild(legend);
 
   function clampPosition(x,y){
@@ -47,6 +48,21 @@
   addEventListener('resize',()=>{if(legend.style.top){const r=legend.getBoundingClientRect();applyPosition(r.left,r.top,false);}});
   restorePosition();
 
+  function tempText(K){
+    if(!Number.isFinite(Number(K)))return '—';
+    const c=Number(K)-273.15;
+    return (c>0?'+':'')+Math.round(c)+'°C';
+  }
+  let nextReadoutMs=0;
+  function refreshReadout(nowMs,force=false){
+    if(!enabled)return;
+    nowMs=Number(nowMs)||0;if(!force&&nowMs<nextReadoutMs)return;nextReadoutMs=nowMs+800;
+    const out=legend.querySelector('[data-thermal-readout]');if(!out)return;
+    const core=(typeof weatherCore!=='undefined')?weatherCore:null;
+    if(!core){out.textContent='min — · N — · S — · горы —';return;}
+    out.textContent='min '+tempText(core.surfaceSkinMinK)+' · N '+tempText(core.northPolarSkinMinK)+' · S '+tempText(core.southPolarSkinMinK)+' · горы '+tempText(core.mountainSkinMinK);
+  }
+
   function button(){return document.getElementById('thermalDisplayBtn');}
   function ensureUniform(){
     if(typeof prog==='undefined'||!prog)return null;
@@ -55,11 +71,11 @@
   }
   function applyUniform(){const u=ensureUniform();if(u!==null){gl.useProgram(prog);gl.uniform1f(u,enabled?1:0);}}
   function syncButton(){const b=button();if(!b)return;b.classList.toggle('tool-enabled',enabled);b.setAttribute('aria-pressed',String(enabled));b.title=enabled?'Выключить тепловизор':'Тепловизор';b.setAttribute('aria-label',b.title);}
-  function setEnabled(on){enabled=!!on;legend.classList.toggle('on',enabled);legend.setAttribute('aria-hidden',String(!enabled));syncButton();applyUniform();}
+  function setEnabled(on){enabled=!!on;legend.classList.toggle('on',enabled);legend.setAttribute('aria-hidden',String(!enabled));syncButton();applyUniform();refreshReadout((typeof performance!=='undefined'?performance.now():0),true);}
   function bind(){const b=button();if(b&&!b.dataset.thermalBound){b.dataset.thermalBound='1';b.addEventListener('click',()=>setEnabled(!enabled));syncButton();}}
   bind();
 
   const before=drawFrame;
-  drawFrame=function(now){if(boundProgram!==prog)applyUniform();return before(now);};
+  drawFrame=function(now){if(boundProgram!==prog)applyUniform();refreshReadout(now,false);return before(now);};
   window.__madPlanetThermalDisplay={setEnabled,isEnabled:()=>enabled};
 })();
