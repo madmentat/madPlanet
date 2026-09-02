@@ -1,9 +1,9 @@
-/* ============ 0.5.116: schematic orbit / axial-tilt overlay ============ */
+/* ============ 0.5.116 / 0.5.122: schematic Keplerian orbit / axial-tilt overlay ============ */
 /*
    Drawn on a tiny transparent 2D canvas instead of the WebGL planet pass so
-   enabling the diagram has negligible GPU cost. This module is loaded after
-   render.js but before runtime-settings.js. runtime-settings therefore feeds
-   its scaled simulation clock into this drawFrame wrapper automatically.
+   enabling the diagram has negligible GPU cost. 0.5.122 uses the same seeded
+   eccentricity and Kepler solution as the physical seasonal forcing: the star
+   is at one focus, not at the geometric centre of a fake circular orbit.
 */
 (function installOrbitOverlay(){
   if(typeof document==='undefined'||typeof drawFrame!=='function')return;
@@ -47,59 +47,58 @@
     if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
     ctx.setTransform(dpr,0,0,dpr,0,0);return {w:rect.width,h:rect.height};
   }
-  let staticKey='',cached={tilt:0,period:SEASONS_EARTH_YEAR_SEC,au:1};
+  function rotatePoint(cx,cy,x,y,ang){const c=Math.cos(ang),s=Math.sin(ang);return [cx+x*c-y*s,cy+x*s+y*c];}
+  let staticKey='',cached={tilt:0,period:SEASONS_EARTH_YEAR_SEC,au:1,e:0};
   function staticOrbitData(){
     const key=[state.seed,state.axialTilt,state.distance,state.star,state.luminosity].join('|');
     if(key===staticKey)return cached;staticKey=key;
     const tilt=(typeof seasonAxialTiltDeg==='function')?seasonAxialTiltDeg(null):((typeof axialTiltDeg==='function')?axialTiltDeg(state.axialTilt):0);
     const period=(typeof seasonOrbitalPeriodSec==='function')?seasonOrbitalPeriodSec(null):SEASONS_EARTH_YEAR_SEC;
     const au=(typeof orbitDistanceAU==='function')?orbitDistanceAU(state.distance):1;
-    cached={tilt,period,au};return cached;
+    const e=(typeof orbitEccentricityForSeed==='function')?orbitEccentricityForSeed(state.seed):0;
+    cached={tilt,period,au,e};return cached;
   }
   function draw(simNowMs){
     if(!enabled||!ctx)return;
     const sz=resizeBacking(),w=sz.w,h=sz.h;ctx.clearRect(0,0,w,h);
     const d=staticOrbitData();
     const simSec=(Number(simNowMs)-Number(t0))/1000;
-    const phase=(typeof seasonOrbitPhaseRad==='function')?seasonOrbitPhaseRad(state.seed,simSec,{orbitalPeriodSec:d.period}):0;
-    const frac=((phase/(Math.PI*2))%1+1)%1;
+    const o=(typeof eccentricSeasonState==='function')
+      ?eccentricSeasonState(state.seed,simSec,{orbitalPeriodSec:d.period,semiMajorAxisAU:d.au,orbitalEccentricity:d.e})
+      :orbitStateFromMeanAnomaly(d.au,d.e,(typeof seasonOrbitPhaseRad==='function'?seasonOrbitPhaseRad(state.seed,simSec,{orbitalPeriodSec:d.period}):0));
+    const phase=o.trueAnomaly,frac=((phase/(Math.PI*2))%1+1)%1;
     const decl=(typeof seasonDeclinationRadForPhase==='function')?seasonDeclinationRadForPhase(phase,d.tilt)*180/Math.PI:0;
 
-    const cx=w*0.43,cy=h*0.49,rx=w*0.32,ry=h*0.205;
-    ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,-0.12,0,Math.PI*2);ctx.strokeStyle='rgba(159,194,255,.38)';ctx.lineWidth=1;ctx.stroke();
-    line(cx-rx-8,cy,cx+rx+8,cy,'rgba(159,194,255,.13)',1,[4,5]);
-    label('плоскость орбиты',cx-rx,cy+ry+22,'rgba(139,150,168,.62)','left');
+    const cx=w*0.45,cy=h*0.49,rx=w*0.31,baseRy=h*0.205,ry=baseRy*Math.sqrt(Math.max(0.04,1-d.e*d.e));
+    const rot=-0.12;
+    ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,rot,0,Math.PI*2);ctx.strokeStyle='rgba(159,194,255,.38)';ctx.lineWidth=1;ctx.stroke();
+    line(cx-rx-8,cy,cx+rx+8,cy,'rgba(159,194,255,.10)',1,[4,5]);
+    label('эллиптическая орбита',cx-rx,cy+baseRy+22,'rgba(139,150,168,.62)','left');
 
-    /* Quarter-phase marks: two equinoxes and two solstices. */
     for(let i=0;i<4;i++){
-      const a=i*Math.PI/2,x=cx+rx*Math.cos(a),y=cy+ry*Math.sin(a);
-      circle(x,y,2.0,'rgba(159,194,255,.38)');
+      const E=i*Math.PI/2,p=rotatePoint(cx,cy,rx*Math.cos(E),ry*Math.sin(E),rot);
+      circle(p[0],p[1],2.0,'rgba(159,194,255,.34)');
     }
 
-    circle(cx,cy,8,'rgba(232,163,92,.92)');
-    circle(cx,cy,13,'rgba(232,163,92,.09)','rgba(232,163,92,.24)');
-    label('звезда',cx,cy-17,'rgba(232,163,92,.72)','center');
+    const focus=rotatePoint(cx,cy,-rx*d.e,0,rot);
+    circle(focus[0],focus[1],8,'rgba(232,163,92,.92)');
+    circle(focus[0],focus[1],13,'rgba(232,163,92,.09)','rgba(232,163,92,.24)');
+    label('звезда',focus[0],focus[1]-17,'rgba(232,163,92,.72)','center');
 
-    const px=cx+rx*Math.cos(phase),py=cy+ry*Math.sin(phase);
-    line(px,py,cx,cy,'rgba(232,237,245,.16)',1,[3,4]);
-    circle(px,py,5.2,'rgba(159,194,255,.95)','rgba(232,237,245,.8)');
+    const pxp=rotatePoint(cx,cy,rx*Math.cos(o.eccentricAnomaly),ry*Math.sin(o.eccentricAnomaly),rot);
+    line(pxp[0],pxp[1],focus[0],focus[1],'rgba(232,237,245,.16)',1,[3,4]);
+    circle(pxp[0],pxp[1],5.2,'rgba(159,194,255,.95)','rgba(232,237,245,.8)');
 
-    /* Dashed orbital normal and solid spin axis. The spin axis keeps a fixed
-       inertial direction in this schematic, so the season changes as the
-       planet travels around the star rather than by rotating the axis itself. */
     const L=26,normal=-Math.PI/2,axis=normal+d.tilt*Math.PI/180;
-    line(px+Math.cos(normal)*L,py+Math.sin(normal)*L,px-Math.cos(normal)*L,py-Math.sin(normal)*L,'rgba(139,150,168,.45)',1,[3,3]);
-    line(px+Math.cos(axis)*L,py+Math.sin(axis)*L,px-Math.cos(axis)*L,py-Math.sin(axis)*L,'rgba(232,237,245,.86)',1.4);
-    const axx=px+Math.cos(axis)*L,axy=py+Math.sin(axis)*L;
-    label('ось',axx+4,axy-3,'rgba(232,237,245,.72)','left');
-
-    /* Small tilt arc. */
-    ctx.beginPath();ctx.arc(px,py,17,normal,axis,d.tilt<0);ctx.strokeStyle='rgba(232,163,92,.70)';ctx.lineWidth=1;ctx.stroke();
-    label(d.tilt.toFixed(1)+'°',px+20,py-12,'rgba(232,163,92,.82)','left');
+    line(pxp[0]+Math.cos(normal)*L,pxp[1]+Math.sin(normal)*L,pxp[0]-Math.cos(normal)*L,pxp[1]-Math.sin(normal)*L,'rgba(139,150,168,.45)',1,[3,3]);
+    line(pxp[0]+Math.cos(axis)*L,pxp[1]+Math.sin(axis)*L,pxp[0]-Math.cos(axis)*L,pxp[1]-Math.sin(axis)*L,'rgba(232,237,245,.86)',1.4);
+    label('ось',pxp[0]+Math.cos(axis)*L+4,pxp[1]+Math.sin(axis)*L-3,'rgba(232,237,245,.72)','left');
+    ctx.beginPath();ctx.arc(pxp[0],pxp[1],17,normal,axis,d.tilt<0);ctx.strokeStyle='rgba(232,163,92,.70)';ctx.lineWidth=1;ctx.stroke();
+    label(d.tilt.toFixed(1)+'°',pxp[0]+20,pxp[1]-12,'rgba(232,163,92,.82)','left');
 
     const season=(typeof seasonLabel==='function')?seasonLabel(frac):('фаза '+Math.round(frac*100)+'%');
     const yearDays=d.period/86400;
-    text.innerHTML='<b>'+season+'</b> · δ '+(decl>=0?'+':'')+decl.toFixed(1)+'°<br>'+d.au.toFixed(2)+' AU · год '+yearDays.toFixed(yearDays<100?1:0)+' сут';
+    text.innerHTML='<b>'+season+'</b> · δ '+(decl>=0?'+':'')+decl.toFixed(1)+'° · e '+d.e.toFixed(3)+'<br>a '+d.au.toFixed(2)+' AU · r '+o.radiusAU.toFixed(2)+' AU · год '+yearDays.toFixed(yearDays<100?1:0)+' сут';
   }
 
   const drawFrameBeforeOrbitOverlay=drawFrame;
