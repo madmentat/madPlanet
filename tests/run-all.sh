@@ -86,6 +86,7 @@ tests=(
   tests/lightning-abundance.test.js
   tests/screenshot-trigger.test.js
   tests/cloud-visual-response.test.js
+  tests/resolved-lift-clouds.test.js
   tests/weather-cloud-visual.test.js
   tests/planet-export.test.js
   tests/procedural-synoptic-retirement.test.js
