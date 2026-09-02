@@ -58,7 +58,8 @@ const eq=ctx.pstTargetLandOffsetK(core,2,climate,axis);
 assert.ok(high<-30,'a high Antarctic-like plateau must be >30 K below the old zonal target; got '+high.toFixed(1));
 assert.ok(low< -8 && low> -20,'low polar continent should keep a stable-boundary-layer cold anomaly; got '+low.toFixed(1));
 assert.ok(high<low-18,'3.5 km-class polar plateau must be much colder than polar lowland; '+high.toFixed(1)+' vs '+low.toFixed(1));
-assert.ok(Math.abs(eq)<1e-9,'elevation alone must not create a polar inversion at the equator in this synthetic cell');
+assert.ok(eq<-20&&eq>-23,'the same high plateau at the equator should retain lapse-rate cooling but no polar inversion; got '+eq.toFixed(1));
+assert.ok(high<eq-8,'polar stability must cool the high-latitude plateau beyond elevation alone');
 
 ctx.pstRefreshSkin(core,axis);
 const basal=core.seaSurfaceTemp[3],skin=core.seaIceSkinTemp[3];
