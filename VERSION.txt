@@ -1,16 +1,16 @@
-VERSION 0.5.125
-Base: 0.5.124
-Changes: Restore physically truthful orbital geometry and make real mountain elevation visible in both climate and thermography.
-  - remove the 0.5.124 HUD-only eccentricity exaggeration: mini-map and main-scene orbit now draw the same physical e used by Kepler timing, periapsis/apoapsis and 1/r^2 climate forcing
-  - keep the main-scene guide at a stable screen-space size for usability, but no longer distort its ellipse shape or focus position; near-circular planetary orbits are allowed to look near-circular
-  - retune seeded eccentricity for mature planetary systems to e=0.002..0.210 with a strong low-e bias (power 2.60): most worlds are close to circular while a Mercury-like tail remains possible
-  - retain orbitDisplayEccentricity only as a compatibility API and make it an identity function so display e can never silently diverge from physical e again
-  - fix the missing mountain term in physical surface temperature: the existing plate-derived orographicRoughness field is converted to resolved mountain relief and added to macroTerrain elevation before the 6 K/km lapse-rate budget
-  - use the same 5.2 km effective relief scale already used by orographic lift, conservatively converted to mean ridge height; high mountain belts can now cool the actual Weather Core by tens of kelvin instead of being climate-flat decorations
-  - raise the physical elevation ceiling from 5 to 9 km so terrestrial high mountains are representable without clipping
-  - keep continental/polar inversion physics from 0.5.124; a +13 C mean Earth-like world can now physically resolve <-60 C exposed surfaces on high Antarctic-style interior mountains without a palette trick
-  - Thermal Imager evaluates the exact rendered terrain once and adds only a bounded sub-grid peak residual (max about 2.4 km / 14.4 K) above the coarse Weather Core mountain belt, so individual ridges appear colder without double-counting a second global climate
-  - thermal legend now reports live physical minima for the whole surface, north polar region, south polar region and resolved mountains, making it immediately obvious whether a suspicious colour is a palette issue or a climate-model issue
-Regression: orbit-eccentricity.test.js forbids visual e amplification and checks the low-e mature-system distribution; polar-surface-thermodynamics.test.js verifies plate-derived mountain relief and a <-60 C high-polar mountain at +13 C global mean; thermal-celsius.test.js guards sub-grid mountain lapse thermography and live Celsius minima.
-Snapshot: 0.5.124 remains the rollback point before restoring truthful HUD eccentricity and coupling resolved tectonic relief into surface temperature.
+VERSION 0.5.126
+Base: 0.5.125
+Changes: Add an interactive thermal surface probe without adding GPU readback stalls.
+  - thermal mode now exposes a thermometer-shaped cursor over the planet surface; the native canvas cursor is hidden only while a valid thermal hit exists
+  - reproduce the render camera ray on the CPU, intersect the unit planet and rotate the hit with the same surface-body transform used by physicalFogSample
+  - read the authoritative Weather Core surfaceSkinTemp field rather than inferring temperature from the rendered colour
+  - bilinearly interpolate the cubed-sphere temperature field and mirror the thermal cubemap's five-direction 0.014 seam-smoothing footprint so the readout moves smoothly across coarse cell and cube-face boundaries
+  - draw a leader from the measured point beyond the projected planet limb to a compact temperature callout; right-side hits place the callout to the right, left-side hits mirror it to the left
+  - the callout and leader live on a pointer-transparent overlay above every application window, with a very high z-index and viewport clamping
+  - include a small colour swatch generated from the same climate-focused thermal palette; the swatch mirrors to the outer edge of the left/right callout
+  - keep the probe updated from the same scaled/paused synthetic render clock, so a stationary cursor follows the rotating surface correctly at x0/x1/etc simulation speeds
+  - suppress the probe while the camera is actively dragged so it never steals pointer gestures; no readPixels, framebuffer or synchronous GPU operations are introduced
+  - expose window.__madPlanetThermalProbe for lightweight diagnostics (visibility, current K value, palette and physical body sampling)
+Regression: thermal-probe-ui.test.js guards camera handedness, physical surfaceSkinTemp sampling, body rotation, interpolation/seam smoothing, mirrored callout geometry, topmost overlay behaviour and the no-GPU-readback performance contract.
+Snapshot: 0.5.125 remains the rollback point before the interactive thermal probe.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
