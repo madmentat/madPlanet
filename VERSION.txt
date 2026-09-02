@@ -1,15 +1,16 @@
-VERSION 0.5.121
-Base: 0.5.120
-Changes: Replace the unstable main-scene orbit projection with a fixed-scale Elite-style navigation HUD orbit.
-  - remove the singular radius solve that derived ellipse size from projected star/planet separation and divided by the projected minor axis
-  - main-scene orbit now uses a fixed screen-space radius, so rotating the camera cannot shrink it into a tiny ring or expand it across several screens
-  - camera zoom is intentionally excluded from navigation-orbit scale; the overlay is a readable HUD instrument rather than astronomical geometry rendered to scale
-  - the current star-to-planet radial vector is forced into the displayed orbital plane, while the plane remains as close as possible to the physical ecliptic normal derived from axial tilt
-  - the current planet is the t=0 orbit point and is pinned exactly to screen centre every frame, eliminating the previous vertical drift above/below the planet
-  - when the viewer looks nearly along the star direction the projected orbit naturally approaches an edge-on line through the planet instead of collapsing to a displaced miniature ellipse
-  - orbit styling is rebuilt as a soft amber navigation line: faint glow, dim dashed far side, crisp near side, subtle quarter-orbit pips and a compact current-body crossing marker
-  - the normalized radius is bounded for phone and desktop viewports so the complete schematic remains comfortably readable without taking over the scene
-  - display state remains local-only and does not alter the world seed, hash, climate, orbit physics or camera controls
-Regression: rubric-orbit-ui.test.js now guards fixed HUD radius, radial-plane consistency, exact planet-centre crossing and bans the old singular projected-star radius formula.
-Snapshot: 0.5.120 remains the rollback point before the stabilized Elite-style main-scene orbit.
+VERSION 0.5.122
+Base: 0.5.121
+Changes: Add deterministic elliptical orbits, couple orbital distance to climate forcing, add a sun focus marker to the main-scene orbit HUD, and make the Thermal Imager scale draggable.
+  - every world seed now resolves a reproducible moderate orbital eccentricity in the range e=0.010..0.180, biased toward near-circular terrestrial-style systems rather than comet-like extremes
+  - the distance control remains the semi-major axis a; periapsis and apoapsis are derived as a(1-e) and a(1+e)
+  - Kepler's equation is solved for eccentric anomaly and true anomaly so visual orbital position and star distance are no longer advanced as a uniform circular angle
+  - Weather Core seasonal snapshots receive instantaneous stellar forcing proportional to 1/r^2; periapsis therefore heats more strongly than apoapsis and eccentricity can alter weather/climate evolution
+  - the existing Kepler year period from semi-major axis and stellar mass remains unchanged
+  - Orbit mini-map now draws a real ellipse with the star at one focus, current Kepler position, current radius r, eccentricity e and the existing axial/season diagnostics
+  - main-scene Orbit HUD keeps the stable fixed screen-space scale from 0.5.121 but now uses the same eccentricity and Kepler position as the physical model
+  - a compact schematic sun marker is drawn at the HUD ellipse focus after the orbit line, so the orbit visually passes behind the sun instead of through its centre
+  - current planet remains pinned exactly to screen centre; camera zoom still cannot resize the navigation orbit
+  - Thermal Imager legend can now be dragged with mouse or touch, is clamped to the viewport and remembers its position in localStorage
+Regression: orbit-eccentricity.test.js validates deterministic e bounds, Kepler convergence, periapsis/apoapsis radii, stronger periapsis flux, Weather Core 1/r^2 forcing and shared physical eccentricity across both orbit displays. rubric-orbit-ui.test.js additionally guards the sun-focus occlusion and persistent thermal-legend dragging.
+Snapshot: 0.5.121 remains the rollback point before eccentric orbital climate forcing and draggable thermal scale.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
