@@ -5,6 +5,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
 const src=fs.readFileSync(path.join(root,'js/river-physics.js'),'utf8');
+const refine=fs.readFileSync(path.join(root,'js/river-routing-refinement.js'),'utf8');
 const gpu=fs.readFileSync(path.join(root,'js/river-gpu.js'),'utf8');
 const render=fs.readFileSync(path.join(root,'js/river-render.js'),'utf8');
 const shader=fs.readFileSync(path.join(root,'shaders/surface.glsl'),'utf8');
@@ -13,6 +14,7 @@ const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
 const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 
 assert.ok(!/Math\.random|requestAnimationFrame/.test(src),'river physics must stay deterministic and off render FPS');
+assert.ok(!/Math\.random|requestAnimationFrame/.test(refine),'river routing refinement must stay deterministic and off render FPS');
 for(const k of ['runoffGenerationRate','macroTerrain','surfaceWaterFraction','riverDownstream','riverDischarge','riverWidthM','riverStreamPower'])
   assert.ok(src.includes(k),'missing physical river dependency '+k);
 assert.ok(src.includes('RiverMinHeap')&&src.includes('riverPriorityFlood'),'drainage must hydro-condition depressions');
@@ -20,9 +22,18 @@ assert.ok(src.includes('Math.pow(Q,RIVER_WIDTH_EXP)'),'channel width must derive
 const executable=src.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/.*$/gm,'');
 assert.ok(!/latitude|latGate|riverBand/.test(executable),'river placement must not contain a latitude band');
 
+/* 0.5.132: a Weather Core cell is a catchment element, not automatically a
+   visible channel. Routing must have diagonal choices and channel initiation
+   must require accumulated contributing area/discharge. */
+assert.match(refine,/Array\.from\(\{length:8\}/,'river routing needs an eight-neighbour D8-like stencil');
+assert.match(refine,/riverContributingArea/,'resolved contributing area gate is missing');
+assert.match(refine,/RIVER_AREA_START_CELLS/);
+assert.match(refine,/RIVER_Q_START_LOCAL_MULT/);
+
 for(const file of [buildSh,buildPs]){
   assert.ok(file.indexOf('js/soil-hydrology.js')<file.indexOf('js/river-physics.js'));
-  assert.ok(file.indexOf('js/river-physics.js')<file.indexOf('js/river-gpu.js'));
+  assert.ok(file.indexOf('js/river-physics.js')<file.indexOf('js/river-routing-refinement.js'));
+  assert.ok(file.indexOf('js/river-routing-refinement.js')<file.indexOf('js/river-gpu.js'));
   assert.ok(file.indexOf('js/render.js')<file.indexOf('js/river-render.js'));
 }
 assert.match(header,/uniform samplerCube uRiverTex;/);
@@ -30,7 +41,9 @@ assert.match(header,/uniform float uRiverBlend;/);
 assert.match(shader,/riverHydroTex\s*=\s*texture\(uRiverTex/);
 assert.match(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,riverGeomProc\*physRiverHalo\)/);
 assert.ok(gpu.includes('riverDownstream'),'GPU river map must rasterize the diagnosed drainage graph');
-assert.ok(gpu.includes('riverGpuPaintDir'),'GPU river map must paint connected sub-grid segments');
+assert.ok(gpu.includes('riverGpuPaintEdge'),'GPU river map must paint graph edges rather than hydrology cells');
+assert.ok(gpu.includes('riverGpuEdgeHash')&&gpu.includes('Math.sin(Math.PI*t)'),'coarse graph edges need deterministic sub-cell bending to hide lattice directions');
+assert.equal((gpu.match(/RIVER_GPU_MODEL=3/g)||[]).length,1,'river GPU lattice fix must use model 3');
 assert.ok(!gpu.includes('requestAnimationFrame'),'river texture must not upload from render FPS');
 assert.ok(render.includes('uRiverPhysicsOn')&&render.includes('uRiverTex'));
 
@@ -41,7 +54,9 @@ const ctx={
   weatherCoreStep:(c)=>c,
   weatherCoreFinite:()=>true
 };
-vm.createContext(ctx);vm.runInContext(src,ctx,{filename:'river-physics.js'});
+vm.createContext(ctx);
+vm.runInContext(src,ctx,{filename:'river-physics.js'});
+vm.runInContext(refine,ctx,{filename:'river-routing-refinement.js'});
 
 function chainCore(terrain){
   const n=terrain.length,N=1;
@@ -78,6 +93,9 @@ function chainCore(terrain){
   assert.ok(c.riverDischargeTarget[2]>c.riverDischargeTarget[1]);
   assert.ok(c.riverDischargeTarget[3]>c.riverDischargeTarget[2],'discharge must grow downstream as contributing area grows');
   assert.ok(c.riverWidthM[3]>c.riverWidthM[0],'hydraulic geometry must widen a larger river');
+  assert.equal(c.riverChannelStrength[0],0,'one resolved hillslope cell must not be drawn as a river');
+  assert.ok(c.riverChannelStrength[3]>0.15,'multi-cell accumulated basin must still produce a visible trunk channel');
+  assert.ok(c.riverContributingArea[3]>c.riverContributingArea[1],'contributing area must accumulate downstream');
 }
 
 // A closed pit must be lifted to its spill elevation and still drain.
