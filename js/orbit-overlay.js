@@ -1,11 +1,10 @@
-/* ============ 0.5.116 / 0.5.122 / 0.5.124: schematic Keplerian orbit / axial-tilt overlay ============ */
+/* ============ 0.5.116 / 0.5.122 / 0.5.125: physical Keplerian orbit / axial-tilt overlay ============ */
 /*
    Drawn on a tiny transparent 2D canvas instead of the WebGL planet pass so
-   enabling the diagram has negligible GPU cost. Physical position/radius use
-   the real seeded Kepler orbit. Because ordinary planetary eccentricities make
-   b/a almost indistinguishable from 1 at this size, 0.5.124 applies the shared
-   visual-e mapping only to the drawn shape/focus. The numeric e/r/a remain the
-   physical values used by climate.
+   enabling the diagram has negligible GPU cost. Position, radius, ellipse
+   shape and focus all use the same real seeded Kepler orbit as the seasonal
+   climate. Near-circular planetary orbits are therefore allowed to look nearly
+   circular; the numeric e/r/a values explain the remaining focus offset.
 */
 (function installOrbitOverlay(){
   if(typeof document==='undefined'||typeof drawFrame!=='function')return;
@@ -70,25 +69,24 @@
       :orbitStateFromMeanAnomaly(d.au,d.e,(typeof seasonOrbitPhaseRad==='function'?seasonOrbitPhaseRad(state.seed,simSec,{orbitalPeriodSec:d.period}):0));
     const phase=o.trueAnomaly,frac=((phase/(Math.PI*2))%1+1)%1;
     const decl=(typeof seasonDeclinationRadForPhase==='function')?seasonDeclinationRadForPhase(phase,d.tilt)*180/Math.PI:0;
-    const visualE=(typeof orbitDisplayEccentricity==='function')?orbitDisplayEccentricity(d.e):d.e;
 
-    const cx=w*0.45,cy=h*0.49,rx=w*0.31,baseRy=h*0.205,ry=baseRy*Math.sqrt(Math.max(0.04,1-visualE*visualE));
+    const cx=w*0.45,cy=h*0.49,rx=w*0.31,baseRy=h*0.205,ry=baseRy*Math.sqrt(Math.max(0.04,1-d.e*d.e));
     const rot=-0.12;
     ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,rot,0,Math.PI*2);ctx.strokeStyle='rgba(159,194,255,.42)';ctx.lineWidth=1;ctx.stroke();
     line(cx-rx-8,cy,cx+rx+8,cy,'rgba(159,194,255,.10)',1,[4,5]);
-    label('эллиптическая орбита · схема',cx-rx,cy+baseRy+22,'rgba(139,150,168,.62)','left');
+    label('орбита',cx-rx,cy+baseRy+22,'rgba(139,150,168,.62)','left');
 
     for(let i=0;i<4;i++){
       const E=i*Math.PI/2,p=rotatePoint(cx,cy,rx*Math.cos(E),ry*Math.sin(E),rot);
       circle(p[0],p[1],2.0,'rgba(159,194,255,.34)');
     }
 
-    const focus=rotatePoint(cx,cy,-rx*visualE,0,rot);
+    const focus=rotatePoint(cx,cy,-rx*d.e,0,rot);
     circle(focus[0],focus[1],8,'rgba(232,163,92,.92)');
     circle(focus[0],focus[1],13,'rgba(232,163,92,.09)','rgba(232,163,92,.24)');
     label('звезда',focus[0],focus[1]-17,'rgba(232,163,92,.72)','center');
 
-    const pxp=rotatePoint(cx,cy,rx*(Math.cos(o.eccentricAnomaly)-visualE),ry*Math.sin(o.eccentricAnomaly),rot);
+    const pxp=rotatePoint(cx,cy,rx*(Math.cos(o.eccentricAnomaly)-d.e),ry*Math.sin(o.eccentricAnomaly),rot);
     line(pxp[0],pxp[1],focus[0],focus[1],'rgba(232,237,245,.16)',1,[3,4]);
     circle(pxp[0],pxp[1],5.2,'rgba(159,194,255,.95)','rgba(232,237,245,.8)');
 
