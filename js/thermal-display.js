@@ -4,7 +4,7 @@
   let enabled=false,boundProgram=null,loc=null;
 
   const legend=document.createElement('div');legend.id='thermalLegend';legend.setAttribute('aria-hidden','true');
-  legend.innerHTML='<div class="thermal-scale"></div><div class="thermal-labels"><span style="left:0%">−190 °C</span><span style="left:31%">0 °C</span><span style="left:76%">+100 °C</span><span style="left:91%">+700 °C</span><span style="left:100%">+1200 °C</span></div><div class="thermal-caption">температура поверхности · Weather Core + активная лава</div>';
+  legend.innerHTML='<div class="thermal-scale"></div><div class="thermal-labels"><span style="left:0%">−190 °C</span><span style="left:41%">0 °C</span><span style="left:76%">+100 °C</span><span style="left:93%">+700 °C</span><span style="left:100%">+1200 °C</span></div><div class="thermal-caption">температура поверхности · Weather Core + активная лава</div>';
   const style=document.createElement('style');style.id='madplanet-thermal-style';
   style.textContent=`
     #thermalLegend{position:fixed;z-index:6;left:18px;bottom:calc(var(--safe-b) + 54px);width:250px;padding:8px 10px 7px;border:1px solid rgba(159,194,255,.14);border-radius:10px;background:rgba(7,12,20,.56);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:none;pointer-events:none}
