@@ -16,6 +16,10 @@ assert.match(thermalUi,/≤−100 °C/,'thermal legend must expose the climate c
 assert.match(thermalUi,/−50 °C/,'thermal legend must resolve Antarctic-class temperatures');
 assert.match(thermalUi,/\+50 °C/,'thermal legend must resolve hot terrestrial climate');
 assert.match(thermalUi,/\+1200 °C/,'thermal legend lava range must remain Celsius');
+assert.match(thermalUi,/surfaceSkinMinK/,'thermal instrument must expose the actual physical minimum');
+assert.match(thermalUi,/northPolarSkinMinK/,'thermal instrument must expose north-polar minimum');
+assert.match(thermalUi,/southPolarSkinMinK/,'thermal instrument must expose south-polar minimum');
+assert.match(thermalUi,/mountainSkinMinK/,'thermal instrument must expose mountain minimum');
 assert.ok(!/<span>[^<]*\bK<\/span>/.test(thermalUi),'thermal legend must not expose kelvin labels');
 
 assert.match(units,/celsiusFromK/,'shared UI Kelvin-to-Celsius conversion missing');
@@ -29,8 +33,13 @@ assert.match(thermalShader,/code < 0\.05/,'cold-tail packed-temperature decoding
 assert.match(thermalShader,/code < 0\.90/,'normal/hot packed-temperature decoding missing');
 assert.match(thermalShader,/0\.78\*clamp\(\(C\+100\.0\)\/160\.0/,'most palette range must resolve -100..+60 C climate temperatures');
 assert.match(thermalShader,/float stepC=\(C<=80\.0\)\?10\.0:100\.0/,'climate contours must use ten-degree spacing');
-assert.match(thermalShader,/thermalVolcanicMask/,'volcanic thermal signature missing');
-assert.match(thermalShader,/terrain\(n0,ridge,mount,lee\)/,'thermal volcano mask must follow the rendered terrain geography');
+assert.match(thermalShader,/thermalSubgridMountainCoolingK/,'thermal view must include bounded sub-grid mountain lapse correction');
+assert.match(thermalShader,/mountOut\)\*8\.0\*0\.45/,'sub-grid mountain correction must come from exact rendered mountain uplift');
+assert.match(thermalShader,/unresolvedKm\*6\.0/,'sub-grid mountain correction must use the same six-K-per-km lapse scale as CPU physics');
+assert.match(thermalShader,/0\.0,2\.4\)/,'sub-grid relief correction must remain bounded to about 2.4 km');
+assert.match(thermalShader,/thermalVolcanicMaskFromTerrain/,'volcanic thermal signature missing');
+assert.match(thermalShader,/terrain\(n0,ridge,mount,lee\)/,'thermal terrain diagnostics must follow rendered mountain/volcano geography');
+assert.match(thermalShader,/float seamNearCenter=gSeamNear/,'terrain must be evaluated once before volcano mask consumes seam geometry');
 assert.match(thermalShader,/uVolcano/,'thermal volcanic heat must follow volcanic activity');
 assert.match(thermalShader,/uLava/,'thermal lava skin temperature must follow lava activity');
 assert.match(thermalShader,/873\.15,1473\.15/,'lava thermal envelope must span 600..1200 C');
@@ -39,7 +48,7 @@ for(const token of ['sN*7.2+uSeedS*3.8','sN*3.3+uSeedS*4.1','sN*44.0+uSeedS*2.9'
   assert.ok(surfaceShader.includes(token),'visible volcano geography token missing: '+token);
   assert.ok(thermalShader.includes(token),'thermal volcano geography must match visible surface: '+token);
 }
-assert.match(mainShader,/thermalInstrumentSurfaceK\(n0, encodedTemp\)/,'main shader must use decoded surface plus volcanic skin heat');
+assert.match(mainShader,/thermalInstrumentSurfaceK\(n0, encodedTemp\)/,'main shader must use decoded surface plus topographic/volcanic skin heat');
 assert.match(mainShader,/thermalSurfaceColorK\(thermalK\)/,'main shader must use absolute-temperature thermal palette');
 
 assert.ok(buildSh.indexOf('js/mobile-portrait-layout.js')<buildSh.indexOf('js/celsius-ui.js'),'Celsius adapter must load last in shell build');
