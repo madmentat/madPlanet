@@ -37,6 +37,7 @@ tests=(
   tests/terrain-classic-look.test.js
   tests/param-model.test.js
   tests/star-orbit.test.js
+  tests/orbit-eccentricity.test.js
   tests/planet-physics.test.js
   tests/atmosphere-inventory.test.js
   tests/volcanic-atmosphere-coupling.test.js
