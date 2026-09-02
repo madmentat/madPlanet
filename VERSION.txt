@@ -1,16 +1,16 @@
-VERSION 0.5.124
-Base: 0.5.123
-Changes: Make orbital shape readable in the HUD and recalibrate polar/thermal diagnostics exposed by real-world testing.
-  - keep physical Kepler eccentricity separate from display shape; climate, periapsis/apoapsis, orbital timing and 1/r^2 forcing continue to use the physical e
-  - broaden seeded physical eccentricity to e=0.006..0.220 with only a mild low-e bias so Random produces more varied but still planetary orbits
-  - add a shared visual eccentricity mapping e_vis=0.36..0.62 for the mini-map and main-scene navigation orbit; ordinary e values that are mathematically almost circular now render as clearly readable ellipses
-  - both orbit displays label the physical e and explicitly identify the drawn orbit as a schematic; the main-scene planet remains pinned to screen centre and the sun remains at the displayed focus
-  - recalibrate Thermal Imager colour allocation: most palette resolution now covers -100..+60 C instead of being compressed by the +1200 C lava tail
-  - climate-range contours tighten from 20 C to 10 C while volcanic temperatures keep a separate compressed hot tail up to +1200 C
-  - legend now exposes <=-100, -50, 0, +50 and +1200 C reference points so Antarctic-class cold is visually distinguishable from merely freezing terrain
-  - add polar continentality physics: high-latitude land cells surrounded by land receive an additional bounded cold-trap term, strongest over snowy/icy continental interiors and in polar darkness
-  - continental cooling is geography-aware, fades toward coasts/open ocean, is disabled on genuinely hot worlds, and extends the existing surface-energy budget rather than recolouring the renderer
-  - a broad icy polar continent can now run tens of kelvin colder than a maritime polar coast even at the same latitude, complementing the existing plateau lapse-rate and sea-ice skin physics
-Regression: orbit-eccentricity.test.js now separates physical and visual eccentricity contracts; thermal-celsius.test.js guards climate-focused palette allocation; polar-continentality.test.js validates interior-vs-coastal polar cooling and build order.
-Snapshot: 0.5.123 remains the rollback point before HUD eccentricity amplification and stronger continental polar thermodynamics.
+VERSION 0.5.125
+Base: 0.5.124
+Changes: Restore physically truthful orbital geometry and make real mountain elevation visible in both climate and thermography.
+  - remove the 0.5.124 HUD-only eccentricity exaggeration: mini-map and main-scene orbit now draw the same physical e used by Kepler timing, periapsis/apoapsis and 1/r^2 climate forcing
+  - keep the main-scene guide at a stable screen-space size for usability, but no longer distort its ellipse shape or focus position; near-circular planetary orbits are allowed to look near-circular
+  - retune seeded eccentricity for mature planetary systems to e=0.002..0.210 with a strong low-e bias (power 2.60): most worlds are close to circular while a Mercury-like tail remains possible
+  - retain orbitDisplayEccentricity only as a compatibility API and make it an identity function so display e can never silently diverge from physical e again
+  - fix the missing mountain term in physical surface temperature: the existing plate-derived orographicRoughness field is converted to resolved mountain relief and added to macroTerrain elevation before the 6 K/km lapse-rate budget
+  - use the same 5.2 km effective relief scale already used by orographic lift, conservatively converted to mean ridge height; high mountain belts can now cool the actual Weather Core by tens of kelvin instead of being climate-flat decorations
+  - raise the physical elevation ceiling from 5 to 9 km so terrestrial high mountains are representable without clipping
+  - keep continental/polar inversion physics from 0.5.124; a +13 C mean Earth-like world can now physically resolve <-60 C exposed surfaces on high Antarctic-style interior mountains without a palette trick
+  - Thermal Imager evaluates the exact rendered terrain once and adds only a bounded sub-grid peak residual (max about 2.4 km / 14.4 K) above the coarse Weather Core mountain belt, so individual ridges appear colder without double-counting a second global climate
+  - thermal legend now reports live physical minima for the whole surface, north polar region, south polar region and resolved mountains, making it immediately obvious whether a suspicious colour is a palette issue or a climate-model issue
+Regression: orbit-eccentricity.test.js forbids visual e amplification and checks the low-e mature-system distribution; polar-surface-thermodynamics.test.js verifies plate-derived mountain relief and a <-60 C high-polar mountain at +13 C global mean; thermal-celsius.test.js guards sub-grid mountain lapse thermography and live Celsius minima.
+Snapshot: 0.5.124 remains the rollback point before restoring truthful HUD eccentricity and coupling resolved tectonic relief into surface temperature.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
