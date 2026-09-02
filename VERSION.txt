@@ -1,14 +1,17 @@
-VERSION 0.5.130
-Base: 0.5.129
-Changes: Restore physically generated temperate and mid-latitude cloud cover by coupling resolved ascent to condensation instead of requiring whole-column surface-temperature supersaturation.
-  - add conservative lifting condensation from fronts, cyclones and orographic ascent: diagnose LCL from local RH, lift a fractional parcel, cool it at dry/moist adiabatic lapse rates and transfer only available vapor into physical cloud condensate
-  - use existing frontVerticalVelocity/frontStrength, systemVerticalVelocity/cycloneStrength and orographicVerticalVelocity/orographicRoughness; no latitude cloud mask or decorative storm-track band is introduced
-  - anticyclonic subsidence strongly suppresses the ascending cloud fraction, retaining physically clearer subtropical/high-pressure regions while allowing humid frontal storm tracks to cloud over
-  - damp overlap with the existing deep-convective plume microphysics so synoptic lift and thunderstorms do not condense the same sub-grid parcel twice
-  - publish resolvedLiftCloudPotential/area/depth/condensation-rate diagnostics and feed only that physical diagnosis into the inertial cloud visual response, preventing coarse-cell RH below 0.78 from instantly erasing a real lifting cloud
-  - preserve local/global H2O conservation and existing latent heating: every kilogram of new cloud water is removed from vaporColumn, and condApplyLatentHeat remains the single latent-heat path
-  - keep the new work off render FPS: the coupling is a deterministic O(N) pass inside the existing fixed Weather Core condensation step and skips dry/non-lifting cells before expensive LCL/saturation calculations
-  - calibration reference follows observed Earth climatology rather than a hard-coded map: cloud-rich tropical convergence and mid-latitude storm tracks, with relatively clearer descending subtropics
-Regression: resolved-lift-clouds.test.js checks sub-saturated frontal cloud formation, exact H2O conservation, no-lift/dry-air rejection, anticyclonic suppression, visual persistence coupling and build order.
-Snapshot: 0.5.129 remains the rollback point before resolved lifting condensation.
+VERSION 0.5.131
+Base: 0.5.130
+Changes: Replace decorative river ownership with runoff-driven drainage physics tied to the Weather Core water cycle and resolved terrain.
+  - close precipitation/infiltration/soil storage into a persistent effective-runoff field and route that water over the cubed-sphere macro terrain instead of inventing rivers from a shader noise zero-line
+  - hydro-condition closed depressions with a Priority-Flood pass seeded from the resolved ocean, then build one acyclic downstream drainage edge per land cell and a topological contributing-area/discharge order
+  - convert local runoff from kg/m²/s to physical m³/s using each cell area and planetary radius; accumulated discharge therefore grows downstream as real contributing basins merge
+  - retain finite river memory/baseflow between individual precipitation ticks using soil/humidity-supported unresolved groundwater rather than a random perennial-river source
+  - derive channel width, depth and velocity from discharge power laws in the hydraulic-geometry sense, and publish Q^m S^n stream-power potential for later geomorphic erosion work
+  - derive lake support from hydro-conditioned depression depth plus available discharge, rather than allowing procedural FBM basins to decide whether a lake exists
+  - rasterize the diagnosed cell-to-downstream graph into a denser temporally blended RGBA8 cubemap, producing continuous river corridors across Weather Core cells without square hydrology patches
+  - make the surface shader consume that physical river/lake cubemap as the authoritative topology; the old FBM river/lake functions now only roughen edges and add sub-grid morphology inside physical corridors
+  - let physical river/floodplain support feed riparian wetness and drought resistance, while local freeze/boil thermodynamics continue to decide whether inland water is liquid or frozen
+  - keep drainage/discharge updates on the existing fixed Weather Core cadence; rendering only samples and blends a cubemap, so no CPU hydrology runs per frame
+  - calibration/architecture follows DEM hydrology practice (conditioned elevation -> flow direction -> contributing runoff) and Leopold-Maddock hydraulic geometry rather than a latitude or decorative river mask
+Regression: river-physics.test.js checks Priority-Flood pit escape, acyclic ocean drainage, downstream discharge growth, hydraulic-geometry monotonicity, stream-power response, dry-basin rejection, physical GPU graph rasterization and build/shader wiring. biome-state.test.js now requires physical river/lake corridors to own ecological floodplain wetness.
+Snapshot: 0.5.130 remains the rollback point before runoff-driven visible drainage.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
