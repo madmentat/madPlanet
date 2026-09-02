@@ -1,13 +1,20 @@
-/* ============ 0.5.118: schematic orbit line in the main scene ============ */
+/* ============ 0.5.118 / 0.5.121: stabilized orbit line in the main scene ============ */
 /*
-   The mini-map remains the authoritative orbit diagram. This optional layer is
-   deliberately schematic: it projects a thin orbit ellipse around the visible
-   system star and constrains that ellipse to pass through the screen-centre
-   planet. The ellipse orientation follows the physical ecliptic plane, but its
-   apparent radius is chosen for readability rather than astronomical scale.
+   The 0.5.118 implementation solved the ellipse radius from the projected
+   star-to-planet separation. That construction is singular: looking almost
+   along the star direction drives the separation toward zero, while an
+   edge-on projected plane divides by a tiny minor axis and can explode to
+   several screens. It also lets numerical perspective error move the orbit
+   away from the planet centre.
 
-   Display state is local UI policy only. Closing Orbit hides this layer even
-   when its toggle remains armed for the next time the window is opened.
+   0.5.121 switches the main-scene line to an Elite-like navigation HUD model:
+   the physical ecliptic orientation is still respected, but astronomical
+   distance is intentionally normalized to a fixed screen-space radius. The
+   current planet is the t=0 point of the orbit and is therefore guaranteed to
+   project to the exact screen centre every frame. Rotating the camera changes
+   only the ellipse orientation/flattening, never its major-axis size. Looking
+   directly toward/away from the star correctly collapses the orbit toward a
+   straight line through the planet instead of a tiny or displaced ring.
 */
 (function installOrbitScenePath(){
   if(typeof document==='undefined'||typeof drawFrame!=='function')return;
@@ -15,6 +22,10 @@
   if(!orbitWindow)return;
 
   const STORAGE_KEY='madPlanet.orbitOverlay.scenePath.v1';
+  const HUD_RADIUS_FRACTION=0.23;
+  const HUD_RADIUS_MIN_PX=72;
+  const HUD_RADIUS_MAX_PX=260;
+  const ORBIT_SAMPLES=176;
   let enabled=false;
   try{enabled=localStorage.getItem(STORAGE_KEY)==='1';}catch(_e){}
 
@@ -47,7 +58,7 @@
 
   function syncToggle(){
     toggle.setAttribute('aria-pressed',String(enabled));
-    toggle.title=enabled?'Скрыть условную орбиту в основной сцене':'Показать условную орбиту вокруг звезды';
+    toggle.title=enabled?'Скрыть орбитальную линию в основной сцене':'Показать орбитальную линию в основной сцене';
     toggle.setAttribute('aria-label',toggle.title);
   }
   function setEnabled(on){
@@ -60,6 +71,7 @@
   function norm(v){const l=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/l,v[1]/l,v[2]/l];}
   function cross(a,b){return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
   function dot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+  function sub(a,b){return [a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
   function resize(){
     const dpr=Math.min(1.5,Math.max(1,devicePixelRatio||1));
     const w=Math.max(1,Math.round(innerWidth*dpr)),h=Math.max(1,Math.round(innerHeight*dpr));
@@ -67,12 +79,16 @@
     ctx.setTransform(dpr,0,0,dpr,0,0);return {w:innerWidth,h:innerHeight};
   }
   function cameraBasis(){
+    /* Orientation only. Deliberately omit cam.dist: zoom must never resize the
+       navigation orbit. */
     const cp=Math.cos(cam.pitch),sp=Math.sin(cam.pitch);
-    const pos=[cam.dist*cp*Math.sin(cam.yaw),cam.dist*sp,cam.dist*cp*Math.cos(cam.yaw)];
-    const fwd=norm([-pos[0],-pos[1],-pos[2]]),rgt=norm(cross(fwd,[0,1,0])),up=cross(rgt,fwd);
+    const pos=[cp*Math.sin(cam.yaw),sp,cp*Math.cos(cam.yaw)];
+    const fwd=norm([-pos[0],-pos[1],-pos[2]]);
+    const ref=Math.abs(fwd[1])>0.96?[1,0,0]:[0,1,0];
+    const rgt=norm(cross(fwd,ref)),up=cross(rgt,fwd);
     return {fwd,rgt,up};
   }
-  function orbitNormal(){
+  function desiredOrbitNormal(){
     const axis=norm(world.axis||[0,1,0]);
     const ref=Math.abs(axis[1])<0.92?[0,1,0]:[1,0,0];
     const side=norm(cross(axis,ref));
@@ -83,19 +99,57 @@
       axis[2]*Math.cos(tilt)+side[2]*Math.sin(tilt)
     ]);
   }
-  function pointOnEllipse(cx,cy,a,q,ang,t){
-    const ca=Math.cos(ang),sa=Math.sin(ang),x=a*Math.cos(t),y=a*q*Math.sin(t);
-    return [cx+x*ca-y*sa,cy+x*sa+y*ca];
-  }
-  function strokeArc(cx,cy,a,q,ang,t0,t1,stroke,width,dash){
-    ctx.beginPath();
-    const N=72;
-    for(let i=0;i<=N;i++){
-      const t=t0+(t1-t0)*(i/N),p=pointOnEllipse(cx,cy,a,q,ang,t);
-      if(i===0)ctx.moveTo(p[0],p[1]);else ctx.lineTo(p[0],p[1]);
+  function orbitNormalThroughRadial(desired,radial){
+    /* A planet-star radius vector must lie in the orbital plane. Project the
+       physical ecliptic normal perpendicular to that radius so the displayed
+       circle contains the current planet exactly. */
+    const k=dot(desired,radial);
+    let n=[desired[0]-radial[0]*k,desired[1]-radial[1]*k,desired[2]-radial[2]*k];
+    if(Math.hypot(n[0],n[1],n[2])<1e-5){
+      const ref=Math.abs(radial[1])<0.90?[0,1,0]:[1,0,0];
+      n=cross(radial,ref);
     }
-    ctx.strokeStyle=stroke;ctx.lineWidth=width;ctx.setLineDash(dash||[]);ctx.stroke();ctx.setLineDash([]);
+    return norm(n);
   }
+  function projectUnit(v,basis){return [dot(v,basis.rgt),-dot(v,basis.up)];}
+  function hudRadius(sz){
+    const minSide=Math.min(sz.w,sz.h);
+    return Math.min(HUD_RADIUS_MAX_PX,Math.max(HUD_RADIUS_MIN_PX,minSide*HUD_RADIUS_FRACTION));
+  }
+  function makeGeometry(sz,basis,sun){
+    const planetScreen=[sz.w*0.5,sz.h*0.5];
+    const radial=norm([-sun[0],-sun[1],-sun[2]]); /* star -> current planet */
+    const n=orbitNormalThroughRadial(desiredOrbitNormal(),radial);
+    const tangent=norm(cross(n,radial));
+    const r2=projectUnit(radial,basis),t2=projectUnit(tangent,basis);
+    const radius=hudRadius(sz);
+    const center=[planetScreen[0]-radius*r2[0],planetScreen[1]-radius*r2[1]];
+    const points=[];
+    for(let i=0;i<=ORBIT_SAMPLES;i++){
+      const a=2*Math.PI*i/ORBIT_SAMPLES,c=Math.cos(a),s=Math.sin(a);
+      const p3=[radial[0]*c+tangent[0]*s,radial[1]*c+tangent[1]*s,radial[2]*c+tangent[2]*s];
+      const p2=projectUnit(p3,basis);
+      const depth=dot(sub(p3,radial),basis.fwd);
+      points.push({x:center[0]+radius*p2[0],y:center[1]+radius*p2[1],depth});
+    }
+    /* t=0 is the current planet. Force the last sub-pixel error away so the
+       orbit can never appear to float above/below the planet centre. */
+    points[0].x=planetScreen[0];points[0].y=planetScreen[1];
+    points[points.length-1].x=planetScreen[0];points[points.length-1].y=planetScreen[1];
+    return {planetScreen,center,points,radius,normal:n};
+  }
+  function pathAll(points){
+    ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);
+    for(let i=1;i<points.length;i++)ctx.lineTo(points[i].x,points[i].y);
+  }
+  function pathDepth(points,near){
+    ctx.beginPath();
+    for(let i=1;i<points.length;i++){
+      const a=points[i-1],b=points[i],d=0.5*(a.depth+b.depth);
+      if((near&&d<=0)||(!near&&d>0)){ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);}
+    }
+  }
+  function drawNode(x,y,r,fill){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();}
   let wasVisible=false;
   function clear(){if(wasVisible&&ctx){ctx.clearRect(0,0,canvas.width,canvas.height);}wasVisible=false;canvas.classList.remove('on');}
   function draw(){
@@ -103,37 +157,35 @@
     if(!enabled||!orbitMode||!ctx||typeof cam==='undefined'||typeof world==='undefined'){clear();return;}
     const sz=resize(),basis=cameraBasis();ctx.clearRect(0,0,sz.w,sz.h);
     const sun=norm([Math.cos(sunEl)*Math.sin(sunAz),Math.sin(sunEl),Math.cos(sunEl)*Math.cos(sunAz)]);
-    const z=dot(sun,basis.fwd);
-    if(z<=0.035){clear();return;}
-    const sx=sz.w*0.5+(FOCAL*dot(sun,basis.rgt)/z)*sz.h;
-    const sy=sz.h*0.5-(FOCAL*dot(sun,basis.up)/z)*sz.h;
-    if(Math.abs(sx-sz.w*0.5)>sz.w*3||Math.abs(sy-sz.h*0.5)>sz.h*3){clear();return;}
+    const g=makeGeometry(sz,basis,sun),pts=g.points;
 
-    const n=orbitNormal();
-    const nx=dot(n,basis.rgt),ny=-dot(n,basis.up),nz=Math.abs(dot(n,basis.fwd));
-    const ang=Math.atan2(ny,nx)+Math.PI/2;
-    const q=Math.max(0.12,Math.min(1,nz));
-    const dx=sz.w*0.5-sx,dy=sz.h*0.5-sy,ca=Math.cos(ang),sa=Math.sin(ang);
-    const ex=dx*ca+dy*sa,ey=-dx*sa+dy*ca;
-    let a=Math.sqrt(ex*ex+(ey*ey)/(q*q));
-    a=Math.max(26,Math.min(a,Math.max(sz.w,sz.h)*3.5));
+    ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+    /* Soft amber bloom + dim dashed far side + crisp near side. This is HUD
+       styling, not emissive world geometry, and therefore remains readable on
+       both day and night hemispheres. */
+    pathAll(pts);ctx.setLineDash([]);ctx.strokeStyle='rgba(255,170,72,.10)';ctx.lineWidth=7;ctx.stroke();
+    pathDepth(pts,false);ctx.setLineDash([4,5]);ctx.strokeStyle='rgba(255,184,88,.34)';ctx.lineWidth=1.15;ctx.stroke();
+    pathDepth(pts,true);ctx.setLineDash([]);ctx.strokeStyle='rgba(255,191,101,.82)';ctx.lineWidth=1.65;ctx.stroke();
+    pathDepth(pts,true);ctx.strokeStyle='rgba(255,221,166,.36)';ctx.lineWidth=.65;ctx.stroke();
 
-    /* faint halo plus dashed far side / solid near side: this makes the line
-       read like an instrument field line without pretending it is to scale. */
-    ctx.save();
-    strokeArc(sx,sy,a,q,ang,0,Math.PI*2,'rgba(232,163,92,.11)',5,null);
-    strokeArc(sx,sy,a,q,ang,Math.PI,Math.PI*2,'rgba(232,163,92,.34)',1.1,[5,6]);
-    strokeArc(sx,sy,a,q,ang,0,Math.PI,'rgba(232,163,92,.72)',1.35,null);
+    /* Quarter-orbit reference pips are deliberately tiny, closer to Elite's
+       navigation symbology than to a scientific plot. */
+    for(const k of [Math.round(ORBIT_SAMPLES/4),Math.round(ORBIT_SAMPLES/2),Math.round(3*ORBIT_SAMPLES/4)]){
+      const p=pts[k];drawNode(p.x,p.y,1.65,'rgba(255,193,105,.58)');
+    }
+
+    /* Current body crossing: always exactly the screen centre. */
+    const c=g.planetScreen;
+    drawNode(c[0],c[1],5.0,'rgba(255,171,68,.10)');
+    drawNode(c[0],c[1],2.15,'rgba(184,211,255,.92)');
+    ctx.beginPath();ctx.arc(c[0],c[1],4.0,0,Math.PI*2);ctx.strokeStyle='rgba(255,202,126,.62)';ctx.lineWidth=.8;ctx.stroke();
+
+    if(sz.w>420){
+      const labelPoint=pts[Math.round(ORBIT_SAMPLES*0.56)];
+      ctx.font='8px ui-monospace,monospace';ctx.fillStyle='rgba(255,194,108,.50)';ctx.textAlign='left';
+      ctx.fillText('ОРБИТА',labelPoint.x+6,labelPoint.y-5);
+    }
     ctx.restore();
-
-    /* The planet is the current observer and therefore lies on the schematic
-       trajectory at screen centre. A small tick makes that relation explicit
-       without drawing over the whole planet. */
-    const theta=Math.atan2(ey/q,ex);
-    const p=pointOnEllipse(sx,sy,a,q,ang,theta);
-    ctx.beginPath();ctx.arc(p[0],p[1],3.2,0,Math.PI*2);ctx.fillStyle='rgba(159,194,255,.92)';ctx.fill();
-    ctx.beginPath();ctx.arc(sx,sy,4.2,0,Math.PI*2);ctx.fillStyle='rgba(232,163,92,.90)';ctx.fill();
-    ctx.font='9px ui-monospace,monospace';ctx.fillStyle='rgba(232,163,92,.68)';ctx.textAlign='left';ctx.fillText('орбита · схема',sx+8,sy-7);
 
     canvas.classList.add('on');wasVisible=true;
   }
