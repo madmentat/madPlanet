@@ -5,6 +5,7 @@ let orbitControlMode = 'planet';
 function setOrbitControlMode(mode){
   orbitControlMode = mode === 'sun' ? 'sun' : 'planet';
   cam.vyaw = cam.vpitch = 0;
+  cameraReleaseVYaw=cameraReleaseVPitch=0;
   return orbitControlMode;
 }
 function getOrbitControlMode(){ return orbitControlMode; }
@@ -31,9 +32,10 @@ let canvasGestureScrollX=0,canvasGestureScrollY=0;
 */
 const CAMERA_INPUT_MAX_STEP_RAD=0.16;       /* <=9.2 deg per rendered frame */
 const CAMERA_INPUT_EPS=1e-6;
-const CAMERA_EVENT_VELOCITY_MAX=8.0;        /* rad/s, guards timestamp spikes */
+const CAMERA_EVENT_VELOCITY_MAX=5.0;        /* rad/s, bounded after long stalls */
 let cameraPendingYaw=0,cameraPendingPitch=0;
 let cameraPendingSunAz=0,cameraPendingSunEl=0;
+let cameraReleaseVYaw=0,cameraReleaseVPitch=0;
 
 function cameraInputScale(){
   return 1/Math.max(1,Math.min(innerWidth,innerHeight))*3.2*Math.min(cam.dist-0.95,1.4);
@@ -48,7 +50,11 @@ function cameraQueuePlanetDelta(p,dx,dy,stamp){
   cameraPendingYaw+=dyaw;cameraPendingPitch+=dpitch;
   const dt=Math.max(1/240,Math.min(0.12,(stamp-(Number(p.t)||stamp))/1000||1/60));
   const vy=cameraClampVelocity(dyaw/dt),vp=cameraClampVelocity(dpitch/dt);
-  cam.vyaw=cam.vyaw*0.42+vy*0.58;cam.vpitch=cam.vpitch*0.42+vp*0.58;
+  cameraReleaseVYaw=cameraReleaseVYaw*0.42+vy*0.58;
+  cameraReleaseVPitch=cameraReleaseVPitch*0.42+vp*0.58;
+  /* render.js must not integrate inertia before the queued drag itself has
+     appeared on screen; publish the release velocity only when the queue drains. */
+  cam.vyaw=cam.vpitch=0;
   p.t=stamp;
 }
 function cameraQueueSunDelta(dx,dy){
@@ -115,6 +121,10 @@ function cameraInputStep(){
   if(Math.abs(cameraPendingPitch)<CAMERA_INPUT_EPS)cameraPendingPitch=0;
   if(Math.abs(cameraPendingSunAz)<CAMERA_INPUT_EPS)cameraPendingSunAz=0;
   if(Math.abs(cameraPendingSunEl)<CAMERA_INPUT_EPS)cameraPendingSunEl=0;
+  if(pointers.size===0&&!cameraInputPending()&&(Math.abs(cameraReleaseVYaw)+Math.abs(cameraReleaseVPitch)>CAMERA_INPUT_EPS)){
+    cam.vyaw=cameraReleaseVYaw;cam.vpitch=cameraReleaseVPitch;
+    cameraReleaseVYaw=cameraReleaseVPitch=0;
+  }
   return moved;
 }
 
@@ -148,7 +158,7 @@ canvas.addEventListener('pointerdown', e => {
   if(pointers.size===2){
     const [a,b]=[...pointers.values()];pinchD=Math.hypot(a.x-b.x,a.y-b.y);
   }
-  cam.vyaw=cam.vpitch=0;
+  cam.vyaw=cam.vpitch=0;cameraReleaseVYaw=cameraReleaseVPitch=0;
   canvas.classList.add('grab');restoreCanvasViewport();
 },{passive:false});
 canvas.addEventListener('pointermove',e=>{
