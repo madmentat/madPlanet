@@ -1,11 +1,11 @@
-/* ============ 0.5.117 / 0.5.120 / 0.5.122: thermal imager display mode ============ */
+/* ============ 0.5.117 / 0.5.120 / 0.5.122 / 0.5.124: thermal imager display mode ============ */
 (function installThermalDisplay(){
   if(typeof document==='undefined'||typeof drawFrame!=='function'||typeof gl==='undefined')return;
   let enabled=false,boundProgram=null,loc=null;
   const POS_KEY='madPlanet.thermalLegend.pos.v1';
 
   const legend=document.createElement('div');legend.id='thermalLegend';legend.setAttribute('aria-hidden','true');
-  legend.innerHTML='<div class="thermal-scale"></div><div class="thermal-labels"><span style="left:0%">−190 °C</span><span style="left:41%">0 °C</span><span style="left:76%">+100 °C</span><span style="left:93%">+700 °C</span><span style="left:100%">+1200 °C</span></div><div class="thermal-caption">температура поверхности · Weather Core + активная лава</div>';
+  legend.innerHTML='<div class="thermal-scale"></div><div class="thermal-labels"><span style="left:0%">≤−100 °C</span><span style="left:28%">−50 °C</span><span style="left:53%">0 °C</span><span style="left:77%">+50 °C</span><span style="left:100%">+1200 °C</span></div><div class="thermal-caption">климатическая шкала усилена · горячий хвост для лавы</div>';
   const style=document.createElement('style');style.id='madplanet-thermal-style';
   style.textContent=`
     #thermalLegend{position:fixed;z-index:6;left:18px;bottom:calc(var(--safe-b) + 54px);width:250px;padding:8px 10px 7px;border:1px solid rgba(159,194,255,.14);border-radius:10px;background:rgba(7,12,20,.56);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:none;pointer-events:auto;touch-action:none;cursor:grab;box-shadow:0 4px 20px rgba(0,0,0,.28)}
