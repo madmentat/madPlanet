@@ -23,9 +23,9 @@ ordered(buildSh,['js/camera.js','js/magnetosphere.js','js/magnet-axis-rotation.j
 
 assert.ok(camera.includes("let orbitControlMode = 'planet'"),
   'camera needs an explicit planet/sun drag mode');
-assert.ok(camera.includes("orbitControlMode === 'sun'"),
+assert.match(camera,/orbitControlMode\s*===\s*'sun'/,
   'primary pointer must rotate the sun in star mode');
-assert.ok(camera.includes('e.button === 2'),
+assert.match(camera,/e\.button\s*===\s*2/,
   'desktop right-button sun rotation must remain available');
 assert.ok(camera.includes('function setOrbitControlMode'),
   'touch UI must have a public mode setter');
