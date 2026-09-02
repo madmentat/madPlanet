@@ -1,16 +1,16 @@
-VERSION 0.5.127
-Base: 0.5.126
-Changes: Prioritize lossless camera input and spatially smooth motion over perfect wall-clock catch-up during uneven frame pacing.
-  - replace direct pointer-to-camera mutation with a lossless angular input queue; delivered and Chromium-coalesced pointer samples accumulate independently of render FPS
-  - pointerup always applies its final coordinates before capture state is removed, so a short flick remains responsive even when no pointermove event was delivered between down and up
-  - drain queued camera movement in bounded <=0.16 rad chunks per visible frame; a delayed input batch is spread across frames instead of teleporting the planet by a large angle at once
-  - derive release inertia from real pointer event timestamps rather than assuming 60 input events per second, cap pathological release velocity, and do not start inertia until the visible drag queue has drained
-  - keep pinch zoom and star-drag semantics intact; canvas touch capture/overscroll protection remains unchanged
-  - add a late input-frame-pacing layer that drains camera input immediately before the final wrapped drawFrame computes camera matrices
-  - use Chromium navigator.scheduling.isInputPending({includeContinuous:true}) when available as an optional priority signal: Weather Core ticks and deferred cloud/fog/cryosphere publications yield before already-queued mouse/touch input
-  - extend interaction priority to queued camera deltas after pointerup, preventing background work from jumping in between a short flick and its remaining visible frames
-  - during active/queued interaction, a real frame gap above 28 ms can trigger the existing adaptive-resolution policy immediately instead of waiting for the normal sparse GPU timing sample; normal cooldown prevents resize oscillation
-  - no readPixels, gl.finish, synchronous framebuffer readback or extra render pass is introduced
-Regression: input-frame-pacing.test.js functionally reproduces the pointerdown -> pointerup short-flick case with no pointermove, verifies bounded next-frame movement, coalesced/final-event handling, staged inertia, browser input-priority guards and build order.
-Snapshot: 0.5.126 remains the rollback point before lossless queued camera input and pending-input scheduling priority.
+VERSION 0.5.128
+Base: 0.5.127
+Changes: Reconcile current Weather Core temperature with the global climate regime estimate and reduce remaining perceptual frame jumps.
+  - define the current planet temperature as the cubed-sphere area-weighted Weather Core surfaceSkinTemp field used by the thermal probe and thermal cubemap; the top-left T-bar now reports this physical current mean instead of climateModel().T
+  - keep climateModel().T as a calculated radiative regime/attractor and label it explicitly as such in the Planet diagnostics; show current surface mean and current -> calculated temperature side by side
+  - fix reversed H2O causality: water/ice/vapour phase partition now follows the CURRENT physical surface mean whenever a same-seed Weather Core exists, rather than evaporating oceans according to a future hot climate target before the surface has warmed
+  - strengthen the bootstrap water equilibrium solve near moist-greenhouse feedback by iterating existing one-pass physics to convergence with a small hard bound, preventing Random-world acceptance on a transient intermediate H2O state that runs away seconds later
+  - after generating a new random world, ensure the new Weather Core immediately so thermal imagery/probe/headline cannot remain on the previous seed while interaction-priority scheduling defers physics
+  - make queued camera drain frame-time aware: small flicks still apply on the next frame, while large delayed batches are limited to roughly 0.02..0.068 rad per visible frame instead of the old 0.16 rad / 9.2 degree jump
+  - cap release inertia at 1.65 rad/s before render-loop integration and treat residual camera inertia/zoom settling as active interaction, so Weather Core and deferred GPU publication do not interrupt visible camera coasting
+  - adaptive render scale now reacts through smaller backing-store steps with faster controlled degradation and slow recovery, avoiding one-frame 20-25% resolution pops
+  - extend cloud, fog and cryosphere GPU interpolation horizons so delayed fixed-step publication remains continuous rather than freeze-then-move during scheduler jitter or user interaction
+  - physical Weather Core cadence, fixed-step determinism, orbital physics and climate energy equations remain unchanged except for the corrected H2O phase-temperature coupling described above
+Regression: climate-consistency.test.js guards area-weighted skin-temperature semantics, H2O current-state causality and stale-seed fallback; frame-pacing-polish.test.js guards frame-time camera limits, immediate small flicks, inertia caps, motion-priority scheduling and temporal visual interpolation.
+Snapshot: 0.5.127 remains the rollback point before current-surface climate consistency and perceptual pacing polish.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
