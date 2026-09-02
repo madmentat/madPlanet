@@ -1,16 +1,13 @@
-VERSION 0.5.128
-Base: 0.5.127
-Changes: Reconcile current Weather Core temperature with the global climate regime estimate and reduce remaining perceptual frame jumps.
-  - define the current planet temperature as the cubed-sphere area-weighted Weather Core surfaceSkinTemp field used by the thermal probe and thermal cubemap; the top-left T-bar now reports this physical current mean instead of climateModel().T
-  - keep climateModel().T as a calculated radiative regime/attractor and label it explicitly as such in the Planet diagnostics; show current surface mean and current -> calculated temperature side by side
-  - fix reversed H2O causality: water/ice/vapour phase partition now follows the CURRENT physical surface mean whenever a same-seed Weather Core exists, rather than evaporating oceans according to a future hot climate target before the surface has warmed
-  - strengthen the bootstrap water equilibrium solve near moist-greenhouse feedback by iterating existing one-pass physics to convergence with a small hard bound, preventing Random-world acceptance on a transient intermediate H2O state that runs away seconds later
-  - after generating a new random world, ensure the new Weather Core immediately so thermal imagery/probe/headline cannot remain on the previous seed while interaction-priority scheduling defers physics
-  - make queued camera drain frame-time aware: small flicks still apply on the next frame, while large delayed batches are limited to roughly 0.02..0.068 rad per visible frame instead of the old 0.16 rad / 9.2 degree jump
-  - cap release inertia at 1.65 rad/s before render-loop integration and treat residual camera inertia/zoom settling as active interaction, so Weather Core and deferred GPU publication do not interrupt visible camera coasting
-  - adaptive render scale now reacts through smaller backing-store steps with faster controlled degradation and slow recovery, avoiding one-frame 20-25% resolution pops
-  - extend cloud, fog and cryosphere GPU interpolation horizons so delayed fixed-step publication remains continuous rather than freeze-then-move during scheduler jitter or user interaction
-  - physical Weather Core cadence, fixed-step determinism, orbital physics and climate energy equations remain unchanged except for the corrected H2O phase-temperature coupling described above
-Regression: climate-consistency.test.js guards area-weighted skin-temperature semantics, H2O current-state causality and stale-seed fallback; frame-pacing-polish.test.js guards frame-time camera limits, immediate small flicks, inertia caps, motion-priority scheduling and temporal visual interpolation.
-Snapshot: 0.5.127 remains the rollback point before current-surface climate consistency and perceptual pacing polish.
+VERSION 0.5.129
+Base: 0.5.128
+Changes: Make visible polar ice thermodynamically consistent with the final rendered surface temperature and reduce over-solid thin sea-ice caps.
+  - close the snow/land-ice/sea-ice phase balance once more after late atmospheric/ocean heat transport and polar-continent modules, so heat introduced after the original cryosphere step is spent on latent melting before the final surface is published
+  - while snow or glacier ice remains, late positive sensible heat clamps landSurfaceTemp to the 0 C melting boundary until the available ice mass is actually consumed
+  - while bulk sea ice remains, late positive sensible heat melts thickness first and keeps SST at the seawater freezing boundary (~-1.8 C); only after all ice has melted may leftover heat warm open water above that point
+  - republish cryosphere coverage and polar surfaceSkinTemp after the late phase closure, so fog GPU, thermal imagery and the physical probe all receive the same final thermodynamic state
+  - widen thickness-to-sea-ice-area e-folding from the old display shortcut to 0.35 m: ~10 cm new ice now leaves broad leads, while ~1 m still gives a compact pack; deep supercooling can still close the surface through the existing thermodynamic skin floor
+  - Thermal mode samples the exact dense binary cryosphere display mask and clamps visible snow/ice pixels to <=0 C before mountain/lava refinements, preventing linear temperature filtering from painting a white ice pixel at +2..+4 C near a coarse Weather Core boundary
+  - retain energy conservation: the new late closure consumes only sensible heat already present in the final land/ocean reservoirs and converts the corresponding snow/ice mass to liquid; it does not invent cooling or delete H2O
+Regression: cryosphere-phase-consistency.test.js checks late land/sea latent-heat closure, thin-vs-compact sea-ice area response, removal of fully melted thin ice and exact Thermal/cryosphere phase consistency.
+Snapshot: 0.5.128 remains the rollback point before the final-tick cryosphere phase closure and less aggressive thin-ice coverage.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
