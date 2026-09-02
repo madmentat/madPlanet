@@ -1,29 +1,33 @@
-/* ============ 0.5.123: polar surface skin + plateau thermodynamics ============ */
+/* ============ 0.5.123 / 0.5.125: surface skin + plateau/mountain thermodynamics ============ */
 /*
    Weather Core historically exposed one surfaceTemp field for several distinct
    reservoirs. Over open ocean that is appropriate SST, but under sea ice the
    mixed layer remains close to the seawater freezing point while the radiating
-   TOP of the ice can be tens of kelvin colder. Thermography was therefore
-   showing the water under polar ice instead of the visible surface.
+   TOP of the ice can be tens of kelvin colder. Thermography therefore needs a
+   separate visible/radiating surface skin.
 
-   A second missing process was continental polar cooling. ocean-heat-transport
-   correctly contains relative topographic anomalies, but its zero-mean band
-   closure intentionally removes the absolute lapse-rate cooling of a broad
-   plateau. Antarctica-like high land also develops a very stable boundary
-   layer that weakens downward atmospheric heat exchange, especially in polar
-   darkness. This module adds that unresolved surface-budget term without
-   changing the ocean SST reservoir or the global climate target.
+   0.5.125 fixes a second structural omission exposed by thermography. The
+   coarse climate previously derived elevation only from macroTerrain, which is
+   the continent-scale land/ocean field and contains no tectonic mountain
+   relief. wind-dynamics already computes orographicRoughness from the SAME
+   plate geometry that creates visible mountain belts. Convert that resolved
+   orographic proxy to physical relief and add it to the lapse-rate budget.
+   Large mountain systems now cool the actual Weather Core; the renderer only
+   adds a small sub-grid peak correction for relief finer than the 36-cell grid.
 */
-const POLAR_SURFACE_THERMODYNAMICS_MODEL=1;
+const POLAR_SURFACE_THERMODYNAMICS_MODEL=2;
 const PST_LAPSE_K_PER_KM=6.0;
 const PST_TERRAIN_KM_PER_UNIT=8.0;
-const PST_ELEVATION_MAX_KM=5.0;
+const PST_OROGRAPHIC_RELIEF_M=5200.0;
+const PST_OROGRAPHIC_HEIGHT_SHARE=0.78;
+const PST_ELEVATION_MAX_KM=9.0;
 const PST_INVERSION_MAX_K=15.0;
 const PST_OFFSET_MAX_K=48.0;
 const PST_LAND_HEAT_CAPACITY=1.6e7;
 const PST_ICE_CONDUCTION_SCALE_M=0.45;
 const PST_ICE_RADIATIVE_DROP_MAX_K=6.0;
 const PST_ICE_SKIN_MIN_K=150.0;
+const PST_POLAR_DIAG_SIN75=0.9659258263;
 
 function pstClamp(x,a,b){return Math.max(a,Math.min(b,Number(x)||0));}
 function pstSmooth(a,b,x){
@@ -40,9 +44,20 @@ function pstSeaLevelProxy(){
   if(typeof h2oSeaLevelProxy==='function')return h2oSeaLevelProxy();
   return 0;
 }
+function pstOrographicReliefKm(core,i){
+  const rough=pstClamp(Number(core?.orographicRoughness?.[i])||0,0,1);
+  const effectiveM=(typeof ORO_EFFECTIVE_RELIEF_M==='number'&&Number.isFinite(ORO_EFFECTIVE_RELIEF_M))
+    ?ORO_EFFECTIVE_RELIEF_M:PST_OROGRAPHIC_RELIEF_M;
+  return rough*effectiveM*PST_OROGRAPHIC_HEIGHT_SHARE/1000;
+}
 function pstElevationKm(core,i){
-  const h=Number(core?.macroTerrain?.[i]);if(!Number.isFinite(h))return 0;
-  return pstClamp((h-pstSeaLevelProxy())*PST_TERRAIN_KM_PER_UNIT,0,PST_ELEVATION_MAX_KM);
+  const h=Number(core?.macroTerrain?.[i]);
+  const baseKm=Number.isFinite(h)?Math.max(0,(h-pstSeaLevelProxy())*PST_TERRAIN_KM_PER_UNIT):0;
+  /* orographicRoughness is a broad mountain-belt proxy, not metre-accurate
+     topography. The 0.78 factor turns the existing 5.2 km effective relief
+     used by orographic lift into a conservative mean ridge elevation. */
+  const mountainKm=pstOrographicReliefKm(core,i);
+  return pstClamp(baseKm+mountainKm,0,PST_ELEVATION_MAX_KM);
 }
 function pstPolarStrength(core,i,axis){
   const s=Math.abs(pstClamp(core.dirX[i]*axis[0]+core.dirY[i]*axis[1]+core.dirZ[i]*axis[2],-1,1));
@@ -97,7 +112,7 @@ function pstPublishSurface(core){
 function pstRefreshPolarBudget(core,climate,axis,bootstrap){
   if(!core?.count)return core;pstEnsure(core);axis=pstAxis(axis);
   const lambda=pstFeedbackWm2K(core);
-  let maxOffset=0;
+  let maxOffset=0,maxElevation=0;
   for(let i=0;i<core.count;i++){
     const target=pstTargetLandOffsetK(core,i,climate,axis),old=Number(core.polarLandOffsetK[i])||0;
     const d=target-old;
@@ -108,8 +123,9 @@ function pstRefreshPolarBudget(core,climate,axis,bootstrap){
     }
     core.polarLandForcingWm2[i]=lambda*target;
     maxOffset=Math.max(maxOffset,Math.abs(target));
+    if((1-pstWater(core,i))>0.5)maxElevation=Math.max(maxElevation,pstElevationKm(core,i));
   }
-  core.polarLandMaxOffsetK=maxOffset;
+  core.polarLandMaxOffsetK=maxOffset;core.surfaceMaxElevationKm=maxElevation;
   pstPublishSurface(core);return core;
 }
 function pstApplyPolarForcing(core,dtSec){
@@ -124,6 +140,7 @@ function pstApplyPolarForcing(core,dtSec){
 }
 function pstRefreshSkin(core,axis){
   if(!core?.count)return core;pstEnsure(core);axis=pstAxis(axis);
+  let minK=Infinity,northMinK=Infinity,southMinK=Infinity,mountainMinK=Infinity;
   for(let i=0;i<core.count;i++){
     const w=pstWater(core,i);
     const landT=Number(core.landSurfaceTemp?.[i]??core.surfaceTemp[i])||273.15;
@@ -139,9 +156,19 @@ function pstRefreshSkin(core,axis){
     let iceSkin=air+coupling*(base-air)-radiativeDrop;
     iceSkin=pstClamp(iceSkin,PST_ICE_SKIN_MIN_K,273.15);
     const seaSkin=seaT*(1-ice)+iceSkin*ice;
+    const skin=landT*(1-w)+seaSkin*w;
     core.seaIceSkinTemp[i]=iceSkin;
-    core.surfaceSkinTemp[i]=landT*(1-w)+seaSkin*w;
+    core.surfaceSkinTemp[i]=skin;
+    minK=Math.min(minK,skin);
+    const s=pstClamp(core.dirX[i]*axis[0]+core.dirY[i]*axis[1]+core.dirZ[i]*axis[2],-1,1);
+    if(s>=PST_POLAR_DIAG_SIN75)northMinK=Math.min(northMinK,skin);
+    if(s<=-PST_POLAR_DIAG_SIN75)southMinK=Math.min(southMinK,skin);
+    if((1-w)>0.5&&pstElevationKm(core,i)>=2.0)mountainMinK=Math.min(mountainMinK,skin);
   }
+  core.surfaceSkinMinK=Number.isFinite(minK)?minK:NaN;
+  core.northPolarSkinMinK=Number.isFinite(northMinK)?northMinK:NaN;
+  core.southPolarSkinMinK=Number.isFinite(southMinK)?southMinK:NaN;
+  core.mountainSkinMinK=Number.isFinite(mountainMinK)?mountainMinK:NaN;
   return core;
 }
 
@@ -190,9 +217,10 @@ weatherCoreFinite=function(core){
     const a=core?.[k];if(!a||a.length!==core.count)return false;
     for(let i=0;i<a.length;i++)if(!Number.isFinite(a[i]))return false;
   }
-  return Number.isFinite(core.polarLandMaxOffsetK||0);
+  return Number.isFinite(core.polarLandMaxOffsetK||0)&&Number.isFinite(core.surfaceMaxElevationKm||0);
 };
 
 window.__madPlanetPolarSurface={
-  targetLandOffsetK:pstTargetLandOffsetK,refreshSkin:pstRefreshSkin,elevationKm:pstElevationKm
+  targetLandOffsetK:pstTargetLandOffsetK,refreshSkin:pstRefreshSkin,elevationKm:pstElevationKm,
+  orographicReliefKm:pstOrographicReliefKm
 };
