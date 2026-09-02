@@ -1,14 +1,14 @@
-VERSION 0.5.119
-Base: 0.5.118
-Changes: Recompose the smartphone portrait interface into a compact right-aligned service cluster and a four-row bottom dock.
-  - Android/narrow portrait layout is now handled by one late mobile policy module instead of unrelated legacy exceptions from the shell, runtime settings and Pause modules
-  - hamburger moves to the actual safe top-right corner; program settings and Pause sit immediately to its left, with the simulation-speed cluster on the same right-aligned row when width permits
-  - on very narrow portrait screens (<=380 CSS px) only the wider speed control drops to a second right-aligned row; the three compact service buttons remain in the first row
-  - all sixteen logical rubric slots are presented as an 8x2 bottom grid with adaptive 34..40 px cells, eliminating horizontal tool scrolling in portrait; empty slots retain layout space and appear only as drag targets while rearranging
-  - the utility bar becomes two fixed rows below the tool grid: Ring/Stars/Detail/Plates toggles on the third visual row and Seed/Reroll/Random/Screenshot actions on the fourth/bottom row
-  - the whole four-row dock respects Android safe-area insets; hiding the rubric slides both tool and utility regions fully off-screen rather than leaving parts exposed
-  - parameter panels, runtime settings and the Thermal legend are lifted above the complete bottom dock so controls are never covered by the new grid
-  - desktop, landscape-phone and portrait-tablet layout contracts remain unchanged; this policy is scoped to max-width 700 px plus portrait orientation
-Regression: mobile-portrait-layout.js loads after pause-ui.js so its CSS is authoritative over all dynamically created controls; a dedicated regression test guards top service ordering, 8x2 rubric geometry, narrow-screen speed fallback and the two utility rows.
-Snapshot: 0.5.118 remains the rollback point before the compact Android portrait dock.
+VERSION 0.5.120
+Base: 0.5.119
+Changes: Convert user-facing temperature measurements to Celsius and make Thermal Imager resolve active volcanic/lava heat correctly.
+  - all currently exposed Planet/Weather temperature readouts are normalized to °C at the UI layer while the physical climate/weather solvers continue using kelvin internally
+  - global climate diagnostics no longer show duplicate K + °C values; Weather Core mean air temperature is shown in °C; ocean land/SST contrast uses °C for the temperature difference
+  - Thermal Imager legend is now entirely Celsius and spans the ordinary climate range through active-lava skin temperatures, with labels from about -190 °C to +1200 °C
+  - Thermal Imager now decodes the actual piecewise GPU temperature format (80..180 / 180..380 / 380..1000 K) instead of incorrectly treating the channel as a linear 180..380 K field
+  - ordinary climate temperatures retain most palette precision; extreme hot/cold tails remain visible without flattening the useful terrestrial range
+  - active volcanic vents add a sub-grid thermal skin term using the same deterministic arc/hotspot/vent mask as the visible volcano renderer, so hot signatures spatially coincide with volcanic features
+  - volcanic heat is intentionally a resolved surface-skin diagnostic rather than a whole Weather Core cell forcing: the synoptic 32..36-cell grid is too coarse to represent a small lava vent without unrealistically heating a huge region
+  - lava skin temperature follows the existing lava-activity control over a 600..1200 °C envelope; normal climate physics, world hash and seed are unchanged
+Regression: thermal-celsius.test.js guards Celsius-only user labels, packed-temperature decoding, matching visible/thermal volcano geography, lava-temperature range and late Celsius adapter load order in both builders.
+Snapshot: 0.5.119 remains the rollback point before Celsius-only UI temperatures and volcanic thermography.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
