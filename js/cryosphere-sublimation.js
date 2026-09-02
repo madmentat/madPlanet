@@ -291,7 +291,7 @@ weatherCoreStep=function(core,dtSec,climate,axis){
   return cryoPhaseConsistencyClose(core,dtSec,climate,axis);
 };
 
-window.__madPlanetCryospherePhase={
+if(typeof window!=='undefined')window.__madPlanetCryospherePhase={
   model:CRYO_PHASE_CONSISTENCY_MODEL,
   close:cryoPhaseConsistencyClose,
   seaIceCover:cryoSeaIceCover,
