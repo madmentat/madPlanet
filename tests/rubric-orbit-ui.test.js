@@ -57,7 +57,7 @@ assert.match(orbitScene,/points\[0\]\.x=planetScreen\[0\];points\[0\]\.y=planetS
 assert.match(orbitScene,/Deliberately omit cam\.dist/,'zoom must be intentionally excluded from navigation-orbit scale');
 assert.doesNotMatch(orbitScene,/Math\.sqrt\(ex\*ex\+\(ey\*ey\)\/\(q\*q\)\)/,'singular projected-star radius solve must not return');
 assert.doesNotMatch(orbitScene,/FOCAL\*dot\(sun/,'scene orbit must not size itself from perspective star projection');
-assert.match(orbitScene,/rgba\(255,184,88,\.34\).*\[4,5\]/s,'far side of stabilized orbit must remain visually distinguished');
+assert.match(orbitScene,/ctx\.setLineDash\(\[4,5\]\).*rgba\(255,184,88,\.34\)/s,'far side of stabilized orbit must remain dashed and dim');
 assert.match(orbitScene,/window\.__madPlanetOrbitScenePath/,'scene orbit must expose a diagnostic display API');
 assert.ok(!/state\.[A-Za-z0-9_]*orbit/i.test(orbitScene),'scene-orbit display state must not enter planet state/hash');
 
