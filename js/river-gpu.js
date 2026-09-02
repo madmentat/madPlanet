@@ -1,9 +1,17 @@
 /* ============ 0.5.131: physical rivers -> GPU cubemap ============ */
-/* R/G = previous river/lake support, B/A = current river/lake support.
+/*
+   R/G = previous river/lake support, B/A = current river/lake support.
    One RGBA8 cubemap keeps the bridge WebGL1-friendly; the texture is updated
-   only on Weather Core fixed ticks, never per render frame. */
+   only on Weather Core fixed ticks, never per render frame.
 
-const RIVER_GPU_MODEL=1;
+   Do not upsample coarse hydrology cells as square patches. Each diagnosed
+   river cell is connected to riverDownstream and rasterized as a continuous
+   great-circle-like segment on the denser cubemap. The shader therefore gets
+   a connected drainage corridor; procedural noise is free to roughen its edge
+   but can no longer invent or disconnect the river topology.
+*/
+
+const RIVER_GPU_MODEL=2;
 const RIVER_TEX_UNIT=2;
 const RIVER_GPU_UPSCALE=5;
 const RIVER_BLEND_DEFAULT_MS=900;
@@ -39,25 +47,66 @@ function riverGpuEnsure(N){
   for(let f=0;f<6;f++)gl.texImage2D(riverGpuFaceTarget(f),0,gl.RGBA,N,N,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);riverGpuHasFrame=false;riverGpuLastSeed=NaN;
 }
-function riverGpuDirToIndex(core,dx,dy,dz){
-  if(typeof windDirToIndex==='function')return windDirToIndex(core,dx,dy,dz);
-  const ax=Math.abs(dx),ay=Math.abs(dy),az=Math.abs(dz);let face,u,v,a;
-  if(ax>=ay&&ax>=az){if(dx>=0){face=0;a=Math.max(1e-12,dx);u=-dz/a;v=dy/a;}else{face=1;a=Math.max(1e-12,-dx);u=dz/a;v=dy/a;}}
-  else if(ay>=az){if(dy>=0){face=2;a=Math.max(1e-12,dy);u=dx/a;v=-dz/a;}else{face=3;a=Math.max(1e-12,-dy);u=dx/a;v=dz/a;}}
-  else{if(dz>=0){face=4;a=Math.max(1e-12,dz);u=dx/a;v=dy/a;}else{face=5;a=Math.max(1e-12,-dz);u=-dx/a;v=dy/a;}}
-  const N=core.N,x=Math.max(0,Math.min(N-1,Math.floor((u+1)*0.5*N))),y=Math.max(0,Math.min(N-1,Math.floor((v+1)*0.5*N)));
-  return face*N*N+y*N+x;
+
+function riverGpuDirToFaceUV(dx,dy,dz,out){
+  const ax=Math.abs(dx),ay=Math.abs(dy),az=Math.abs(dz);let a;
+  if(ax>=ay&&ax>=az){
+    if(dx>=0){out.face=0;a=Math.max(1e-12,dx);out.u=-dz/a;out.v=dy/a;}
+    else{out.face=1;a=Math.max(1e-12,-dx);out.u=dz/a;out.v=dy/a;}
+  }else if(ay>=az){
+    if(dy>=0){out.face=2;a=Math.max(1e-12,dy);out.u=dx/a;out.v=-dz/a;}
+    else{out.face=3;a=Math.max(1e-12,-dy);out.u=dx/a;out.v=dz/a;}
+  }else{
+    if(dz>=0){out.face=4;a=Math.max(1e-12,dz);out.u=dx/a;out.v=dy/a;}
+    else{out.face=5;a=Math.max(1e-12,-dz);out.u=-dx/a;out.v=dy/a;}
+  }
+  return out;
 }
-function riverGpuSource(core,face,x,y,lake){
-  const N=riverGpuN,u=2*(x+0.5)/N-1,v=2*(y+0.5)/N-1,d=weatherFaceDir(face,u,v),i=riverGpuDirToIndex(core,d[0],d[1],d[2]);
-  return Math.max(0,Math.min(1,Number(lake?core.riverLakeFraction?.[i]:core.riverChannelStrength?.[i])||0));
+function riverGpuPaint(field,face,cx,cy,radius,value){
+  const N=riverGpuN,r=Math.max(0.55,Number(radius)||0.55),rr=Math.ceil(r+0.5);
+  for(let dy=-rr;dy<=rr;dy++)for(let dx=-rr;dx<=rr;dx++){
+    const d=Math.hypot(dx,dy);if(d>r+0.5)continue;const x=cx+dx,y=cy+dy;
+    if(x<0||x>=N||y<0||y>=N)continue;
+    const fall=riverClamp?riverClamp(1-d/(r+0.65),0,1):Math.max(0,Math.min(1,1-d/(r+0.65)));
+    const q=Math.max(0,Math.min(1,value*(0.28+0.72*fall)));
+    const k=y*N+x;if(q>field[face][k])field[face][k]=q;
+  }
+}
+function riverGpuPaintDir(field,dx,dy,dz,radius,value,tmp){
+  const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;riverGpuDirToFaceUV(dx,dy,dz,tmp);
+  const N=riverGpuN,cx=Math.max(0,Math.min(N-1,Math.round((tmp.u+1)*0.5*(N-1))));
+  /* Uploaded cubemap rows use the same vertical flip as the other physical
+     surface bridges. */
+  const cy=Math.max(0,Math.min(N-1,(N-1)-Math.round((tmp.v+1)*0.5*(N-1))));
+  riverGpuPaint(field,tmp.face,cx,cy,radius,value);
 }
 function riverGpuReadCurrent(core){
-  const N=riverGpuN;
-  for(let f=0;f<6;f++){
-    const rr=riverGpuCurrRiver[f],ll=riverGpuCurrLake[f];
-    for(let y=0;y<N;y++)for(let x=0;x<N;x++){
-      const dst=(N-1-y)*N+x;rr[dst]=riverGpuSource(core,f,x,y,false);ll[dst]=riverGpuSource(core,f,x,y,true);
+  for(let f=0;f<6;f++){riverGpuCurrRiver[f].fill(0);riverGpuCurrLake[f].fill(0);}
+  const tmp={face:0,u:0,v:0},N=riverGpuN;
+  for(let i=0;i<core.count;i++){
+    const strength=Math.max(0,Math.min(1,Number(core.riverChannelStrength?.[i])||0));
+    const lake=Math.max(0,Math.min(1,Number(core.riverLakeFraction?.[i])||0));
+    const ix=core.dirX[i],iy=core.dirY[i],iz=core.dirZ[i];
+
+    if(lake>0.015){
+      const lr=1.25+4.2*Math.sqrt(lake);riverGpuPaintDir(riverGpuCurrLake,ix,iy,iz,lr,0.28+0.72*lake,tmp);
+    }
+    if(strength<0.012)continue;
+    const j=core.riverDownstream?.[i]|0;
+    const width=Math.max(0,Number(core.riverWidthM?.[i])||0);
+    const widthScale=Math.max(0,Math.min(1,Math.log2(1+width/18)/5.5));
+    const radius=0.55+1.25*Math.sqrt(strength)+1.25*widthScale;
+    const value=0.24+0.76*strength;
+    if(j<0||j>=core.count){riverGpuPaintDir(riverGpuCurrRiver,ix,iy,iz,radius,value,tmp);continue;}
+    const jx=core.dirX[j],jy=core.dirY[j],jz=core.dirZ[j];
+    const dot=Math.max(-1,Math.min(1,ix*jx+iy*jy+iz*jz));
+    const steps=Math.max(2,Math.min(18,Math.ceil(Math.acos(dot)*N*0.82)));
+    for(let s=0;s<=steps;s++){
+      const t=s/steps;
+      /* Normalized linear interpolation tracks the short great-circle chord
+         accurately at Weather Core cell spacing and avoids trigonometry per
+         sub-sample. */
+      riverGpuPaintDir(riverGpuCurrRiver,ix+(jx-ix)*t,iy+(jy-iy)*t,iz+(jz-iz)*t,radius,value,tmp);
     }
   }
 }
