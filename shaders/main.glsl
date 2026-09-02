@@ -97,12 +97,13 @@ void main(){
     vec3 nightGlow = mix(atmC*0.5, uStarCol*0.3, 0.4);
     col += nightGlow * pow(scat, 3.0) * (1.0-alit) * 0.35 * uAtmo * visualAtmo;
 
-    /* Instrument mode: show the physical Weather Core surface temperature
-       directly. physicalFogSample().a is already the temporally interpolated
-       180..380 K surface field, so clouds/lighting cannot hide the data. */
+    /* Instrument mode: decode the exact piecewise Weather Core temperature
+       channel and add sub-grid volcanic/lava skin heat from the same surface
+       geography as the visible volcanoes. Clouds and lighting cannot hide it. */
     if(uThermalOn > 0.5){
-      float temp01 = clamp(physicalFogSample(n0).a, 0.0, 1.0);
-      col = thermalSurfaceColor(temp01);
+      float encodedTemp = clamp(physicalFogSample(n0).a, 0.0, 1.0);
+      float thermalK = thermalInstrumentSurfaceK(n0, encodedTemp);
+      col = thermalSurfaceColorK(thermalK);
     }
 
     /* кольца перед планетой */
