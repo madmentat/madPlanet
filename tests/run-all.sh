@@ -62,6 +62,7 @@ tests=(
   tests/precipitation.test.js
   tests/orographic-lift.test.js
   tests/soil-hydrology.test.js
+  tests/river-physics.test.js
   tests/weather-fronts.test.js
   tests/pressure-systems.test.js
   tests/deep-convection.test.js
