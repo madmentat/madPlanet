@@ -1,16 +1,16 @@
-VERSION 0.5.126
-Base: 0.5.125
-Changes: Add an interactive thermal surface probe without adding GPU readback stalls.
-  - thermal mode now exposes a thermometer-shaped cursor over the planet surface; the native canvas cursor is hidden only while a valid thermal hit exists
-  - reproduce the render camera ray on the CPU, intersect the unit planet and rotate the hit with the same surface-body transform used by physicalFogSample
-  - read the authoritative Weather Core surfaceSkinTemp field rather than inferring temperature from the rendered colour
-  - bilinearly interpolate the cubed-sphere temperature field and mirror the thermal cubemap's five-direction 0.014 seam-smoothing footprint so the readout moves smoothly across coarse cell and cube-face boundaries
-  - draw a leader from the measured point beyond the projected planet limb to a compact temperature callout; right-side hits place the callout to the right, left-side hits mirror it to the left
-  - the callout and leader live on a pointer-transparent overlay above every application window, with a very high z-index and viewport clamping
-  - include a small colour swatch generated from the same climate-focused thermal palette; the swatch mirrors to the outer edge of the left/right callout
-  - keep the probe updated from the same scaled/paused synthetic render clock, so a stationary cursor follows the rotating surface correctly at x0/x1/etc simulation speeds
-  - suppress the probe while the camera is actively dragged so it never steals pointer gestures; no readPixels, framebuffer or synchronous GPU operations are introduced
-  - expose window.__madPlanetThermalProbe for lightweight diagnostics (visibility, current K value, palette and physical body sampling)
-Regression: thermal-probe-ui.test.js guards camera handedness, physical surfaceSkinTemp sampling, body rotation, interpolation/seam smoothing, mirrored callout geometry, topmost overlay behaviour and the no-GPU-readback performance contract.
-Snapshot: 0.5.125 remains the rollback point before the interactive thermal probe.
+VERSION 0.5.127
+Base: 0.5.126
+Changes: Prioritize lossless camera input and spatially smooth motion over perfect wall-clock catch-up during uneven frame pacing.
+  - replace direct pointer-to-camera mutation with a lossless angular input queue; delivered and Chromium-coalesced pointer samples accumulate independently of render FPS
+  - pointerup always applies its final coordinates before capture state is removed, so a short flick remains responsive even when no pointermove event was delivered between down and up
+  - drain queued camera movement in bounded <=0.16 rad chunks per visible frame; a delayed input batch is spread across frames instead of teleporting the planet by a large angle at once
+  - derive release inertia from real pointer event timestamps rather than assuming 60 input events per second, cap pathological release velocity, and do not start inertia until the visible drag queue has drained
+  - keep pinch zoom and star-drag semantics intact; canvas touch capture/overscroll protection remains unchanged
+  - add a late input-frame-pacing layer that drains camera input immediately before the final wrapped drawFrame computes camera matrices
+  - use Chromium navigator.scheduling.isInputPending({includeContinuous:true}) when available as an optional priority signal: Weather Core ticks and deferred cloud/fog/cryosphere publications yield before already-queued mouse/touch input
+  - extend interaction priority to queued camera deltas after pointerup, preventing background work from jumping in between a short flick and its remaining visible frames
+  - during active/queued interaction, a real frame gap above 28 ms can trigger the existing adaptive-resolution policy immediately instead of waiting for the normal sparse GPU timing sample; normal cooldown prevents resize oscillation
+  - no readPixels, gl.finish, synchronous framebuffer readback or extra render pass is introduced
+Regression: input-frame-pacing.test.js functionally reproduces the pointerdown -> pointerup short-flick case with no pointermove, verifies bounded next-frame movement, coalesced/final-event handling, staged inertia, browser input-priority guards and build order.
+Snapshot: 0.5.126 remains the rollback point before lossless queued camera input and pending-input scheduling priority.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
