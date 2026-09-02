@@ -69,6 +69,7 @@ tests=(
   tests/cloud-radiative-feedback.test.js
   tests/ocean-thermal.test.js
   tests/cryosphere.test.js
+  tests/cryosphere-phase-consistency.test.js
   tests/ocean-circulation.test.js
   tests/ocean-heat-transport.test.js
   tests/atmospheric-heat-transport.test.js
