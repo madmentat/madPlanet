@@ -1,4 +1,4 @@
-/* ============ 0.5.60 / 0.5.73 / 0.5.77: land snow/ice sublimation + seasonal freeze ============ */
+/* ============ 0.5.60 / 0.5.73 / 0.5.77 / 0.5.129: land snow/ice sublimation + seasonal freeze ============ */
 /*
    Precipitation can move atmospheric H2O into surfaceSnowWater/landIceWater.
    Before this hotfix the cold branch had no vapour return path unless the
@@ -20,6 +20,15 @@
    kelvin below the seawater freezing point. A temperature floor therefore
    supplies the minimum concentration of a thin surface skin while the existing
    Stefan-like thickness path remains authoritative for metres of ice mass.
+
+   0.5.129 closes the phase balance once more after the late atmospheric/ocean
+   heat-transport modules. Those modules are intentionally loaded after the
+   original cryosphere step, so without a final latent-heat closure they could
+   leave snow/ice visually present while the final rendered skin was +2..+4 C.
+   The closure spends that late sensible heat on melting before publishing the
+   final surface skin. Thin sea ice also no longer implies a nearly solid pack:
+   the thickness-to-area scale is widened from the old 7.5 cm display shortcut
+   to 35 cm, while deep supercooling may still close leads thermodynamically.
 */
 
 const CRYO_SUBLIMATION_MODEL=1;
@@ -192,4 +201,99 @@ const weatherCoreStepBeforeCryoSublimation=weatherCoreStep;
 weatherCoreStep=function(core,dtSec,climate,axis){
   weatherCoreStepBeforeCryoSublimation(core,dtSec,climate,axis);
   return cryoSublimationStep(core,dtSec,climate);
+};
+
+/* ---------- 0.5.129 final phase/temperature consistency ---------- */
+const CRYO_PHASE_CONSISTENCY_MODEL=1;
+const CRYO_SEA_ICE_AREA_SCALE_M=0.35;
+const CRYO_PHASE_EPS_K=0.02;
+
+/* Bulk thickness is not areal concentration. The old 7.5 cm e-folding made
+   20 cm of new ice look almost like a continuous pack. One metre still closes
+   ~94% of a cell, while 10 cm leaves broad leads (~25%) unless the water is
+   deeply supercooled enough for the thermodynamic skin floor above. */
+if(typeof cryoSeaIceCover==='function'){
+  cryoSeaIceCover=function(h){
+    return cryoClamp(1-Math.exp(-Math.max(0,Number(h)||0)/CRYO_SEA_ICE_AREA_SCALE_M),0,1);
+  };
+}
+
+function cryoLateLandPhaseClose(core,i){
+  const land=cryoLandFraction(core,i);if(land<0.001||!core.landSurfaceTemp)return {snow:0,ice:0};
+  const snow=Math.max(0,Number(core.surfaceSnowWater?.[i])||0);
+  const ice=Math.max(0,Number(core.landIceWater?.[i])||0);
+  let T=Number(core.landSurfaceTemp[i]);
+  if(!Number.isFinite(T)||T<=CRYO_FREEZE_K+CRYO_PHASE_EPS_K||!(snow>0||ice>0))return {snow:0,ice:0};
+  const warmE=CRYO_SUBLIMATION_LAND_CAP_J_M2_K*(T-CRYO_FREEZE_K);
+  const m=cryoMeltLand(core,i,warmE);
+  core.landSurfaceTemp[i]=cryoClamp(CRYO_FREEZE_K+m.left/CRYO_SUBLIMATION_LAND_CAP_J_M2_K,80,1600);
+  return {snow:m.snow*land,ice:m.ice*land};
+}
+function cryoLateSeaPhaseClose(core,i){
+  const water=cryoWaterFraction(core,i);if(water<0.01||!core.seaSurfaceTemp||!core.seaIceThicknessM)return 0;
+  let h=Math.max(0,Number(core.seaIceThicknessM[i])||0);
+  let T=Number(core.seaSurfaceTemp[i]);
+  if(!Number.isFinite(T)||T<=CRYO_SEA_FREEZE_K+CRYO_PHASE_EPS_K||!(h>0))return 0;
+  const cap=Math.max(1e6,Number(core.oceanHeatCapacity?.[i])||1.4e8);
+  let E=cap*(T-CRYO_SEA_FREEZE_K);
+  const dh=Math.min(h,E/(CRYO_ICE_DENSITY*CRYO_LATENT_HEAT_FUSION));
+  if(dh>0){h-=dh;E-=dh*CRYO_ICE_DENSITY*CRYO_LATENT_HEAT_FUSION;}
+  core.seaIceThicknessM[i]=cryoClamp(h,0,CRYO_SEA_ICE_MAX_M);
+  core.seaSurfaceTemp[i]=cryoClamp(CRYO_SEA_FREEZE_K+Math.max(0,E)/cap,80,1600);
+  return dh*water;
+}
+function cryoPhaseConsistencyClose(core,dtSec,climate,axis){
+  if(!core?.count)return core;
+  let snowMelt=0,landIceMelt=0,seaIceMeltM=0;
+  for(let i=0;i<core.count;i++){
+    const lm=cryoLateLandPhaseClose(core,i);snowMelt+=lm.snow;landIceMelt+=lm.ice;
+    seaIceMeltM+=cryoLateSeaPhaseClose(core,i);
+  }
+  if(typeof oceanPublishSurface==='function')oceanPublishSurface(core);
+  else if(core.surfaceTemp){
+    for(let i=0;i<core.count;i++){
+      const w=cryoWaterFraction(core,i);
+      const land=Number(core.landSurfaceTemp?.[i]??core.surfaceTemp[i]);
+      const sea=Number(core.seaSurfaceTemp?.[i]??core.surfaceTemp[i]);
+      core.surfaceTemp[i]=land*(1-w)+sea*w;
+    }
+  }
+  if(typeof cryoRefreshCovers==='function')cryoRefreshCovers(core);
+  /* polar-surface-thermodynamics ran earlier in the wrapper chain. Refresh the
+     radiating skin after any late latent-heat correction so fog GPU, Thermal
+     and the probe all receive the phase-consistent final state. */
+  if(typeof pstRefreshSkin==='function')pstRefreshSkin(core,axis);
+
+  let warmLand=0,warmSea=0;
+  for(let i=0;i<core.count;i++){
+    const landCover=Math.max(Number(core.snowCoverFraction?.[i])||0,Number(core.landIceCoverFraction?.[i])||0);
+    const seaCover=Number(core.seaIceConcentration?.[i])||0;
+    if(landCover>0.80&&Number(core.landSurfaceTemp?.[i])>CRYO_FREEZE_K+0.08)warmLand++;
+    if(seaCover>0.80&&Number(core.seaIceThicknessM?.[i])>0&&Number(core.seaSurfaceTemp?.[i])>CRYO_SEA_FREEZE_K+0.08)warmSea++;
+  }
+  core.cryoPhaseConsistencyModel=CRYO_PHASE_CONSISTENCY_MODEL;
+  core.cryoLateSnowMeltKg=snowMelt;
+  core.cryoLateLandIceMeltKg=landIceMelt;
+  core.cryoLateSeaIceMeltM=seaIceMeltM;
+  core.cryoWarmLandIceCells=warmLand;
+  core.cryoWarmSeaIceCells=warmSea;
+  return core;
+}
+
+const weatherCoreCreateBeforeCryoPhaseConsistency=weatherCoreCreate;
+weatherCoreCreate=function(seed,N,climate,axis){
+  const core=weatherCoreCreateBeforeCryoPhaseConsistency(seed,N,climate,axis);
+  return cryoPhaseConsistencyClose(core,0,climate,axis);
+};
+const weatherCoreStepBeforeCryoPhaseConsistency=weatherCoreStep;
+weatherCoreStep=function(core,dtSec,climate,axis){
+  weatherCoreStepBeforeCryoPhaseConsistency(core,dtSec,climate,axis);
+  return cryoPhaseConsistencyClose(core,dtSec,climate,axis);
+};
+
+window.__madPlanetCryospherePhase={
+  model:CRYO_PHASE_CONSISTENCY_MODEL,
+  close:cryoPhaseConsistencyClose,
+  seaIceCover:cryoSeaIceCover,
+  seaAreaScaleM:CRYO_SEA_ICE_AREA_SCALE_M
 };
