@@ -1,4 +1,4 @@
-/* ============ 0.5.117 / 0.5.120 / 0.5.124 / 0.5.125 physical surface thermal view ============ */
+/* ============ 0.5.117 / 0.5.120 / 0.5.124 / 0.5.125 / 0.5.129 physical surface thermal view ============ */
 /*
    Weather Core publishes visible/radiating surface-skin temperature in the A
    channel of the shared fog/soil cubemap using the piecewise 80..180 /
@@ -10,6 +10,13 @@
    while this instrument applies only a bounded sub-grid lapse correction to
    individual peaks that the 36-cell Weather Core cannot spatially resolve.
    Active lava remains a local high-temperature skin overlay.
+
+   0.5.129 also samples the exact cryosphere display mask. The temperature
+   cubemap is intentionally linearly filtered, while the resolved ice edge is a
+   much denser nearest-filtered mask; without a phase clamp a white ice pixel at
+   that sub-grid boundary could inherit +2..+4 C from neighbouring open water.
+   Exposed snow/ice therefore cannot render above 0 C unless the later explicit
+   lava overlay supplies a real local heat source.
 */
 uniform float uThermalOn;
 
@@ -76,6 +83,19 @@ float thermalInstrumentSurfaceK(vec3 n0,float encodedTemp){
   float ridge,mount,lee;
   float h=terrain(n0,ridge,mount,lee);
   float seamNearCenter=gSeamNear;
+
+  /* The cryosphere texture is the same dense binary geography used by the
+     normal surface renderer. Its edge can resolve well inside one coarse
+     temperature texel, so enforce the water-ice phase boundary on the exact
+     visible ice pixel instead of letting linear temperature filtering paint
+     +3 C snow or pack ice. */
+  vec3 sN=uRotS*n0;
+  vec4 cryoTex=cryoSurfaceSample(uCryosphereTex,normalize(sN));
+  float landCryo=mix(cryoTex.r,cryoTex.b,uCryosphereBlend);
+  float seaIce=mix(cryoTex.g,cryoTex.a,uCryosphereBlend);
+  float landMask=ss(-0.0025,0.0025,h);
+  float visibleCryo=max(landMask*landCryo,(1.0-landMask)*seaIce);
+  if(visibleCryo>0.5)baseK=min(baseK,273.15);
 
   /* Broad mountain cooling already lives in the CPU Weather Core. This is the
      physically justified sub-grid residual that makes individual cold crests
