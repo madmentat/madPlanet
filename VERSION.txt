@@ -1,14 +1,15 @@
-VERSION 0.5.120
-Base: 0.5.119
-Changes: Convert user-facing temperature measurements to Celsius and make Thermal Imager resolve active volcanic/lava heat correctly.
-  - all currently exposed Planet/Weather temperature readouts are normalized to °C at the UI layer while the physical climate/weather solvers continue using kelvin internally
-  - global climate diagnostics no longer show duplicate K + °C values; Weather Core mean air temperature is shown in °C; ocean land/SST contrast uses °C for the temperature difference
-  - Thermal Imager legend is now entirely Celsius and spans the ordinary climate range through active-lava skin temperatures, with labels from about -190 °C to +1200 °C
-  - Thermal Imager now decodes the actual piecewise GPU temperature format (80..180 / 180..380 / 380..1000 K) instead of incorrectly treating the channel as a linear 180..380 K field
-  - ordinary climate temperatures retain most palette precision; extreme hot/cold tails remain visible without flattening the useful terrestrial range
-  - active volcanic vents add a sub-grid thermal skin term using the same deterministic arc/hotspot/vent mask as the visible volcano renderer, so hot signatures spatially coincide with volcanic features
-  - volcanic heat is intentionally a resolved surface-skin diagnostic rather than a whole Weather Core cell forcing: the synoptic 32..36-cell grid is too coarse to represent a small lava vent without unrealistically heating a huge region
-  - lava skin temperature follows the existing lava-activity control over a 600..1200 °C envelope; normal climate physics, world hash and seed are unchanged
-Regression: thermal-celsius.test.js guards Celsius-only user labels, packed-temperature decoding, matching visible/thermal volcano geography, lava-temperature range and late Celsius adapter load order in both builders.
-Snapshot: 0.5.119 remains the rollback point before Celsius-only UI temperatures and volcanic thermography.
+VERSION 0.5.121
+Base: 0.5.120
+Changes: Replace the unstable main-scene orbit projection with a fixed-scale Elite-style navigation HUD orbit.
+  - remove the singular radius solve that derived ellipse size from projected star/planet separation and divided by the projected minor axis
+  - main-scene orbit now uses a fixed screen-space radius, so rotating the camera cannot shrink it into a tiny ring or expand it across several screens
+  - camera zoom is intentionally excluded from navigation-orbit scale; the overlay is a readable HUD instrument rather than astronomical geometry rendered to scale
+  - the current star-to-planet radial vector is forced into the displayed orbital plane, while the plane remains as close as possible to the physical ecliptic normal derived from axial tilt
+  - the current planet is the t=0 orbit point and is pinned exactly to screen centre every frame, eliminating the previous vertical drift above/below the planet
+  - when the viewer looks nearly along the star direction the projected orbit naturally approaches an edge-on line through the planet instead of collapsing to a displaced miniature ellipse
+  - orbit styling is rebuilt as a soft amber navigation line: faint glow, dim dashed far side, crisp near side, subtle quarter-orbit pips and a compact current-body crossing marker
+  - the normalized radius is bounded for phone and desktop viewports so the complete schematic remains comfortably readable without taking over the scene
+  - display state remains local-only and does not alter the world seed, hash, climate, orbit physics or camera controls
+Regression: rubric-orbit-ui.test.js now guards fixed HUD radius, radial-plane consistency, exact planet-centre crossing and bans the old singular projected-star radius formula.
+Snapshot: 0.5.120 remains the rollback point before the stabilized Elite-style main-scene orbit.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
