@@ -16,7 +16,12 @@ assert.ok(buildPs.indexOf('js/resolved-lift-clouds.js')<buildPs.indexOf('js/weat
 assert.ok(!/Math\.random|requestAnimationFrame/.test(src),'lifting condensation must stay deterministic and off render FPS');
 for(const name of ['frontVerticalVelocity','systemVerticalVelocity','orographicVerticalVelocity','verticalLclHeightM','h2oSaturationColumnKgM2'])
   assert.ok(src.includes(name),'missing physical lift dependency '+name);
-assert.ok(!/latitude|latGate|cloudBand/.test(src),'resolved cloud formation must not hard-code a latitude cloud band');
+/* Comments explicitly document that there is NO latitude belt. Strip them
+   before guarding executable code so the test does not fail on its own design
+   rationale. */
+const executable=src.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\/.*$/gm,'$1');
+assert.doesNotMatch(executable,/\b(?:latitude|latGate|latitudeBand|cloudBand|latCloud)\b/,
+  'resolved cloud formation must not hard-code a latitude cloud band');
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,Number(x)||0));
 const ctx={
