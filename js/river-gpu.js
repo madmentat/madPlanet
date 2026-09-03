@@ -1,4 +1,4 @@
-/* ============ 0.5.131 / 0.5.132 / 0.5.138 / 0.5.139: physical rivers -> GPU cubemap ============ */
+/* ============ 0.5.131 / 0.5.132 / 0.5.138 / 0.5.139 / 0.5.143: physical rivers -> GPU cubemap ============ */
 /*
    R/G = previous river/lake support, B/A = current river/lake support.
    One RGBA8 cubemap keeps the bridge WebGL1-friendly; the texture is updated
@@ -10,11 +10,14 @@
    additional admissible paths produced by river-visual-tributaries.js. Their
    lateral displacement collapses to zero at confluences so tributaries merge
    cleanly into the physical trunk rather than ending beside it.
+
+   0.5.143: thinner channels, stronger meanders, higher display resolution so
+   the network reads as fine dendritic rivers instead of thick corridors.
 */
 
-const RIVER_GPU_MODEL=5;
+const RIVER_GPU_MODEL=6;
 const RIVER_TEX_UNIT=2;
-const RIVER_GPU_UPSCALE=8;
+const RIVER_GPU_UPSCALE=12;
 const RIVER_BLEND_DEFAULT_MS=900;
 const RIVER_BLEND_MIN_MS=250;
 const RIVER_BLEND_MAX_MS=1200;
@@ -65,12 +68,13 @@ function riverGpuDirToFaceUV(dx,dy,dz,out){
   return out;
 }
 function riverGpuPaint(field,face,cx,cy,radius,value){
-  const N=riverGpuN,r=Math.max(0.18,Number(radius)||0.18),rr=Math.ceil(r+0.55);
+  const N=riverGpuN,r=Math.max(0.10,Number(radius)||0.10),rr=Math.ceil(r+0.45);
   for(let dy=-rr;dy<=rr;dy++)for(let dx=-rr;dx<=rr;dx++){
-    const d=Math.hypot(dx,dy);if(d>r+0.55)continue;const x=cx+dx,y=cy+dy;
+    const d=Math.hypot(dx,dy);if(d>r+0.45)continue;const x=cx+dx,y=cy+dy;
     if(x<0||x>=N||y<0||y>=N)continue;
-    const fall=riverGpuClamp(1-d/(r+0.66),0,1);
-    const q=riverGpuClamp(value*(0.12+0.88*fall),0,1),k=y*N+x;
+    const fall=riverGpuClamp(1-d/(r+0.52),0,1);
+    /* Sharper falloff keeps the core thin while the halo stays soft. */
+    const q=riverGpuClamp(value*(0.08+0.92*fall*fall),0,1),k=y*N+x;
     if(q>field[face][k])field[face][k]=q;
   }
 }
@@ -95,17 +99,24 @@ function riverGpuPaintEdge(core,i,j,tmp){
   let nx=iy*jz-iz*jy,ny=iz*jx-ix*jz,nz=ix*jy-iy*jx;
   const nq=Math.hypot(nx,ny,nz);if(nq>1e-9){nx/=nq;ny/=nq;nz/=nq;}else{nx=ny=nz=0;}
   const h1=riverGpuEdgeHash(core.seed|0,i,j,0x2c1b3c6d),h2=riverGpuEdgeHash(core.seed|0,i,j,0x165667b1);
-  const steps=Math.max(5,Math.min(40,Math.ceil(ang*riverGpuN*1.55)));
+  const h3=riverGpuEdgeHash(core.seed|0,i,j,0x27d4eb2d);
+  /* More samples + stronger multi-harmonic bends for natural meanders. */
+  const steps=Math.max(8,Math.min(56,Math.ceil(ang*riverGpuN*2.10)));
   for(let s=0;s<=steps;s++){
     const t=s/steps,omt=1-t;
     let dx=ix*omt+jx*t,dy=iy*omt+jy*t,dz=iz*omt+jz*t;
     let q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
-    const bend=Math.sin(ang)*(0.18*h1*Math.sin(Math.PI*t)+0.055*h2*Math.sin(2*Math.PI*t));
+    const bend=Math.sin(ang)*(
+      0.32*h1*Math.sin(Math.PI*t)+
+      0.14*h2*Math.sin(2*Math.PI*t)+
+      0.06*h3*Math.sin(3.2*Math.PI*t)
+    );
     dx+=nx*bend;dy+=ny*bend;dz+=nz*bend;q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
     const strength=si+(sj-si)*t,width=wi+(wj-wi)*t;
-    const widthScale=riverGpuClamp(Math.log2(1+width/18)/5.5,0,1);
-    const radius=0.26+0.56*Math.sqrt(strength)+0.50*widthScale;
-    riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.18+0.82*strength,tmp);
+    const widthScale=riverGpuClamp(Math.log2(1+width/22)/6.2,0,1);
+    /* Thinner core; width still scales with discharge. */
+    const radius=0.14+0.32*Math.sqrt(strength)+0.28*widthScale;
+    riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.22+0.78*strength,tmp);
   }
 }
 
@@ -124,7 +135,8 @@ function riverGpuVisualNode(core,branch,p,out){
       sx/=sq;sy/=sq;sz/=sq;
       const cellAng=2/Math.max(8,core.N||32);
       const sign=riverGpuEdgeHash(core.seed|0,branch.source|0,i,0x5317+p*97);
-      const amp=cellAng*(0.09+0.07*Math.abs(branch.phase||0))*Math.pow(Math.max(0,1-progress),0.72)*sign;
+      /* Stronger lateral offset near headwaters, collapses at confluence. */
+      const amp=cellAng*(0.18+0.14*Math.abs(branch.phase||0))*Math.pow(Math.max(0,1-progress),0.62)*sign;
       dx+=sx*amp;dy+=sy*amp;dz+=sz*amp;
       const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
     }
@@ -138,17 +150,19 @@ function riverGpuPaintVisualEdge(core,branch,p,tmp,a,b){
   const nq=Math.hypot(nx,ny,nz);if(nq>1e-9){nx/=nq;ny/=nq;nz/=nq;}else{nx=ny=nz=0;}
   const cells=branch.cells,last=Math.max(1,cells.length-1);
   const h=riverGpuEdgeHash(core.seed|0,branch.source|0,cells[p]|0,0x7811+p*53);
-  const steps=Math.max(4,Math.min(30,Math.ceil(ang*riverGpuN*1.65)));
+  const h2=riverGpuEdgeHash(core.seed|0,branch.source|0,cells[p]|0,0x3c6ef372);
+  const steps=Math.max(6,Math.min(40,Math.ceil(ang*riverGpuN*2.05)));
   for(let s=0;s<=steps;s++){
     const t=s/steps,omt=1-t;
     let dx=a.x*omt+b.x*t,dy=a.y*omt+b.y*t,dz=a.z*omt+b.z*t;
     let q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
-    const bend=Math.sin(ang)*0.075*h*Math.sin(Math.PI*t);
+    const bend=Math.sin(ang)*(0.16*h*Math.sin(Math.PI*t)+0.055*h2*Math.sin(2.3*Math.PI*t));
     dx+=nx*bend;dy+=ny*bend;dz+=nz*bend;q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
     const progress=(p+t)/last;
-    const strength=riverGpuClamp((branch.strength||0.12)*(0.64+0.36*progress),0.04,0.42);
-    const radius=0.18+0.28*Math.sqrt(strength);
-    const value=0.105+0.56*strength;
+    /* Tributaries stay thin and only slightly widen toward the trunk. */
+    const strength=riverGpuClamp((branch.strength||0.12)*(0.50+0.50*progress),0.03,0.34);
+    const radius=0.09+0.16*Math.sqrt(strength);
+    const value=0.12+0.52*strength;
     riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,value,tmp);
   }
 }
@@ -168,7 +182,7 @@ function riverGpuReadCurrent(core){
      win at every confluence through the max compositor. */
   riverGpuPaintVisualBranches(core,tmp);
 
-  for(let i=0;i<core.count;i++){
+ for(let i=0;i<core.count;i++){
     const strength=riverGpuClamp(core.riverChannelStrength?.[i]||0,0,1);
     const lake=riverGpuClamp(core.riverLakeFraction?.[i]||0,0,1);
     const ix=core.dirX[i],iy=core.dirY[i],iz=core.dirZ[i];
@@ -178,8 +192,8 @@ function riverGpuReadCurrent(core){
     if(strength<0.008)continue;
     const j=core.riverDownstream?.[i]|0;
     if(j<0||j>=core.count){
-      const width=Math.max(0,Number(core.riverWidthM?.[i])||0),ws=riverGpuClamp(Math.log2(1+width/18)/5.5,0,1);
-      riverGpuPaintDir(riverGpuCurrRiver,ix,iy,iz,0.26+0.56*Math.sqrt(strength)+0.50*ws,0.18+0.82*strength,tmp);
+      const width=Math.max(0,Number(core.riverWidthM?.[i])||0),ws=riverGpuClamp(Math.log2(1+width/22)/6.2,0,1);
+      riverGpuPaintDir(riverGpuCurrRiver,ix,iy,iz,0.14+0.32*Math.sqrt(strength)+0.28*ws,0.22+0.78*strength,tmp);
       continue;
     }
     riverGpuPaintEdge(core,i,j,tmp);
