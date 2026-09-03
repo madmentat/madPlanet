@@ -17,10 +17,10 @@
    and tabular figures keep changing signs/digits from moving the whole block.
 
    0.5.136 deliberately removed fractional degrees from compact T_a/T_f.
-   0.5.137 closes the remaining legacy-writer race: smooth-motion-ui still
-   writes its historical climateModel().C with toFixed(1) every ~400 ms. The
-   late adapter now detects that fractional legacy write and synchronously
-   restores integer T_a before the browser can paint it.
+   0.5.137 makes T_a single-writer: smooth-motion-ui may still run its legacy
+   telemetry pass for FPS/star/orbit, but writes targeting the temperature cell
+   are suppressed. Only this adapter owns T_a/T_f, so toFixed(1) can no longer
+   flash between integer updates.
 */
 (function installCelsiusUi(){
   if(typeof document==='undefined')return;
@@ -37,9 +37,6 @@
     return 'Δ '+(d>=0?'+':'')+d.toFixed(digits)+' °C';
   }
 
-  /* Match the thermal-imager legend rather than inventing a second colour
-     language. The label positions are intentionally nonlinear so ordinary
-     climate temperatures keep useful colour resolution while lava still fits. */
   const TELEMETRY_TEMP_POS=[[-100,0],[-50,.28],[0,.53],[50,.77],[1200,1]];
   const TELEMETRY_TEMP_RGB=[[0,[20,3,38]],[.20,[20,31,158]],[.42,[0,194,230]],[.64,[250,230,31]],[.84,[245,46,8]],[1,[255,247,229]]];
   const TELEMETRY_VALUE_WIDTH_PX=104;
@@ -121,9 +118,6 @@
     if(!temperatureTelemetryEnsure())return;
     let actual=NaN;
     if(typeof climateConsistencyCurrentSurfaceC==='function')actual=Number(climateConsistencyCurrentSurfaceC());
-    /* Weather Core is normally lazy. Force it only from the post-first-frame
-       bootstrap below: normal telemetry refreshes must never turn into an
-       unexpected physics allocation. */
     if(forceCore&&typeof weatherCoreEnsure==='function'){
       try{weatherCoreEnsure();}catch(_e){}
       if(typeof climateConsistencyCurrentSurfaceC==='function')actual=Number(climateConsistencyCurrentSurfaceC());
@@ -180,31 +174,30 @@
   }
 
   let temperatureTelemetryLastMs=-1e12;
-  function temperatureTelemetryLegacyFractionVisible(){
-    const text=String(smoothTelemetryValues?.temp?.textContent||'');
-    return /[0-9][.,][0-9]+\s*°C/.test(text);
-  }
   if(typeof smoothTelemetryUpdate==='function'){
     const beforeTelemetry=smoothTelemetryUpdate;
     smoothTelemetryUpdate=function(now){
-      beforeTelemetry(now);
+      /* Legacy smooth-motion-ui updates FPS/star/orbit and historically also
+         writes climateModel().C into the same element later repurposed as T_a.
+         Temporarily gate only that one target while the legacy pass runs. */
+      const protectedTemp=smoothTelemetryValues?.temp||null;
+      const originalWriter=(typeof smoothTelemetryText==='function')?smoothTelemetryText:null;
+      if(protectedTemp&&originalWriter){
+        smoothTelemetryText=function(el,text){
+          if(el===protectedTemp)return;
+          return originalWriter(el,text);
+        };
+      }
+      try{beforeTelemetry(now);}finally{
+        if(originalWriter)smoothTelemetryText=originalWriter;
+      }
       const t=Number(now)||((typeof performance!=='undefined')?performance.now():Date.now());
-      /* smooth-motion-ui predates T_a/T_f and still writes climateModel().C
-         using toFixed(1). If that legacy write happened in beforeTelemetry(),
-         replace it synchronously in this same call so no fractional frame is
-         ever presented. Otherwise retain the cheap 250 ms refresh cadence. */
-      const legacyFraction=temperatureTelemetryLegacyFractionVisible();
-      if(!legacyFraction && t-temperatureTelemetryLastMs<250)return;
+      if(t-temperatureTelemetryLastMs<250)return;
       temperatureTelemetryLastMs=t;
       temperatureTelemetryRefresh(false);
     };
   }
 
-  /* Build the labels and T_f synchronously, but do not put Weather Core work
-     in front of the first renderer frame. render.js registered its RAF much
-     earlier in the concatenated script, so this callback runs after that first
-     draw and before the browser paints the frame in normal RAF ordering. T_a
-     therefore becomes real for the first visible frame without delaying it. */
   temperatureTelemetryRefresh(false);
   const bootstrapActual=()=>temperatureTelemetryRefresh(true);
   if(typeof requestAnimationFrame==='function')requestAnimationFrame(bootstrapActual);
