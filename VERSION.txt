@@ -1,10 +1,13 @@
-VERSION 0.5.137
-Base: 0.5.136
-Changes: Eliminate the remaining fractional-temperature writer race in compact telemetry.
-  - keep T_a and T_f as whole Celsius degrees only in the top-left headline thermometer
-  - make T_a effectively single-writer: the legacy smooth-motion telemetry pass may still update FPS/star/orbit, but any write targeting the temperature cell is suppressed
-  - prevent the historical climateModel().C toFixed(1) path from ever reaching the rendered T_a element, rather than merely repainting over the decimal afterwards
-  - preserve the fixed 104 px right-aligned value column, left-aligned labels, nowrap values and tabular numeric glyphs
-  - retain floating-point temperatures internally and in detailed diagnostics; only headline T_a/T_f are intentionally integer
-Regression: thermal-celsius.test.js now requires a write gate around the legacy telemetry pass so no second writer can inject fractional T_a values.
+VERSION 0.5.138
+Base: 0.5.137
+Changes: Make physical rivers visible as continuous drainage networks and suppress coarse marine fog squares.
+  - keep Priority-Flood, D8 routing, runoff accumulation and discharge-based hydraulic geometry as the authoritative river physics
+  - lower only the display initiation thresholds enough for a runoff-supported headwater to exist inside a very large 24..36-cell Weather Core catchment; dry cells still cannot create decorative rivers
+  - add a downstream continuity pass that may carry channel display strength only along the diagnosed receiver graph and only while the receiver has physically supported discharge
+  - retain discharge/contributing-area growth so trunk channels become stronger and wider downstream rather than every wet cell becoming an equal blue line
+  - increase the physical river cubemap from 5x to 7x Weather Core resolution and sample each graph link more densely on the sphere, keeping exact confluence endpoints while hiding coarse lattice segments
+  - reconstruct physical fog R/G from a compact five-tap spherical footprint instead of exposing one magnified Weather Core texel, targeting the translucent square patches that accumulate over ocean as fog develops
+  - keep fog morphology CPU/Weather-Core-owned: the shader only averages physical samples and then applies subtractive erosion/detail; it does not procedurally create new fog banks
+  - retain 0.5.137 single-writer whole-degree T_a/T_f telemetry
+Regression: river-physics.test.js now checks runoff-supported headwaters, downstream graph continuity, model-4 7x river rasterization and dense spherical edge sampling; physical-fog.test.js requires spatial reconstruction of the fog optical field.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
