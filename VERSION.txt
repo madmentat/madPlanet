@@ -1,13 +1,12 @@
-VERSION 0.5.140
-Base: 0.5.139
-Changes: Improve perceptual smoothness and frame pacing under periodic Weather Core / texture-load stalls, especially at x4 simulation speed.
-  - add presentation-clock.js between the runtime clock and the visual render bridges: ordinary stable 30/45/60 Hz cadence remains exact, while isolated long frames are clipped for display and their small time debt is repaid gradually over following frames
-  - keep the physical Weather Core clock independent from presentation smoothing, so visual anti-hitch interpolation does not alter deterministic weather state
-  - add weather-frame-budget.js: use measured Weather Core tick cost to require a sufficiently large requestIdleCallback slice before starting an indivisible CPU physics tick
-  - allow an idle timeout to defer again while frame pacing is unhealthy, with a bounded 1.6 s starvation limit; missed wall-clock weather opportunities are still skipped rather than replayed in a catch-up burst
-  - add river-frame-pacing.js for the 0.5.139 8x river cubemap: normal river raster/pack/upload is coalesced to the newest Weather Core state, runs in an idle turn, and is capped to about 1.2 s desktop / 1.55 s mobile publication cadence
-  - keep first river texture, seed changes and texture-size changes synchronous so a new world never displays stale rivers
-  - make camera/input activity and recent presentation hitches outrank deferred river repacking; river upload cost is measured and fed back into its own idle admission budget
-  - retain x0.25..x4 visual simulation speed and existing Weather Core no-catch-up semantics; under load the scheduler may skip physical wall-clock opportunities rather than sacrifice frame pacing
-Regression: add presentation-clock.test.js, weather-frame-budget.test.js and river-frame-pacing.test.js; final build keeps the new pacing layers in the intended wrapper order.
+VERSION 0.5.141
+Base: 0.5.140
+Changes: Rework visible river detail into a denser basin-constrained dendritic network without giving decorative code authority over physical drainage.
+  - upgrade river-visual-tributaries to model 2: lower the coarse-grid headwater threshold, select wet/slope-supported local source maxima instead of blanking an entire neighbouring Weather Core cell around every chosen source, and allow longer receiver-distance headwaters
+  - add a second feeder pass along confirmed physical trunks: short side tributaries are traced upstream through wetter/higher cells, locked to the same physical basin, then reversed so the displayed branch always flows downhill into a diagnosed channel/lake receiver
+  - increase sub-cell lateral displacement for feeder branches so the visible network no longer runs primarily through the centres of huge synoptic cells
+  - strengthen fine tributary display amplitudes while keeping physical trunk/lake rasterization authoritative at confluences
+  - rebuild display-only river topology every 12 Weather Core ticks instead of every 6, preserving the 0.5.140 frame-pacing improvement at x4 simulation speed
+  - wrap the legacy shadeSurface output with a cheap physical-river visibility pass: an already diagnosed river cubemap line can no longer disappear solely because the historical procedural FBM width/climate gates reject the same pixel
+  - the visibility pass preserves the existing lit surface colour and only darkens/tints diagnosed river pixels; frozen/thermally invalid surface water is not deliberately created by this display layer
+Regression: extend river-visual-tributaries.test.js with reverse feeder routing, dry-basin rejection, basin/downhill invariants and the physical river surface-visibility wrapper.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
