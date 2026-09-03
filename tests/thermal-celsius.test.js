@@ -43,15 +43,18 @@ assert.match(units,/\[20,3,38\].*\[20,31,158\].*\[0,194,230\].*\[250,230,31\].*\
 assert.match(units,/current\.style\.textShadow=temperatureTelemetryGlow/,'T_a must be visually prominent at a glance');
 assert.match(units,/predicted\.title='T_f — ожидаемая температура/,'T_f must explicitly state that it is not current temperature');
 
-/* Headline temperatures are intentionally whole degrees. Tenths are visual
-   noise for this model and made the changing readout look more unstable than
-   the underlying climate state actually is. */
+/* Headline temperatures are intentionally whole degrees. */
 assert.match(units,/const n=Math\.round\(C\)/,'headline T_a/T_f must round to whole degrees');
 assert.match(units,/Math\.abs\(n\)\+' °C'/,'headline thermometer must format integer Celsius values');
 assert.doesNotMatch(units,/const a=Math\.abs\(C\),digits=a<100\?1:0/,'headline thermometer must not switch fractional precision by magnitude');
-assert.match(units,/temperatureTelemetryLegacyFractionVisible/,'legacy fractional telemetry writes must be detected');
-assert.match(units,/\[0-9\]\[\.,\]\[0-9\]\+\\s\*°C/,'fractional Celsius legacy writer guard is missing');
-assert.match(units,/if\(!legacyFraction && t-temperatureTelemetryLastMs<250\)return/,'legacy fractional write must bypass telemetry throttle and be repaired in the same call');
+
+/* T_a must have one owner. The legacy telemetry pass is allowed to update
+   FPS/star/orbit, but any write targeting the T_a element must be suppressed. */
+assert.match(units,/const protectedTemp=smoothTelemetryValues\?\.temp\|\|null/,'T_a target must be protected during the legacy telemetry pass');
+assert.match(units,/const originalWriter=\(typeof smoothTelemetryText==='function'\)\?smoothTelemetryText:null/,'legacy telemetry writer must be wrapped');
+assert.match(units,/if\(el===protectedTemp\)return/,'legacy writes targeting T_a must be dropped');
+assert.match(units,/try\{beforeTelemetry\(now\);\}finally/,'legacy telemetry pass must run behind the T_a write gate');
+assert.match(units,/if\(originalWriter\)smoothTelemetryText=originalWriter/,'telemetry writer must be restored after the gated legacy pass');
 
 /* Changing value width/sign must not resize the compact telemetry grid. */
 assert.match(units,/const TELEMETRY_VALUE_WIDTH_PX=104/,'telemetry must reserve a stable numeric column');
