@@ -1,11 +1,10 @@
-VERSION 0.5.135
-Base: 0.5.134
-Changes: Stabilize compact telemetry so changing numeric precision never moves the top-left block.
-  - reserve a fixed 104 px value column for FPS, T_a, T_f, star and orbit telemetry while keeping variable labels in a separate left-aligned max-content column
-  - right-align every value together with its unit inside the reserved slot, so 416, 416.7, negative values and wider future precision do not reflow the grid
-  - enable tabular numeric glyphs plus the explicit OpenType tnum feature for all live values
-  - prevent telemetry values from wrapping or expanding beyond the reserved numeric column
-  - retain the 0.5.134 T_a/T_f semantics: actual temperature remains the area-weighted Weather Core surface value and T_f remains the muted equilibrium forecast
-  - keep Weather Core initialization deferred until immediately after the first renderer frame, so the stable thermometer does not regress desktop startup latency
-Regression: thermal-celsius.test.js now requires a fixed numeric column, left-aligned labels, right-aligned nowrap values, and tabular figures.
+VERSION 0.5.136
+Base: 0.5.135
+Changes: Remove fractional degrees from the compact T_a/T_f thermometer.
+  - show T_a and T_f as whole Celsius degrees in the top-left live telemetry instead of switching between integer and fractional representations
+  - keep the fixed 104 px right-aligned value column and tabular numeric glyphs from 0.5.135, so signs and changing digit counts do not reflow the block
+  - retain full floating-point temperature values internally; only the compact headline presentation is rounded, so climate physics and detailed diagnostics lose no precision
+  - keep T_a sourced from the current area-weighted Weather Core surface field and T_f sourced from the equilibrium climate forecast
+  - leave detailed Weather/Planet diagnostics free to show decimals where they are useful for debugging and quantitative inspection
+Regression: thermal-celsius.test.js now requires whole-degree headline formatting and forbids the old magnitude-dependent fractional precision rule.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
