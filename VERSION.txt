@@ -1,18 +1,12 @@
-VERSION 0.5.133
-Base: 0.5.132
-Changes: Make observed climate the single source of truth for current temperatures and add stellar-forcing atmospheric escape.
-  - redefine the user-facing mean temperature as the cubed-sphere area-weighted mean of the current Weather Core surfaceSkinTemp field; the zero-dimensional climateModel T remains only a calculated equilibrium/regime target
-  - make the temperature value text, headline telemetry and legacy renderer temperature proxy follow the same current surface field, eliminating impossible cases where the displayed mean exceeded the actual min/max map
-  - make Weather Core air temperature, humidity and cloud means area-weighted instead of arithmetic cube-face means; atmosphere density/scale-height diagnostics now use the current area-weighted air temperature rather than the future climate attractor
-  - keep H2O phase partition tied to the current physical surface and retain the converged bootstrap water solve for startup/random worlds
-  - audit stellar forcing against the real instantaneous eccentric-orbit radius: Weather Core already receives inverse-square L/r^2 forcing, and the Star panel now compares its area-weighted insolation against the independently calculated orbital flux
-  - derive stellar-wind and XUV baselines from spectral class/main-sequence mass and luminosity, then modulate cool-star activity by system age and the existing activity control; hot B/O stars use strong radiatively driven wind baselines
-  - propagate both stellar-wind dynamic pressure and XUV flux with inverse-square orbital distance, so periapsis/apoapsis and absolute AU directly affect atmospheric erosion
-  - couple magnetic protection to stellar-wind pressure through a dipole stand-off estimate; stronger magnetic fields expand the magnetopause and reduce direct ion-pickup exposure
-  - add XUV energy-limited hydrodynamic escape plus stellar-wind ion pickup, with volatile supply gating so cold water reservoirs do not unrealistically escape as steam
-  - apply atmospheric and H2O erosion only on Weather Core physical simulation ticks, never render FPS; ordinary terrestrial loss is deliberately tiny while close-in unmagnetised planets around active/hot stars can erode measurably
-  - add Star/Atmosphere diagnostics for current AU and S-earth forcing, Weather Core/orbit flux agreement, wind pressure, XUV, magnetopause, escape rate and present-regime lifetime
-  - relabel the former Kp-only control as short-term space weather/flares: the star itself now sets the baseline wind instead of a free aurora slider defining stellar activity from nothing
-Regression: climate-consistency.test.js now checks area-weighted observed surface/air means, legacy temperature proxy truth, Weather Core/orbit forcing agreement, inverse-square wind/XUV scaling, magnetic shielding and physical inventory erosion on Weather Core ticks.
-Physics note: the stellar-wind/XUV layer is an order-of-magnitude exosphere scaffold, not a full MHD/photochemistry solver; detailed H/O crossover, isotope fractionation and time-integrated stellar spin history remain future refinements.
+VERSION 0.5.134
+Base: 0.5.133
+Changes: Split the top-left thermometer into immediate actual temperature T_a and equilibrium forecast T_f.
+  - replace the ambiguous single T-bar readout with T_a, the current cubed-sphere area-weighted Weather Core surface temperature, plus a separate T_f forecast/equilibrium row underneath
+  - force one Weather Core initialization for the headline thermometer when needed, so startup never temporarily displays climateModel().C in the slot reserved for current observed temperature
+  - keep T_f explicitly secondary and label it as the expected settled climate regime rather than a current measurement
+  - colour T_a with the same nonlinear Celsius palette used by the thermal-imager legend (-100, -50, 0, +50, +1200 C anchors), with a modest matching glow so the eye catches current temperature immediately
+  - keep T_f neutral/muted to preserve the visual distinction between observation and forecast
+  - update Planet-panel terminology to 'Текущая Tₐ поверхности' and 'Ожидаемая T_f режима'
+  - refresh T_a directly on Weather Core diagnostic updates and at 250 ms telemetry cadence without coupling temperature UI to render FPS physics
+Regression: thermal-celsius.test.js now requires separate T_a/T_f sources, immediate Weather Core initialization, forecast labelling, and reuse of the thermal-imager colour scale.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
