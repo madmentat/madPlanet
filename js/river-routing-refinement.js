@@ -1,33 +1,40 @@
-/* ============ 0.5.132: river routing refinement ============ */
+/* ============ 0.5.138: river routing refinement ============ */
 /*
-   The first runoff-driven river pass exposed the coarse four-neighbour
-   Weather Core lattice: almost every wet cell qualified as a channel and the
-   only available receivers were E/W/N/S. Rasterizing those links faithfully
-   produced a tilted chessboard rather than a drainage network.
+   The runoff-driven river pass owns the water budget, Priority-Flood drainage
+   and hydraulic geometry. This layer deals with numerical resolution: Weather
+   Core cells are large synoptic catchment elements, while the visible river
+   network must still preserve headwaters, tributaries and an unbroken trunk.
 
-   This refinement keeps the water budget and Priority-Flood physics, but makes
-   two numerical-resolution corrections before the graph is shown:
-     1. hydrology gets its own eight-neighbour cubed-sphere stencil (D8-like),
-        so flow can follow diagonal steepest descent instead of Manhattan paths;
-     2. a cell becomes a visible channel only after several resolved hillslope
-        cells have contributed area and discharge. A single Weather Core cell
-        is a catchment element, not automatically a river.
+   0.5.132 introduced an eight-neighbour cubed-sphere stencil and prevented
+   every wet Weather Core cell from automatically becoming a river.
 
-   The thresholds are expressed relative to the current cell area and its
-   climate-supported reference runoff, so changing Weather Core resolution or
-   planet radius does not resurrect a dense grid of one-cell channels.
+   0.5.138 keeps that protection but fixes the opposite failure: with a 24..36
+   cell face a single catchment element can represent tens of thousands of
+   square kilometres, so requiring several complete cells before any visible
+   channel made ordinary island and coastal rivers disappear. Channel
+   initiation now needs both a climate-supported discharge and a fractional
+   resolved catchment. Once a supported channel exists, a conservative visual
+   continuity pass carries part of its strength downstream. The pass cannot
+   create water, change Q, or jump drainage divides; it only prevents a real
+   graph edge from becoming visually discontinuous because the next coarse
+   cell falls just below a display threshold.
 */
 
-const RIVER_ROUTING_REFINEMENT_MODEL=1;
-const RIVER_AREA_START_CELLS=1.35;
-const RIVER_AREA_FULL_CELLS=6.50;
-const RIVER_Q_START_LOCAL_MULT=1.25;
-const RIVER_Q_FULL_LOCAL_MULT=8.00;
+const RIVER_ROUTING_REFINEMENT_MODEL=2;
+const RIVER_AREA_START_CELLS=0.72;
+const RIVER_AREA_FULL_CELLS=4.80;
+const RIVER_Q_START_LOCAL_MULT=1.05;
+const RIVER_Q_FULL_LOCAL_MULT=6.00;
+const RIVER_CONTINUITY_START=0.025;
+const RIVER_CONTINUITY_DECAY=0.90;
+const RIVER_CONTINUITY_Q_FLOOR=0.58;
 
 function riverRoutingEnsureFields(core){
   if(!core?.count)return core;
   if(!core.riverContributingArea||core.riverContributingArea.length!==core.count)
     core.riverContributingArea=new Float64Array(core.count);
+  if(!core.riverRawChannelStrength||core.riverRawChannelStrength.length!==core.count)
+    core.riverRawChannelStrength=new Float32Array(core.count);
   core.riverRoutingRefinementModel=RIVER_ROUTING_REFINEMENT_MODEL;
   return core;
 }
@@ -87,10 +94,34 @@ riverRebuildTopology=function(core,climate){
   return riverRebuildTopologyBeforeRefinement(core,climate);
 };
 
+function riverRoutingReferenceQ(cellArea){
+  return Math.max(0.02,RIVER_BOOTSTRAP_RUNOFF_KG_M2_S*Math.max(1,cellArea)/RIVER_WATER_DENSITY_KG_M3);
+}
+
+/* A display-only continuity constraint. It never alters discharge, runoff,
+   contributing area or downstream routing. A channel can be inherited only by
+   its own diagnosed downstream receiver, and only while that receiver still
+   carries physically supported discharge. */
+function riverRoutingCarryChannelsDownstream(core,area){
+  const strength=core.riverChannelStrength,raw=core.riverRawChannelStrength;
+  raw.set(strength);
+  for(let k=0;k<core.riverTopoCount;k++){
+    const i=core.riverTopo[k]|0,j=core.riverDownstream[i]|0;
+    if(j<0||j>=core.count||riverIsOcean(core,j))continue;
+    const upstream=riverClamp(strength[i],0,1);
+    if(upstream<=RIVER_CONTINUITY_START)continue;
+    const qj=Math.max(0,Number(core.riverDischarge[j])||0);
+    const ref=riverRoutingReferenceQ(area[j]);
+    const qSupport=riverSmooth(0.72*ref,2.50*ref,qj);
+    if(qSupport<=0)continue;
+    const inherited=upstream*RIVER_CONTINUITY_DECAY*(RIVER_CONTINUITY_Q_FLOOR+(1-RIVER_CONTINUITY_Q_FLOOR)*qSupport);
+    if(inherited>strength[j])strength[j]=riverClamp(inherited,0,1);
+  }
+}
+
 /* The old discharge calculation is still the conservative owner of Q and the
-   hydraulic geometry. Afterwards we add a contributing-area pass and replace
-   only the visible channel/lake support. This is a resolution criterion, not a
-   new water source or sink. */
+   hydraulic geometry. Afterwards we add contributing area, resolve headwater
+   support and enforce graph continuity only in the visual channel field. */
 const riverAccumulateDischargeBeforeRefinement=riverAccumulateDischarge;
 riverAccumulateDischarge=function(core,dtSec,climate){
   riverAccumulateDischargeBeforeRefinement(core,dtSec,climate);
@@ -102,16 +133,19 @@ riverAccumulateDischarge=function(core,dtSec,climate){
     if(j>=0&&!riverIsOcean(core,j))accA[j]+=accA[i];
   }
   for(let i=0;i<core.count;i++){
-    if(riverIsOcean(core,i))continue;
+    if(riverIsOcean(core,i)){
+      core.riverChannelStrength[i]=0;
+      core.riverRawChannelStrength[i]=0;
+      continue;
+    }
     const cellArea=Math.max(1,area[i]);
     const Q=Math.max(0,Number(core.riverDischarge[i])||0);
-    const localReferenceQ=Math.max(0.02,
-      RIVER_BOOTSTRAP_RUNOFF_KG_M2_S*cellArea/RIVER_WATER_DENSITY_KG_M3);
+    const localReferenceQ=riverRoutingReferenceQ(cellArea);
     const areaStrength=riverSmooth(RIVER_AREA_START_CELLS*cellArea,
                                    RIVER_AREA_FULL_CELLS*cellArea,accA[i]);
     const qStrength=riverSmooth(RIVER_Q_START_LOCAL_MULT*localReferenceQ,
                                 RIVER_Q_FULL_LOCAL_MULT*localReferenceQ,Q);
-    const slopeSupport=0.58+0.42*riverSmooth(1e-7,2.0e-5,core.riverSlope[i]);
+    const slopeSupport=0.66+0.34*riverSmooth(6e-8,1.6e-5,core.riverSlope[i]);
     core.riverChannelStrength[i]=riverClamp(areaStrength*qStrength*slopeSupport,0,1);
 
     /* A lake may occupy one resolved depression, but it still needs enough
@@ -121,18 +155,22 @@ riverAccumulateDischarge=function(core,dtSec,climate){
     const waterSupport=riverSmooth(0.45*localReferenceQ,2.8*localReferenceQ,Q);
     core.riverLakeFraction[i]=riverClamp(depression*waterSupport,0,1);
   }
+  riverRoutingCarryChannelsDownstream(core,area);
   return core;
 };
 
 const weatherCoreFiniteBeforeRiverRoutingRefinement=weatherCoreFinite;
 weatherCoreFinite=function(core){
   if(!weatherCoreFiniteBeforeRiverRoutingRefinement(core))return false;
-  if(!core?.riverContributingArea||core.riverContributingArea.length!==core.count)return false;
-  for(let i=0;i<core.count;i++)if(!Number.isFinite(core.riverContributingArea[i])||core.riverContributingArea[i]<0)return false;
+  for(const key of ['riverContributingArea','riverRawChannelStrength']){
+    const a=core?.[key];if(!a||a.length!==core.count)return false;
+    for(let i=0;i<a.length;i++)if(!Number.isFinite(a[i])||a[i]<0)return false;
+  }
   return true;
 };
 
 if(typeof window!=='undefined')window.__madPlanetRiverRoutingRefinement={
   model:RIVER_ROUTING_REFINEMENT_MODEL,
-  rebuildNeighbors:riverRoutingBuildNeighbor8
+  rebuildNeighbors:riverRoutingBuildNeighbor8,
+  carryDownstream:riverRoutingCarryChannelsDownstream
 };
