@@ -16,7 +16,8 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 
 assert.ok(!/Math\.random|requestAnimationFrame/.test(src),'river physics must stay deterministic and off render FPS');
 assert.ok(!/Math\.random|requestAnimationFrame/.test(refine),'river routing refinement must stay deterministic and off render FPS');
-assert.ok(!/Math\.random|requestAnimationFrame/.test(visual),'visual tributaries must stay deterministic and off render FPS');
+const executableVisual=visual.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\/.*$/gm,'$1');
+assert.ok(!/Math\.random|requestAnimationFrame/.test(executableVisual),'visual tributaries must stay deterministic and off render FPS');
 for(const k of ['runoffGenerationRate','macroTerrain','surfaceWaterFraction','riverDownstream','riverDischarge','riverWidthM','riverStreamPower'])
   assert.ok(src.includes(k),'missing physical river dependency '+k);
 assert.ok(src.includes('RiverMinHeap')&&src.includes('riverPriorityFlood'),'drainage must hydro-condition depressions');
