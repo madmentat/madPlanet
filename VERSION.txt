@@ -1,14 +1,13 @@
-VERSION 0.5.139
-Base: 0.5.138
-Changes: Split visible rivers from the coarse Weather Core drainage lattice with basin-constrained fine tributaries.
-  - keep Priority-Flood, runoff accumulation, discharge and the diagnosed physical downstream graph authoritative for water, basins and outlets
-  - add river-visual-tributaries.js as a display-only secondary network: candidate headwaters require real humidity/soil water/runoff plus usable terrain slope
-  - compute a physical basin id and graph distance to the nearest diagnosed channel/lake/ocean for every land cell
-  - allow a visual tributary to choose among several neighbouring downhill cells only when they stay in the same physical basin and reduce distance to a diagnosed receiver; uphill and cross-divide steps are rejected
-  - rebuild the visual tributary topology only every six Weather Core ticks or after a topology/seed change, keeping it off render FPS
-  - rasterize tributaries as thin sub-cell curves whose lateral offsets collapse to zero at confluences, so small branches merge cleanly into the physical trunk instead of following cell centres
-  - raise river display cubemap reconstruction from 7x to 8x Weather Core resolution while narrowing the physical trunk brush to reduce the broad blocky blue-groove look
-  - preserve physical trunk/lake dominance at confluences by painting fine tributaries first and authoritative channels afterwards with max compositing
-  - retain the 0.5.138 physical-fog spatial reconstruction and 0.5.137 single-writer integer T_a/T_f telemetry
-Regression: add river-visual-tributaries.test.js for deterministic wetness/slope gating, basin locking, downhill routing, receiver convergence and dry-basin rejection; update river GPU expectations to model 5 / 8x reconstruction.
+VERSION 0.5.140
+Base: 0.5.139
+Changes: Improve perceptual smoothness and frame pacing under periodic Weather Core / texture-load stalls, especially at x4 simulation speed.
+  - add presentation-clock.js between the runtime clock and the visual render bridges: ordinary stable 30/45/60 Hz cadence remains exact, while isolated long frames are clipped for display and their small time debt is repaid gradually over following frames
+  - keep the physical Weather Core clock independent from presentation smoothing, so visual anti-hitch interpolation does not alter deterministic weather state
+  - add weather-frame-budget.js: use measured Weather Core tick cost to require a sufficiently large requestIdleCallback slice before starting an indivisible CPU physics tick
+  - allow an idle timeout to defer again while frame pacing is unhealthy, with a bounded 1.6 s starvation limit; missed wall-clock weather opportunities are still skipped rather than replayed in a catch-up burst
+  - add river-frame-pacing.js for the 0.5.139 8x river cubemap: normal river raster/pack/upload is coalesced to the newest Weather Core state, runs in an idle turn, and is capped to about 1.2 s desktop / 1.55 s mobile publication cadence
+  - keep first river texture, seed changes and texture-size changes synchronous so a new world never displays stale rivers
+  - make camera/input activity and recent presentation hitches outrank deferred river repacking; river upload cost is measured and fed back into its own idle admission budget
+  - retain x0.25..x4 visual simulation speed and existing Weather Core no-catch-up semantics; under load the scheduler may skip physical wall-clock opportunities rather than sacrifice frame pacing
+Regression: add presentation-clock.test.js, weather-frame-budget.test.js and river-frame-pacing.test.js; final build keeps the new pacing layers in the intended wrapper order.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
