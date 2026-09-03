@@ -6,6 +6,7 @@ const vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
 const src=fs.readFileSync(path.join(root,'js/river-physics.js'),'utf8');
 const refine=fs.readFileSync(path.join(root,'js/river-routing-refinement.js'),'utf8');
+const visual=fs.readFileSync(path.join(root,'js/river-visual-tributaries.js'),'utf8');
 const gpu=fs.readFileSync(path.join(root,'js/river-gpu.js'),'utf8');
 const render=fs.readFileSync(path.join(root,'js/river-render.js'),'utf8');
 const shader=fs.readFileSync(path.join(root,'shaders/surface.glsl'),'utf8');
@@ -15,6 +16,7 @@ const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
 
 assert.ok(!/Math\.random|requestAnimationFrame/.test(src),'river physics must stay deterministic and off render FPS');
 assert.ok(!/Math\.random|requestAnimationFrame/.test(refine),'river routing refinement must stay deterministic and off render FPS');
+assert.ok(!/Math\.random|requestAnimationFrame/.test(visual),'visual tributaries must stay deterministic and off render FPS');
 for(const k of ['runoffGenerationRate','macroTerrain','surfaceWaterFraction','riverDownstream','riverDischarge','riverWidthM','riverStreamPower'])
   assert.ok(src.includes(k),'missing physical river dependency '+k);
 assert.ok(src.includes('RiverMinHeap')&&src.includes('riverPriorityFlood'),'drainage must hydro-condition depressions');
@@ -32,11 +34,14 @@ assert.match(refine,/RIVER_Q_START_LOCAL_MULT=1\.05/,'headwaters must still requ
 assert.match(refine,/riverRoutingCarryChannelsDownstream/,'real channel support must be carried along its diagnosed downstream graph');
 assert.match(refine,/RIVER_CONTINUITY_DECAY=0\.90/,'downstream visual continuity needs a bounded decay');
 assert.match(refine,/RIVER_ROUTING_REFINEMENT_MODEL=2/,'river routing refinement model must be bumped');
+assert.match(visual,/riverVisualBasin/,'fine tributaries must be basin constrained');
+assert.match(visual,/riverVisualDistToTrunk/,'fine tributaries must converge toward a physical receiver');
 
 for(const file of [buildSh,buildPs]){
   assert.ok(file.indexOf('js/soil-hydrology.js')<file.indexOf('js/river-physics.js'));
   assert.ok(file.indexOf('js/river-physics.js')<file.indexOf('js/river-routing-refinement.js'));
-  assert.ok(file.indexOf('js/river-routing-refinement.js')<file.indexOf('js/river-gpu.js'));
+  assert.ok(file.indexOf('js/river-routing-refinement.js')<file.indexOf('js/river-visual-tributaries.js'));
+  assert.ok(file.indexOf('js/river-visual-tributaries.js')<file.indexOf('js/river-gpu.js'));
   assert.ok(file.indexOf('js/render.js')<file.indexOf('js/river-render.js'));
 }
 assert.match(header,/uniform samplerCube uRiverTex;/);
@@ -46,9 +51,10 @@ assert.match(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,riverGeomProc\*physR
 assert.ok(gpu.includes('riverDownstream'),'GPU river map must rasterize the diagnosed drainage graph');
 assert.ok(gpu.includes('riverGpuPaintEdge'),'GPU river map must paint graph edges rather than hydrology cells');
 assert.ok(gpu.includes('riverGpuEdgeHash')&&gpu.includes('Math.sin(Math.PI*t)'),'coarse graph edges need deterministic sub-cell bending to hide lattice directions');
-assert.match(gpu,/RIVER_GPU_MODEL=4/,'river display bridge must use the higher-resolution model');
-assert.match(gpu,/RIVER_GPU_UPSCALE=7/,'river cubemap must resolve well below the Weather Core cell size');
-assert.match(gpu,/Math\.min\(36,Math\.ceil\(ang\*riverGpuN\*1\.45\)\)/,'long graph links need dense spherical samples rather than chunky segments');
+assert.match(gpu,/RIVER_GPU_MODEL=5/,'river display bridge must include visual tributaries');
+assert.match(gpu,/RIVER_GPU_UPSCALE=8/,'river cubemap must resolve well below the Weather Core cell size');
+assert.match(gpu,/Math\.min\(40,Math\.ceil\(ang\*riverGpuN\*1\.55\)\)/,'long physical graph links need dense spherical samples rather than chunky segments');
+assert.ok(gpu.includes('riverGpuPaintVisualBranches'),'GPU bridge must paint the fine tributary overlay');
 assert.ok(!gpu.includes('requestAnimationFrame'),'river texture must not upload from render FPS');
 assert.ok(render.includes('uRiverPhysicsOn')&&render.includes('uRiverTex'));
 
