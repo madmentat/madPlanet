@@ -9,6 +9,7 @@ const phys=read('js/river-physics.js');
 const refine=read('js/river-routing-refinement.js');
 const visual=read('js/river-visual-tributaries.js');
 const gpu=read('js/river-gpu.js');
+const pacing=read('js/river-frame-pacing.js');
 const surfacePre=read('shaders/surface-artifact-prelude.glsl');
 const surfacePost=read('shaders/surface-artifact-postlude.glsl');
 const sh=read('build.sh'),ps=read('build.ps1');
@@ -27,15 +28,27 @@ assert.match(visual,/dj<d0/,'visual branches must move toward a diagnosed receiv
 assert.match(visual,/dj>d0/,'reverse feeder tracing must move away from the receiver before reversal');
 assert.match(visual,/kind:'feeder'/,'display graph needs explicit fine side feeders');
 assert.match(gpu,/RIVER_GPU_MODEL=5/);
-assert.match(gpu,/RIVER_GPU_UPSCALE=8/);
+assert.match(gpu,/RIVER_GPU_UPSCALE=8/,'desktop authoritative river reconstruction remains 8x');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches')&&gpu.includes('riverVisualBranches'),'GPU bridge must rasterize fine tributaries');
-assert.match(surfacePre,/#define shadeSurface shadeSurfaceLegacy/,'surface wrapper must preserve the legacy shader as a callable base');
-assert.match(surfacePost,/vec3 shadeSurface\(vec3 pos, vec3 rd, float tHit, out float dayOut\)/,'physical river visibility wrapper missing');
-assert.match(surfacePost,/texture\(uRiverTex,sN\)/,'surface visibility pass must read the authoritative river cubemap');
-assert.match(surfacePost,/fineCore\*liquid\*0\.76/,'fine diagnosed streams must survive the legacy procedural width gate');
+
+/* 0.5.142: the second shadeSurface wrapper was expensive on mobile because it
+   duplicated river sampling and could call the 5-tap/two-texture fog sampler a
+   second time near every stream. The normal surface shader is again the only
+   surface pass; fine-stream visibility is carried by a narrow high-confidence
+   river texture signal instead. */
+assert.doesNotMatch(surfacePre,/#define shadeSurface shadeSurfaceLegacy/,'surface shader must not be renamed for a second river pass');
+assert.doesNotMatch(surfacePost,/vec3 shadeSurface\s*\(/,'postlude must not add a duplicate surface shader pass');
+assert.doesNotMatch(surfacePost,/physicalFogSample|texture\s*\(\s*uRiverTex/,'postlude must not duplicate weather/river cubemap reads');
+assert.match(pacing,/RIVER_VISUAL_POLISH_MODEL=1/,'late river visual polish missing');
+assert.match(pacing,/return mobile\?Math\.max\(8,n\*6\):displayBefore\(coreN\)/,'mobile river display must use the cheaper 6x reconstruction');
+assert.match(pacing,/claimedReceiver/,'adjacent feeder receivers must be pruned to prevent comb patterns');
+assert.match(pacing,/cells\.length<3/,'one-cell feeder teeth must be rejected');
+assert.match(pacing,/0\.105\+0\.115\*Math\.sqrt\(strength\)/,'fine feeder brush must stay narrow');
+assert.match(pacing,/0\.46\+0\.36\*strength/,'fine river centre line must carry enough signal to survive the legacy surface gate');
 for(const build of [sh,ps]){
   assert.ok(build.indexOf('js/river-routing-refinement.js')<build.indexOf('js/river-visual-tributaries.js'));
   assert.ok(build.indexOf('js/river-visual-tributaries.js')<build.indexOf('js/river-gpu.js'));
+  assert.ok(build.indexOf('js/render.js')<build.indexOf('js/river-frame-pacing.js'),'river polish must run after mobileDevice/render policy is defined');
 }
 
 const ctx={console,Math,Number,Array,Set,Float32Array,Float64Array,Int32Array,Int16Array,Uint8Array,
