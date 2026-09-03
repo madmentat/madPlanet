@@ -28,6 +28,21 @@ assert.match(units,/data-weathercore="temp"/,'Weather Core air-temperature diagn
 assert.match(units,/data-oceanthermal="depth"/,'ocean temperature contrast must be relabelled in Celsius');
 assert.match(units,/unit:'°C'/,'public temperature unit must be Celsius');
 
+/* Top-left thermometer: current observation and equilibrium forecast are
+   different quantities and must never collapse back into one readout. */
+assert.match(units,/temperatureTelemetrySubLabel\(currentLabel,'a'\)/,'current temperature must be labelled T_a');
+assert.match(units,/temperatureTelemetrySubLabel\(label,'f'\)/,'forecast temperature must be labelled T_f');
+assert.match(units,/smoothTelemetryValues\.forecast/,'forecast must have its own telemetry value');
+assert.match(units,/climateConsistencyCurrentSurfaceC\(\)/,'T_a must come from the actual area-weighted Weather Core surface');
+assert.match(units,/weatherCoreEnsure\(\)/,'T_a must initialize Weather Core immediately instead of temporarily showing the forecast');
+assert.match(units,/forecast=Number\(climateModel\(\)\?\.C\)/,'T_f must remain the climate-model equilibrium forecast');
+assert.match(units,/Ожидаемая T_f режима/,'forecast must be labelled as expected rather than current');
+assert.match(units,/Текущая Tₐ поверхности/,'panel must identify the actual current temperature');
+assert.match(units,/\[\[-100,0\],\[-50,\.28\],\[0,\.53\],\[50,\.77\],\[1200,1\]\]/,'telemetry colour position must follow the thermal legend Celsius anchors');
+assert.match(units,/\[20,3,38\].*\[20,31,158\].*\[0,194,230\].*\[250,230,31\].*\[245,46,8\].*\[255,247,229\]/,'T_a colours must reuse the thermal-imager palette');
+assert.match(units,/current\.style\.textShadow=temperatureTelemetryGlow/,'T_a must be visually prominent at a glance');
+assert.match(units,/predicted\.title='T_f — ожидаемая температура/,'T_f must explicitly state that it is not current temperature');
+
 assert.match(thermalShader,/thermalDecodeSurfaceK/,'thermal view must decode the packed temperature channel');
 assert.match(thermalShader,/code < 0\.05/,'cold-tail packed-temperature decoding missing');
 assert.match(thermalShader,/code < 0\.90/,'normal/hot packed-temperature decoding missing');
