@@ -102,29 +102,40 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float rn = fbm(sN*5.2 + uSeedS*1.9 + 0.5*vec3(riverWarpX,riverWarpY,0.0), 4);
   float wVar = 0.45 + 1.15*(0.5+0.5*fbm(sN*19.0 + uSeedS + vec3(71.0), 3));
   float wReal = mix(0.013, 0.0030, ss(0.02,0.22,h)) * wVar;
-  float physicalWidthGain = mix(0.72,2.10,sqrt(riverPhys));
-  wReal *= mix(1.0,physicalWidthGain,uRiverPhysicsOn);
+  /* 0.5.146: the physical river cubemap is a CORRIDOR, never a brush. One
+     display texel spans ~50 km on the desktop grid, so painting physRiverCore
+     directly as water produced rivers 50..400 km wide with round 300 km
+     lakes. Thin channel geometry comes from the sub-grid function; physics
+     decides where channels exist (resolved soil water), how dense they are,
+     and which corridor carries the dominant trunk. */
+  float trunkGain = mix(1.0, 1.55, physRiverCore);
+  wReal *= mix(1.0,trunkGain,uRiverPhysicsOn);
   float wPix = tHit*uPixA*1.6;
   float w = max(wReal, wPix);
   float riverSignal = abs(rn) + 0.0016*fbm(sN*260.0+uSeedS,2);
   float riverGeomProc = 1.0 - ss(w*0.82, w*1.06, riverSignal);
-  /* The connected physical core is authoritative. Procedural geometry only
-     roughens/widens it inside the physical halo; with physics disabled this
-     remains exact legacy behaviour for compatibility diagnostics. */
-  float riverGeomPhys = max(physRiverCore,riverGeomProc*physRiverHalo);
+  /* Inside the diagnosed trunk corridor a wider acceptance band keeps one
+     main channel continuous; outside it the fine network is unchanged. */
+  float trunkChannel = 1.0 - ss(w*1.05, w*1.65, riverSignal);
+  float riverGeomPhys = max(riverGeomProc, trunkChannel*physRiverCore);
   float riverGeom = mix(riverGeomProc,riverGeomPhys,uRiverPhysicsOn);
   float floodplainProc = 1.0-ss(wReal*1.7,wReal*6.2,abs(rn));
   floodplainProc *= 1.0-ss(0.14,0.32,h);
-  float floodplainPhys = max(0.52*physRiverHalo,floodplainProc*physRiverHalo);
+  float floodplainPhys = floodplainProc*(0.55+0.45*physRiverHalo);
   float floodplain = mix(floodplainProc,floodplainPhys,uRiverPhysicsOn);
 
   float lakeN = fbm(sN*3.4 + uSeedS*3.7 + vec3(53.0), 4);
   float lth = mix(0.46, 0.20, uLake);
   float lakeGeomProc = ss(lth,lth+0.07,lakeN) * (1.0-ss(0.05,0.14,h)) * ss(0.02,0.10,uLake);
-  float lakeGeomPhys = max(0.72*physLakeCore,lakeGeomProc*ss(0.01,0.16,lakePhys));
+  /* Physical lake storage lowers the noise threshold, so lakes keep a
+     noise-shaped shoreline but sit where the drainage solver stores water. */
+  float lakeSupport = ss(0.02,0.30,lakePhys);
+  float lthPhys = lth - 0.22*ss(0.15,0.75,lakePhys);
+  float lakeGeomPhys = ss(lthPhys,lthPhys+0.07,lakeN) * (1.0-ss(0.05,0.14,h)) * lakeSupport * ss(0.02,0.10,uLake);
   float lakeGeom = mix(lakeGeomProc,lakeGeomPhys,uRiverPhysicsOn);
   float lakeMarginProc = ss(lth-0.12,lth+0.025,lakeN) * (1.0-ss(0.07,0.18,h)) * ss(0.02,0.10,uLake);
-  float lakeMargin = mix(lakeMarginProc,max(0.65*ss(0.01,0.16,lakePhys),lakeMarginProc*physLakeCore),uRiverPhysicsOn);
+  float lakeMarginPhys = ss(lthPhys-0.12,lthPhys+0.025,lakeN) * (1.0-ss(0.07,0.18,h)) * lakeSupport * ss(0.02,0.10,uLake);
+  float lakeMargin = mix(lakeMarginProc,lakeMarginPhys,uRiverPhysicsOn);
 
   float mo1 = 0.5+0.5*fbm(sN*9.0  + uSeedS*2.1 + vec3(101.0), 3);
   float mo2 = 0.5+0.5*fbm(sN*19.0 + uSeedS*3.3 + vec3(202.0), 3);
@@ -246,7 +257,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   if(h > 0.0 && hydroReveal > 0.01){
     float riv = riverGeom;
     riv *= clamp(wReal/wPix*0.8, 0.0, 1.0);
-    float riverClimateGate = mix(ss(0.24,0.44,moist),0.62+0.38*physRiverHalo,uRiverPhysicsOn);
+    float riverClimateGate = mix(ss(0.24,0.44,moist),ss(0.12,0.40,max(soilMoistPhys,physRiverHalo)),uRiverPhysicsOn);
     float riverHighlandGate = mix(1.0-ss(0.16,0.30,h),1.0-0.45*ss(0.20,0.42,h),uRiverPhysicsOn);
     riv *= riverClimateGate*riverHighlandGate;
     float lakeClimateGate = mix(ss(0.20,0.38,moist),0.72+0.28*physLakeCore,uRiverPhysicsOn);
@@ -257,7 +268,8 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     rv = clamp(riverM+lakeM,0.0,1.0);
 
     float lakeInteriorProc = ss(lth+0.045,lth+0.16,lakeN);
-    float lakeInterior = mix(lakeInteriorProc,ss(0.30,0.76,lakePhys),uRiverPhysicsOn);
+    float lakeInteriorPhys = ss(lthPhys+0.045,lthPhys+0.16,lakeN);
+    float lakeInterior = mix(lakeInteriorProc,lakeInteriorPhys,uRiverPhysicsOn);
     float lakeFreezeLo = mix(272.2,268.5,lakeInterior);
     float lakeFreezeHi = mix(273.9,271.8,lakeInterior);
     float lakeFreeze = max(deepColdIce,1.0-ss(lakeFreezeLo,lakeFreezeHi,ecologyK));

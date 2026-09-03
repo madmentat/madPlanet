@@ -4,14 +4,20 @@
    One RGBA8 cubemap keeps the bridge WebGL1-friendly; the texture is updated
    only on Weather Core fixed ticks, never per render frame.
 
-   0.5.146 RADICAL: stop painting cell-centre to cell-centre edges. Trunks are
-   drawn as Catmull-Rom splines through a 4-cell window (upstream, i, j,
-   downstream) so the corridor is a smooth curve, not a D8 polyline. Meander
-   is a continuous arc-length wave, not a per-edge kink. Visual branches use
-   the same spline treatment. Width is hierarchical and deliberately thin.
+   0.5.145: trunks are drawn as Catmull-Rom splines through a 4-cell window
+   (upstream, i, j, downstream) so the corridor is a smooth curve, not a D8
+   polyline; visual branches use the same spline treatment.
+
+   0.5.146: this cubemap is a CORRIDOR MASK for surface.glsl, never a brush.
+   One texel is ~50 km on the desktop grid, so anything painted here and shown
+   as water directly is a 50..400 km wide river. The shader now keeps its thin
+   sub-grid channel geometry and uses this map only to decide where channels
+   exist, where the dominant trunk runs and where lakes are stored. Meander
+   amplitude is reduced accordingly: a corridor must follow the graph, the
+   visible wiggles belong to the sub-grid channel.
 */
 
-const RIVER_GPU_MODEL=9;
+const RIVER_GPU_MODEL=10;
 const RIVER_TEX_UNIT=2;
 const RIVER_GPU_UPSCALE=16;
 const RIVER_BLEND_DEFAULT_MS=900;
@@ -128,7 +134,7 @@ function riverGpuPaintSplineSegment(core,i0,i1,i2,i3,s0,s1,w0,w1,tmp){
     const t=s/steps;
     riverGpuCatmullDir(p0,p1,p2,p3,t,d);
     const wave=0.85*h1*Math.sin(Math.PI*t+phase0)+0.15*h2*Math.sin(2.1*Math.PI*t+phase0*1.3);
-    const amp=cellAng*(0.30+0.12*Math.abs(h2))*(0.65+0.35*Math.sin(Math.PI*t));
+    const amp=cellAng*(0.12+0.06*Math.abs(h2))*(0.65+0.35*Math.sin(Math.PI*t));
     const bend=amp*wave;
     let dx=d.x+nx*bend,dy=d.y+ny*bend,dz=d.z+nz*bend;
     const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
@@ -182,7 +188,7 @@ function riverGpuPaintVisualBranch(core,branch,tmp){
       const t=s/steps;
       riverGpuCatmullDir(p0,p1,p2,p3,t,d);
       const wave=0.80*h*Math.sin(Math.PI*t+phase0)+0.20*h2*Math.sin(2.0*Math.PI*t+phase0*1.1);
-      const amp=cellAng*(0.22+0.10*Math.abs(branch.phase||0))*(0.70+0.30*Math.sin(Math.PI*t));
+      const amp=cellAng*(0.10+0.05*Math.abs(branch.phase||0))*(0.70+0.30*Math.sin(Math.PI*t));
       let dx=d.x+nx*amp*wave,dy=d.y+ny*amp*wave,dz=d.z+nz*amp*wave;
       const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
       const strength=s0+(s1-s0)*t;

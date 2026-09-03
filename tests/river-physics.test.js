@@ -48,13 +48,20 @@ for(const file of [buildSh,buildPs]){
 assert.match(header,/uniform samplerCube uRiverTex;/);
 assert.match(header,/uniform float uRiverBlend;/);
 assert.match(shader,/riverHydroTex\s*=\s*texture\(uRiverTex/);
-assert.match(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,riverGeomProc\*physRiverHalo\)/);
+/* 0.5.146: the coarse corridor map is never shown as water; thin sub-grid
+   channels stay, the trunk corridor only keeps one main channel continuous. */
+assert.match(shader,/riverGeomPhys\s*=\s*max\(riverGeomProc,\s*trunkChannel\*physRiverCore\)/,'physical corridor must gate sub-grid channels, not replace them');
+assert.doesNotMatch(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,/,'the coarse river texel must never be painted as water directly');
+assert.match(shader,/float trunkChannel = 1\.0 - ss\(w\*1\.05, w\*1\.65, riverSignal\)/,'trunk corridor needs a wider acceptance band for a continuous main channel');
+assert.match(shader,/riverClimateGate = mix\(ss\(0\.24,0\.44,moist\),ss\(0\.12,0\.40,max\(soilMoistPhys,physRiverHalo\)\),uRiverPhysicsOn\)/,'river density must follow resolved soil water');
+assert.match(shader,/float lthPhys = lth - 0\.22\*ss\(0\.15,0\.75,lakePhys\)/,'physical lakes must keep noise-shaped shorelines');
 assert.ok(gpu.includes('riverDownstream'),'GPU river map must rasterize the diagnosed drainage graph');
 assert.ok(gpu.includes('riverGpuPaintEdge'),'GPU river map must paint graph edges rather than hydrology cells');
 assert.ok(gpu.includes('riverGpuEdgeHash')&&gpu.includes('Math.sin(Math.PI*t)'),'coarse graph edges need deterministic sub-cell bending to hide lattice directions');
-assert.match(gpu,/RIVER_GPU_MODEL=5/,'river display bridge must include visual tributaries');
-assert.match(gpu,/RIVER_GPU_UPSCALE=8/,'river cubemap must resolve well below the Weather Core cell size');
-assert.match(gpu,/Math\.min\(40,Math\.ceil\(ang\*riverGpuN\*1\.55\)\)/,'long physical graph links need dense spherical samples rather than chunky segments');
+assert.match(gpu,/RIVER_GPU_MODEL=10/,'river display bridge must be the corridor-mask model');
+assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'river cubemap must resolve well below the Weather Core cell size');
+assert.match(gpu,/Math\.min\(96,Math\.ceil\(Math\.max\(ang,cellAng\)\*riverGpuN\*3\.2\)\)/,'long physical graph links need dense spherical samples rather than chunky segments');
+assert.match(gpu,/const amp=cellAng\*\(0\.12\+0\.06\*Math\.abs\(h2\)\)/,'corridor meander must stay small: visible wiggles belong to the sub-grid channel');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches'),'GPU bridge must paint the fine tributary overlay');
 assert.ok(!gpu.includes('requestAnimationFrame'),'river texture must not upload from render FPS');
 assert.ok(render.includes('uRiverPhysicsOn')&&render.includes('uRiverTex'));

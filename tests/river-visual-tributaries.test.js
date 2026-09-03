@@ -18,8 +18,8 @@ const executableVisual=visual.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\
 assert.ok(!/Math\.random|requestAnimationFrame/.test(executableVisual),'visual tributaries must be deterministic and off render FPS');
 for(const token of ['riverVisualBasin','riverVisualDistToTrunk','riverVisualWetness','riverVisualTraceBranch','riverVisualChooseNext','riverVisualTraceFeeder','riverVisualChooseUpstream'])
   assert.ok(visual.includes(token),'missing tributary constraint '+token);
-assert.match(visual,/RIVER_VISUAL_TRIBUTARY_MODEL=2/);
-assert.match(visual,/RIVER_VISUAL_MAX_TRUNK_DISTANCE=15/);
+assert.match(visual,/RIVER_VISUAL_TRIBUTARY_MODEL=5/);
+assert.match(visual,/RIVER_VISUAL_MAX_TRUNK_DISTANCE=22/);
 assert.match(visual,/RIVER_VISUAL_REBUILD_TICKS=12/,'fine display network must not churn every few x4 weather ticks');
 assert.match(visual,/hj>h0\+RIVER_PRIORITY_EPS\*6/,'downstream visual branches must reject uphill neighbours');
 assert.match(visual,/hj\+RIVER_PRIORITY_EPS\*6<h0/,'reverse feeder tracing must reject land lower than its receiver');
@@ -27,8 +27,8 @@ assert.match(visual,/\(basin\[j\]\|0\)!==b0/,'visual branches must stay inside t
 assert.match(visual,/dj<d0/,'visual branches must move toward a diagnosed receiver');
 assert.match(visual,/dj>d0/,'reverse feeder tracing must move away from the receiver before reversal');
 assert.match(visual,/kind:'feeder'/,'display graph needs explicit fine side feeders');
-assert.match(gpu,/RIVER_GPU_MODEL=5/);
-assert.match(gpu,/RIVER_GPU_UPSCALE=8/,'desktop authoritative river reconstruction remains 8x');
+assert.match(gpu,/RIVER_GPU_MODEL=10/);
+assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'desktop authoritative river reconstruction is 16x');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches')&&gpu.includes('riverVisualBranches'),'GPU bridge must rasterize fine tributaries');
 
 /* 0.5.142: the second shadeSurface wrapper was expensive on mobile because it

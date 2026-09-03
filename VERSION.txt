@@ -1,11 +1,10 @@
-VERSION 0.5.145
-Base: 0.5.144
-Changes: Radical river display - Catmull-Rom splines instead of D8 edge paint.
-  - trunks painted as smooth 4-point Catmull-Rom curves through upstream/i/j/downstream
-  - continuous arc-length meander leaves the lattice without per-edge kinks
-  - visual tributaries/feeders use the same spline treatment
-  - denser fine network (2400 branches / 1400 feeders, lower wetness gates)
-  - hierarchical thin stroke retained
-  - physical drainage graph unchanged; display only
-Regression: rivers must not read as road networks or orthogonal polylines at planetary or regional zoom; trunks and tributaries should be smooth curves with clear width hierarchy.
+VERSION 0.5.146
+Base: 0.5.145
+Changes: Rivers are thin again - the physical river cubemap is a corridor mask, never a brush.
+  - one river texel is ~50 km on the desktop grid; 0.5.131..0.5.145 painted physRiverCore directly as water, giving 50..400 km wide rivers and round 300 km lakes
+  - surface.glsl keeps its sub-grid channel geometry; physics gates channel density by resolved soil water and the painted halo, and the trunk corridor only widens the acceptance band so one main channel stays continuous
+  - lakes: physical storage lowers the noise threshold, so lakes sit where the drainage solver stores water but keep noise-shaped shorelines
+  - floodplain follows the sub-grid channel again (corridor only strengthens it), corridor meander amplitude reduced
+  - river-gpu model 10; river-physics / river-visual-tributaries / biome-state regressions updated (the first two were already failing on develop after 0.5.144/0.5.145)
+Snapshot: 0.5.145 remains the rollback point before the corridor-mask river display.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
