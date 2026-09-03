@@ -5,18 +5,17 @@
    Cryosphere is sampled only via cryoSurfaceSample() from surface.glsl.
    Coverage stays continuous (no hard 0.5 isosurface on the cubemap grid).
 
-   0.5.107: surface.glsl now already computes localTectSupport explicitly from
-   real mount / ridge / seam data. The older preprocessor macro repeated that
-   localisation a second time, so legitimate mountains were visually flattened.
-   Keep only an amplitude calibration here: 0.06*1.75 ~= 0.105, restoring the
-   pre-Grok maximum mountain normal strength while the explicit local support
-   still prevents Tectonics from amplifying unrelated terrain across a plate.
+   0.5.107: surface.glsl already computes localTectSupport explicitly from
+   real mount / ridge / seam data. Keep only an amplitude calibration here:
+   0.06*1.75 ~= 0.105, restoring the pre-Grok maximum mountain normal strength
+   while the explicit local support still prevents Tectonics from amplifying
+   unrelated terrain across a plate.
 
-   0.5.141: surface.glsl still contains the historical procedural-river width
-   and climate gates. The CPU/GPU river bridge is now authoritative enough that
-   those legacy gates may no longer be allowed to erase a diagnosed fine stream.
-   Rename the original surface function locally; the postlude adds a very cheap
-   river-visibility wrapper that reads only the physical river cubemap.
+   0.5.142: retire 0.5.141's shadeSurface wrapper. The wrapper sampled the
+   physical river cubemap a second time and, around rivers, called the expensive
+   five-tap/two-texture physicalFogSample() a second time. Fine rivers are now
+   kept visible by a stronger narrow river-texture signal instead, so the base
+   surface shader remains the only surface shading pass on mobile and desktop.
 */
 vec4 cryoSurfaceSample(samplerCube tex, vec3 dir){
   vec4 q = texture(tex, dir);
@@ -25,4 +24,3 @@ vec4 cryoSurfaceSample(samplerCube tex, vec3 dir){
 }
 
 #define uTect (1.75*uTect)
-#define shadeSurface shadeSurfaceLegacy
