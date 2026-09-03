@@ -49,6 +49,9 @@ assert.match(units,/predicted\.title='T_f — ожидаемая темпера�
 assert.match(units,/const n=Math\.round\(C\)/,'headline T_a/T_f must round to whole degrees');
 assert.match(units,/Math\.abs\(n\)\+' °C'/,'headline thermometer must format integer Celsius values');
 assert.doesNotMatch(units,/const a=Math\.abs\(C\),digits=a<100\?1:0/,'headline thermometer must not switch fractional precision by magnitude');
+assert.match(units,/temperatureTelemetryLegacyFractionVisible/,'legacy fractional telemetry writes must be detected');
+assert.match(units,/\[0-9\]\[\.,\]\[0-9\]\+\\s\*°C/,'fractional Celsius legacy writer guard is missing');
+assert.match(units,/if\(!legacyFraction && t-temperatureTelemetryLastMs<250\)return/,'legacy fractional write must bypass telemetry throttle and be repaired in the same call');
 
 /* Changing value width/sign must not resize the compact telemetry grid. */
 assert.match(units,/const TELEMETRY_VALUE_WIDTH_PX=104/,'telemetry must reserve a stable numeric column');
