@@ -115,7 +115,7 @@ function chainCore(terrain){
   ctx.riverRoutingEnsureFields(c);
   const area=ctx.riverCellAreas(c,{radiusM:6371000});
   c.riverChannelStrength.fill(0);c.riverChannelStrength[0]=0.8;
-  c.riverDischarge.fill(0);c.riverDischarge[1]=10*c.riverRoutingReferenceQ(area[1]);
+  c.riverDischarge.fill(0);c.riverDischarge[1]=10*ctx.riverRoutingReferenceQ(area[1]);
   ctx.riverRoutingCarryChannelsDownstream(c,area);
   assert.ok(c.riverChannelStrength[1]>0.4,'supported downstream receiver must inherit channel continuity');
   assert.equal(c.riverChannelStrength[2],0,'continuity must stop when the next receiver has no physical discharge');
