@@ -7,9 +7,10 @@
    The compact top-left thermometer deliberately exposes two different facts:
      - T_a: CURRENT area-weighted Weather Core surface temperature;
      - T_f: forecast/equilibrium temperature of climateModel().
-   T_a is initialized from Weather Core immediately and is coloured with the
-   same visual scale as the thermal imager. T_f stays visually secondary so a
-   radiative attractor can never masquerade as an observation again.
+   T_a is initialized from Weather Core on the first rendered frame and is
+   coloured with the same visual scale as the thermal imager. T_f stays
+   visually secondary so a radiative attractor can never masquerade as an
+   observation again.
 */
 (function installCelsiusUi(){
   if(typeof document==='undefined')return;
@@ -85,10 +86,10 @@
     if(!temperatureTelemetryEnsure())return;
     let actual=NaN;
     if(typeof climateConsistencyCurrentSurfaceC==='function')actual=Number(climateConsistencyCurrentSurfaceC());
-    /* Weather Core is normally lazy. For the headline thermometer, waiting for
-       the first one-second scheduler tick would briefly put the forecast in the
-       place reserved for observation. Build the current field once instead. */
-    if((forceCore||!Number.isFinite(actual))&&typeof weatherCoreEnsure==='function'){
+    /* Weather Core is normally lazy. Force it only from the post-first-frame
+       bootstrap below: normal telemetry refreshes must never turn into an
+       unexpected physics allocation. */
+    if(forceCore&&typeof weatherCoreEnsure==='function'){
       try{weatherCoreEnsure();}catch(_e){}
       if(typeof climateConsistencyCurrentSurfaceC==='function')actual=Number(climateConsistencyCurrentSurfaceC());
     }
@@ -154,10 +155,16 @@
     };
   }
 
-  /* Populate T_a/T_f in this same startup turn. In particular, never show the
-     climate forecast in the current-temperature slot while Weather Core waits
-     for its cooperative scheduler. */
-  temperatureTelemetryRefresh(true);
+  /* Build the labels and T_f synchronously, but do not put Weather Core work
+     in front of the first renderer frame. render.js registered its RAF much
+     earlier in the concatenated script, so this callback runs after that first
+     draw and before the browser paints the frame in normal RAF ordering. T_a
+     therefore becomes real for the first visible frame without delaying it. */
+  temperatureTelemetryRefresh(false);
+  const bootstrapActual=()=>temperatureTelemetryRefresh(true);
+  if(typeof requestAnimationFrame==='function')requestAnimationFrame(bootstrapActual);
+  else if(typeof setTimeout==='function')setTimeout(bootstrapActual,0);
+  else bootstrapActual();
 
   window.__madPlanetTemperatureUnits={celsiusFromK,celsiusTextFromK,deltaCText,unit:'°C',temperatureColour:temperatureTelemetryColour};
   window.__madPlanetTemperatureTelemetry={refresh:temperatureTelemetryRefresh,position:temperatureTelemetryPosition,rgb:temperatureTelemetryRgb};
