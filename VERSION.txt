@@ -1,13 +1,12 @@
-VERSION 0.5.143
-Base: 0.5.142
-Changes: Kill D8 staircases and make rivers read as smooth natural streams.
-  - river paths no longer snap through Weather Core cell centres with zero endpoint offset
-  - meander amplitude is a fraction of synoptic cell size, not sin of the tiny inter-cell angle
-  - residual lateral offset at segment ends breaks grid polylines / ladder corners
-  - denser edge sampling and higher river cubemap upscale (16x) for continuous corridors
-  - multi-harmonic continuous-phase bends on trunks and visual tributaries
-  - thinner paint radii with softer falloff so channels stay fine without blocky fills
-  - denser basin-constrained feeders/headwaters retained from the display polish
+VERSION 0.5.144
+Base: 0.5.143
+Changes: Hierarchical natural rivers - calmer meanders, denser fine network.
+  - reduce meander amplitude so channels no longer read as bacterial rods / serpentine scribbles
+  - dominant low-frequency bend only; high harmonics kept weak for smooth strokes
+  - hierarchical width: hairline headwaters, bulk only on high-discharge stems
+  - denser basin-locked visual tributaries and side feeders (up to 1800 / 960)
+  - lower wetness thresholds for headwater recruitment without crossing divides
+  - tighter surface.glsl physical core/halo and reduced procedural width gain
   - physical Priority-Flood / discharge / downstream graph unchanged; display only
-Regression: visual inspection at high zoom must not show orthogonal D8 ladders; rivers should meander smoothly between drainage cells.
+Regression: at planetary view rivers should show clear trunk vs tributary hierarchy; fine streams fill wet basins; no uniform rod thickness or aggressive scribble meanders.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
