@@ -1,4 +1,4 @@
-/* ============ 0.5.135: user-facing temperature units + stable Ta/Tf telemetry ============ */
+/* ============ 0.5.136: user-facing temperature units + stable Ta/Tf telemetry ============ */
 /*
    Physics remains Kelvin internally. This late UI adapter converts every
    temperature value currently exposed by the Planet/Weather diagnostics to
@@ -12,10 +12,14 @@
    visually secondary so a radiative attractor can never masquerade as an
    observation again.
 
-   0.5.135 also makes the telemetry layout non-reflowing: labels live in the
-   left column, every numeric/value readout owns a fixed 104 px right-aligned
-   slot, and tabular figures keep changing decimals/signs from making the whole
-   block jump left and right.
+   0.5.135 made the telemetry layout non-reflowing: labels live in the left
+   column, every numeric/value readout owns a fixed 104 px right-aligned slot,
+   and tabular figures keep changing signs/digits from moving the whole block.
+
+   0.5.136 deliberately removes fractional degrees from the compact T_a/T_f
+   thermometer. The weather model is not precise enough for tenths of a degree
+   to be useful here, and repeatedly appearing/disappearing decimals made the
+   headline readout visually noisy even with a fixed value column.
 */
 (function installCelsiusUi(){
   if(typeof document==='undefined')return;
@@ -109,7 +113,8 @@
   }
   function temperatureTelemetryFormat(C){
     C=Number(C);if(!Number.isFinite(C))return '—';
-    const a=Math.abs(C),digits=a<100?1:0;return (C>=0?'+':'−')+a.toFixed(digits)+' °C';
+    const n=Math.round(C);
+    return (n>0?'+':n<0?'−':'')+Math.abs(n)+' °C';
   }
   function temperatureTelemetryRefresh(forceCore=false){
     if(!temperatureTelemetryEnsure())return;
