@@ -1,4 +1,4 @@
-/* ============ 0.5.139 / 0.5.141 / 0.5.143: basin-constrained visual tributaries ============ */
+/* ============ 0.5.139 / 0.5.141 / 0.5.145: basin-constrained visual tributaries ============ */
 /*
    The conservative river solver remains authoritative for runoff, discharge,
    Priority-Flood conditioning and the one-edge-per-cell drainage topology.
@@ -17,22 +17,22 @@
    branch still flows downhill into a diagnosed receiver. This supplies the
    dendritic fine structure that a 24..36-cell synoptic grid cannot resolve.
 
-   0.5.143: denser feeders and longer visual tributaries so the network looks
-   properly dendritic at display scale without inventing water across divides.
+   0.5.145: denser headwaters and side feeders so continents fill with fine
+   dendritic texture; still basin-locked and downhill-only, no invented water.
 */
 
-const RIVER_VISUAL_TRIBUTARY_MODEL=3;
+const RIVER_VISUAL_TRIBUTARY_MODEL=4;
 const RIVER_VISUAL_REBUILD_TICKS=12;
-const RIVER_VISUAL_MAX_BRANCH_STEPS=20;
+const RIVER_VISUAL_MAX_BRANCH_STEPS=24;
 const RIVER_VISUAL_MIN_TRUNK_DISTANCE=1;
-const RIVER_VISUAL_MAX_TRUNK_DISTANCE=18;
-const RIVER_VISUAL_CHANNEL_RECEIVER=0.050;
-const RIVER_VISUAL_LAKE_RECEIVER=0.07;
-const RIVER_VISUAL_SOURCE_MIN=0.16;
-const RIVER_VISUAL_MAX_BRANCHES=1100;
-const RIVER_VISUAL_FEEDER_MAX=560;
-const RIVER_VISUAL_FEEDER_STEPS=7;
-const RIVER_VISUAL_FEEDER_WET_MIN=0.18;
+const RIVER_VISUAL_MAX_TRUNK_DISTANCE=22;
+const RIVER_VISUAL_CHANNEL_RECEIVER=0.040;
+const RIVER_VISUAL_LAKE_RECEIVER=0.06;
+const RIVER_VISUAL_SOURCE_MIN=0.11;
+const RIVER_VISUAL_MAX_BRANCHES=1800;
+const RIVER_VISUAL_FEEDER_MAX=960;
+const RIVER_VISUAL_FEEDER_STEPS=9;
+const RIVER_VISUAL_FEEDER_WET_MIN=0.12;
 
 function riverVisualHash01(seed,index,salt=0){
   let x=(seed|0)^Math.imul((index+1)|0,0x45d9f3b)^Math.imul((salt+17)|0,0x119de1f3);
@@ -231,13 +231,13 @@ function riverVisualBuildBranches(core){
       if(riverVisualHash01(core.seed|0,i,0x713+pass)>probability)continue;
       const cells=riverVisualTraceBranch(core,i,0x2911+i*17);if(!cells)continue;
       const end=cells[cells.length-1],endQ=riverClamp(core?.riverChannelStrength?.[end]||0,0,1);
-      const strength=riverClamp(0.14+0.30*score+0.08*Math.min(1,cells.length/8)+0.06*endQ,0.16,0.46);
+      const strength=riverClamp(0.10+0.22*score+0.06*Math.min(1,cells.length/8)+0.05*endQ,0.10,0.34);
       branches.push({kind:'tributary',source:i,cells,strength,phase:(riverVisualHash01(core.seed|0,i,0x5a17)*2-1)*1.35});
       riverVisualMarkSourceSpacing(core,claimed,scores,i);
     }
   }
 
-  /* Side feeders add the missing dendritic texture around real trunks. They
+  /* Side feeders add the missing dendritic fine texture around real trunks. They
      are not invented across the planet: a feeder can exist only if a confirmed
      channel/lake is its receiver and the reverse trace finds wet uphill land in
      the same physical basin. */
@@ -246,13 +246,13 @@ function riverVisualBuildBranches(core){
     if(!riverVisualIsReceiver(core,i)||riverIsOcean(core,i))continue;
     const channel=riverClamp(core?.riverChannelStrength?.[i]||0,0,1);
     const wet=riverVisualWetness(core,i);
-    const chance=riverClamp(0.07+0.34*wet+0.16*Math.sqrt(channel),0.07,0.52);
+    const chance=riverClamp(0.12+0.42*wet+0.18*Math.sqrt(channel),0.12,0.68);
     if(riverVisualHash01(core.seed|0,i,0x9d31)>chance)continue;
     const cells=riverVisualTraceFeeder(core,i,0x4319+i*29);if(!cells)continue;
     const key=cells.slice(0,Math.min(3,cells.length)).join('>')+'>'+i;
     if(feederKeys.has(key))continue;feederKeys.add(key);
     const source=cells[0],sourceWet=riverVisualWetness(core,source);
-    const strength=riverClamp(0.12+0.18*sourceWet+0.07*Math.sqrt(channel)+0.035*Math.min(1,cells.length/4),0.15,0.34);
+    const strength=riverClamp(0.08+0.14*sourceWet+0.06*Math.sqrt(channel)+0.03*Math.min(1,cells.length/4),0.10,0.26);
     const phase=(riverVisualHash01(core.seed|0,source,0x663b+i)*2-1)*2.55;
     branches.push({kind:'feeder',source,cells,strength,phase});feeders++;
   }
