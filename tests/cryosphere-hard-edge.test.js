@@ -20,11 +20,12 @@ assert.match(src,/cryoGpuBlendAt=function\(\)\{return 1;\}/,'temporal crossfade 
    direction and never displace the physical field again. */
 assert.doesNotMatch(src,/!sea\s*&&\s*raw>=0\.70/,'the old 70% circular dense-cap shortcut must never return');
 assert.match(src,/raw>=0\.995\)return 1/,'only a truly saturated physical ice core may bypass geographic edge breakup');
+assert.match(src,/idx\[4\*t\+k\]=cryoGpuDirToIndex\(core,dd\[0\],dd\[1\],dd\[2\]\)/,'tabulated reconstruction must index the true projected cell of each display texel');
 assert.doesNotMatch(src,/cryoDisplayWarpDirection|cryoDisplayPolarOffsetRad|CRYO_CAP_GLOBAL_WARP_MAX_RAD/,
   'display must not displace the physical cryosphere sampling direction');
-assert.match(src,/const rawLand=cryoDisplaySampleDirection\(core,d,false\)/,
+assert.match(src,/const rawLand=lab\+\(lcd-lab\)\*ty;/,
   'land ice must be sampled at the true surface direction');
-assert.match(src,/const rawSea=cryoDisplaySampleDirection\(core,d,true\)/,
+assert.match(src,/const rawSea=sab\+\(scd-sab\)\*ty;/,
   'sea ice must be sampled at the true surface direction');
 for(const f of ['2.35','5.40','13.7','31.1'])assert.ok(src.includes(f),'missing shoreline edge scale '+f);
 

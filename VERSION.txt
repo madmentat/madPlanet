@@ -1,10 +1,9 @@
-VERSION 0.5.146
-Base: 0.5.145
-Changes: Rivers are thin again - the physical river cubemap is a corridor mask, never a brush.
-  - one river texel is ~50 km on the desktop grid; 0.5.131..0.5.145 painted physRiverCore directly as water, giving 50..400 km wide rivers and round 300 km lakes
-  - surface.glsl keeps its sub-grid channel geometry; physics gates channel density by resolved soil water and the painted halo, and the trunk corridor only widens the acceptance band so one main channel stays continuous
-  - lakes: physical storage lowers the noise threshold, so lakes sit where the drainage solver stores water but keep noise-shaped shorelines
-  - floodplain follows the sub-grid channel again (corridor only strengthens it), corridor meander amplitude reduced
-  - river-gpu model 10; river-physics / river-visual-tributaries / biome-state regressions updated (the first two were already failing on develop after 0.5.144/0.5.145)
-Snapshot: 0.5.145 remains the rollback point before the corridor-mask river display.
+VERSION 0.5.147
+Base: 0.5.146
+Changes: Weather Core runs in a Web Worker - no more once-per-tick main-thread freezes.
+  - js/weather-worker.js: the fixed step, the dense cryosphere reconstruction and the river cubemap painting run in a worker built at runtime from the page's own bundle text plus a DOM/WebGL stub; the cooperative scheduler stays the cadence driver and weatherCoreTick() only posts a request; a zero-copy mirror of the core feeds GPU bridges, diagnostics, telemetry and export; uploads are spread over consecutive frames; automatic fallback to the synchronous path
+  - js/cryosphere-edge-display.js: tabulated reconstruction (indices + weights per texel, edge noise cached), ~20 ms instead of ~800 ms with identical output
+  - measured in Chromium: 0.5.145 idle produced 14 long tasks of 80..235 ms in 20 s plus 2.3 s on a new world; with the worker the main thread produces none
+Regression: add tests/weather-worker.test.js (bridge invariants, worker realm overrides, mirror transfer, quantised faces, fallback without Worker).
+Snapshot: 0.5.146 remains the rollback point before the worker.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

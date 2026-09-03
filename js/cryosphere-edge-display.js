@@ -101,25 +101,78 @@ cryoGpuVisualCoverage=function(raw,edgeNoise,sea){
 
 /* Dense display reconstruction of the authoritative physical field. The
    sampling direction is the true surface direction: geography lives in the
-   physics, not in a display-side displacement. */
+   physics, not in a display-side displacement.
+
+   0.5.114: the geometry of this reconstruction never changes between ticks,
+   only the field values do. Earlier versions re-projected every display texel
+   through weatherFaceDir/normalize/dirToIndex eight times per tick (about
+   600 ms of the once-per-second hitch on desktop). The four source cell
+   indices and bilinear weights are now tabulated once per (core.N, display N),
+   and the seed-dependent edge noise is cached lazily per texel, so a tick
+   costs one fused multiply-add pass. */
+let cryoDisplayTable=null,cryoDisplayNoiseCache=null,cryoDisplayLandField=null,cryoDisplaySeaField=null;
+function cryoDisplayBuildTable(core,N){
+  const coreN=core.N,T=6*N*N,wide=core.count>65535;
+  const idx=wide?new Uint32Array(4*T):new Uint16Array(4*T),wt=new Float32Array(2*T);
+  let t=0;
+  for(let face=0;face<6;face++)for(let y=0;y<N;y++)for(let x=0;x<N;x++,t++){
+    const u=2*(x+0.5)/N-1,v=2*(y+0.5)/N-1,d=weatherFaceDir(face,u,v);
+    const m=cryoDisplayDirectionFaceUV(d);
+    const fx=(m[1]+1)*0.5*coreN-0.5,fy=(m[2]+1)*0.5*coreN-0.5;
+    const x0=Math.floor(fx),y0=Math.floor(fy);
+    wt[2*t]=Math.max(0,Math.min(1,fx-x0));wt[2*t+1]=Math.max(0,Math.min(1,fy-y0));
+    const corners=[[x0,y0],[x0+1,y0],[x0,y0+1],[x0+1,y0+1]];
+    for(let k=0;k<4;k++){
+      const uu=2*(corners[k][0]+0.5)/coreN-1,vv=2*(corners[k][1]+0.5)/coreN-1,dd=weatherFaceDir(m[0],uu,vv);
+      idx[4*t+k]=cryoGpuDirToIndex(core,dd[0],dd[1],dd[2]);
+    }
+  }
+  return {coreN,N,count:core.count,idx,wt};
+}
+function cryoDisplayEnsureTable(core,N){
+  if(!cryoDisplayTable||cryoDisplayTable.coreN!==core.N||cryoDisplayTable.N!==N||cryoDisplayTable.count!==core.count)
+    cryoDisplayTable=cryoDisplayBuildTable(core,N);
+  const seed=core.seed|0;
+  if(!cryoDisplayNoiseCache||cryoDisplayNoiseCache.seed!==seed||cryoDisplayNoiseCache.N!==N){
+    const noise=new Float32Array(6*N*N);noise.fill(-1);
+    cryoDisplayNoiseCache={seed,N,noise};
+  }
+  if(!cryoDisplayLandField||cryoDisplayLandField.length!==core.count){
+    cryoDisplayLandField=new Float32Array(core.count);cryoDisplaySeaField=new Float32Array(core.count);
+  }
+  return cryoDisplayTable;
+}
 if(typeof cryoGpuReadCurrent==='function'){
   cryoGpuReadCurrent=function(core){
     if(typeof climateModel==='function'){
       const c=climateModel();
       if(c&&Number.isFinite(Number(c.T)))cryoDisplayMeanK=Number(c.T);
     }
-    const N=cryoGpuN,seed=core.seed|0;
+    const N=cryoGpuN,seed=core.seed|0,tab=cryoDisplayEnsureTable(core,N);
+    const idx=tab.idx,wt=tab.wt,noise=cryoDisplayNoiseCache.noise;
+    const landF=cryoDisplayLandField,seaF=cryoDisplaySeaField;
+    for(let i=0;i<core.count;i++){landF[i]=cryoGpuSourceLandIndex(core,i);seaF[i]=cryoGpuSourceSeaIndex(core,i);}
+    let t=0;
     for(let face=0;face<6;face++){
       const land=cryoGpuCurrLand[face],sea=cryoGpuCurrSea[face];
-      for(let y=0;y<N;y++)for(let x=0;x<N;x++){
-        const u=2*(x+0.5)/N-1,v=2*(y+0.5)/N-1,d=weatherFaceDir(face,u,v);
-        const rawLand=cryoDisplaySampleDirection(core,d,false);
-        const rawSea=cryoDisplaySampleDirection(core,d,true);
-        const needsNoise=(rawLand>0.008&&rawLand<0.995)||(rawSea>0.02&&rawSea<0.995);
-        const edge=needsNoise?cryoGpuEdgeNoise(seed,face,x,y,N):0.5;
-        const dst=(N-1-y)*N+x;
-        land[dst]=cryoGpuVisualCoverage(rawLand,edge,false);
-        sea[dst]=cryoGpuVisualCoverage(rawSea,edge,true);
+      for(let y=0;y<N;y++){
+        const rowDst=(N-1-y)*N;
+        for(let x=0;x<N;x++,t++){
+          const i0=idx[4*t],i1=idx[4*t+1],i2=idx[4*t+2],i3=idx[4*t+3],tx=wt[2*t],ty=wt[2*t+1];
+          const lab=landF[i0]+(landF[i1]-landF[i0])*tx,lcd=landF[i2]+(landF[i3]-landF[i2])*tx;
+          const rawLand=lab+(lcd-lab)*ty;
+          const sab=seaF[i0]+(seaF[i1]-seaF[i0])*tx,scd=seaF[i2]+(seaF[i3]-seaF[i2])*tx;
+          const rawSea=sab+(scd-sab)*ty;
+          const needsNoise=(rawLand>0.008&&rawLand<0.995)||(rawSea>0.02&&rawSea<0.995);
+          let edge=0.5;
+          if(needsNoise){
+            edge=noise[t];
+            if(edge<0){edge=cryoGpuEdgeNoise(seed,face,x,y,N);noise[t]=edge;}
+          }
+          const dst=rowDst+x;
+          land[dst]=cryoGpuVisualCoverage(rawLand,edge,false);
+          sea[dst]=cryoGpuVisualCoverage(rawSea,edge,true);
+        }
       }
     }
   };
