@@ -21,18 +21,18 @@
    dendritic texture; still basin-locked and downhill-only, no invented water.
 */
 
-const RIVER_VISUAL_TRIBUTARY_MODEL=4;
+const RIVER_VISUAL_TRIBUTARY_MODEL=5;
 const RIVER_VISUAL_REBUILD_TICKS=12;
-const RIVER_VISUAL_MAX_BRANCH_STEPS=24;
+const RIVER_VISUAL_MAX_BRANCH_STEPS=28;
 const RIVER_VISUAL_MIN_TRUNK_DISTANCE=1;
 const RIVER_VISUAL_MAX_TRUNK_DISTANCE=22;
 const RIVER_VISUAL_CHANNEL_RECEIVER=0.040;
 const RIVER_VISUAL_LAKE_RECEIVER=0.06;
-const RIVER_VISUAL_SOURCE_MIN=0.11;
-const RIVER_VISUAL_MAX_BRANCHES=1800;
-const RIVER_VISUAL_FEEDER_MAX=960;
-const RIVER_VISUAL_FEEDER_STEPS=9;
-const RIVER_VISUAL_FEEDER_WET_MIN=0.12;
+const RIVER_VISUAL_SOURCE_MIN=0.08;
+const RIVER_VISUAL_MAX_BRANCHES=2400;
+const RIVER_VISUAL_FEEDER_MAX=1400;
+const RIVER_VISUAL_FEEDER_STEPS=11;
+const RIVER_VISUAL_FEEDER_WET_MIN=0.09;
 
 function riverVisualHash01(seed,index,salt=0){
   let x=(seed|0)^Math.imul((index+1)|0,0x45d9f3b)^Math.imul((salt+17)|0,0x119de1f3);
@@ -72,8 +72,6 @@ function riverVisualBuildBasins(core){
   basin.fill(-1);dist.fill(32767);
   for(let i=0;i<core.count;i++)if(riverIsOcean(core,i)){basin[i]=i;dist[i]=0;}
 
-  /* riverTopo is upstream -> downstream. Reverse order therefore guarantees
-     that the receiver already knows its final outlet/basin and trunk distance. */
   for(let k=core.riverTopoCount-1;k>=0;k--){
     const i=core.riverTopo[k]|0;if(i<0||i>=core.count||riverIsOcean(core,i))continue;
     const j=core.riverDownstream?.[i]|0;
@@ -153,9 +151,6 @@ function riverVisualTraceBranch(core,source,salt){
   return reached&&cells.length>=2?cells:null;
 }
 
-/* Source spacing now uses local prominence rather than deleting the entire
-   one-cell neighbourhood. On a synoptic grid one neighbour can be hundreds of
-   kilometres away; blanket claiming was the main reason islands got one river. */
 function riverVisualSourceProminent(core,i,score){
   const b=core.riverVisualBasin?.[i]|0,d=core.riverVisualDistToTrunk?.[i]|0;
   let dominated=false;
@@ -177,10 +172,6 @@ function riverVisualMarkSourceSpacing(core,claimed,scores,i){
   });
 }
 
-/* Reverse (upstream) routing for short side feeders. Every accepted step must
-   remain inside the same physical outlet basin, get farther from the diagnosed
-   channel, and be no lower than the cell it drains into. Reversing the result
-   therefore gives a guaranteed downhill display polyline into the trunk. */
 function riverVisualChooseUpstream(core,i,salt,visited){
   const basin=core.riverVisualBasin,dist=core.riverVisualDistToTrunk;
   const b0=basin[i]|0,d0=dist[i]|0,h0=Number(core?.riverFilledTerrain?.[i]);
@@ -219,15 +210,13 @@ function riverVisualBuildBranches(core){
   riverVisualEnsureFields(core);riverVisualBuildBasins(core);
   const scores=core.riverVisualSourceScore,claimed=new Uint8Array(core.count),branches=[];
   for(let i=0;i<core.count;i++)scores[i]=riverVisualSourceStrength(core,i);
-  const maxBranches=Math.min(RIVER_VISUAL_MAX_BRANCHES,Math.max(64,Math.floor(core.count*0.18)));
+  const maxBranches=Math.min(RIVER_VISUAL_MAX_BRANCHES,Math.max(64,Math.floor(core.count*0.22)));
 
-  /* Deterministic selection: wet local maxima are preferred, while the hash
-     only decides which equally plausible headwaters survive at display scale. */
   for(let pass=0;pass<3&&branches.length<maxBranches;pass++){
     for(let i=pass;i<core.count&&branches.length<maxBranches;i+=3){
       if(claimed[i])continue;const score=scores[i];if(score<RIVER_VISUAL_SOURCE_MIN)continue;
       if(!riverVisualSourceProminent(core,i,score))continue;
-      const probability=riverClamp((score-RIVER_VISUAL_SOURCE_MIN)*0.88+0.08,0.08,0.48);
+      const probability=riverClamp((score-RIVER_VISUAL_SOURCE_MIN)*1.05+0.12,0.12,0.62);
       if(riverVisualHash01(core.seed|0,i,0x713+pass)>probability)continue;
       const cells=riverVisualTraceBranch(core,i,0x2911+i*17);if(!cells)continue;
       const end=cells[cells.length-1],endQ=riverClamp(core?.riverChannelStrength?.[end]||0,0,1);
@@ -237,16 +226,12 @@ function riverVisualBuildBranches(core){
     }
   }
 
-  /* Side feeders add the missing dendritic fine texture around real trunks. They
-     are not invented across the planet: a feeder can exist only if a confirmed
-     channel/lake is its receiver and the reverse trace finds wet uphill land in
-     the same physical basin. */
   const feederKeys=new Set();let feeders=0;
   for(let i=0;i<core.count&&feeders<RIVER_VISUAL_FEEDER_MAX&&branches.length<maxBranches;i++){
     if(!riverVisualIsReceiver(core,i)||riverIsOcean(core,i))continue;
     const channel=riverClamp(core?.riverChannelStrength?.[i]||0,0,1);
     const wet=riverVisualWetness(core,i);
-    const chance=riverClamp(0.12+0.42*wet+0.18*Math.sqrt(channel),0.12,0.68);
+    const chance=riverClamp(0.18+0.48*wet+0.20*Math.sqrt(channel),0.16,0.78);
     if(riverVisualHash01(core.seed|0,i,0x9d31)>chance)continue;
     const cells=riverVisualTraceFeeder(core,i,0x4319+i*29);if(!cells)continue;
     const key=cells.slice(0,Math.min(3,cells.length)).join('>')+'>'+i;
