@@ -13,12 +13,17 @@ const sh=read('build.sh'),ps=read('build.ps1');
 
 const executableVisual=visual.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\/.*$/gm,'$1');
 assert.ok(!/Math\.random|requestAnimationFrame/.test(executableVisual),'visual tributaries must be deterministic and off render FPS');
-for(const token of ['riverVisualBasin','riverVisualDistToTrunk','riverVisualWetness','riverVisualTraceBranch','riverVisualChooseNext'])
+for(const token of ['riverVisualBasin','riverVisualDistToTrunk','riverVisualWetness','riverVisualTraceBranch','riverVisualChooseNext','riverVisualTraceFeeder','riverVisualChooseUpstream'])
   assert.ok(visual.includes(token),'missing tributary constraint '+token);
-assert.match(visual,/RIVER_VISUAL_MAX_TRUNK_DISTANCE=11/);
-assert.match(visual,/hj>h0\+RIVER_PRIORITY_EPS\*6/,'visual branches must reject uphill neighbours');
+assert.match(visual,/RIVER_VISUAL_TRIBUTARY_MODEL=2/);
+assert.match(visual,/RIVER_VISUAL_MAX_TRUNK_DISTANCE=15/);
+assert.match(visual,/RIVER_VISUAL_REBUILD_TICKS=12/,'fine display network must not churn every few x4 weather ticks');
+assert.match(visual,/hj>h0\+RIVER_PRIORITY_EPS\*6/,'downstream visual branches must reject uphill neighbours');
+assert.match(visual,/hj\+RIVER_PRIORITY_EPS\*6<h0/,'reverse feeder tracing must reject land lower than its receiver');
 assert.match(visual,/\(basin\[j\]\|0\)!==b0/,'visual branches must stay inside the physical basin');
 assert.match(visual,/dj<d0/,'visual branches must move toward a diagnosed receiver');
+assert.match(visual,/dj>d0/,'reverse feeder tracing must move away from the receiver before reversal');
+assert.match(visual,/kind:'feeder'/,'display graph needs explicit fine side feeders');
 assert.match(gpu,/RIVER_GPU_MODEL=5/);
 assert.match(gpu,/RIVER_GPU_UPSCALE=8/);
 assert.ok(gpu.includes('riverGpuPaintVisualBranches')&&gpu.includes('riverVisualBranches'),'GPU bridge must rasterize fine tributaries');
@@ -27,7 +32,7 @@ for(const build of [sh,ps]){
   assert.ok(build.indexOf('js/river-visual-tributaries.js')<build.indexOf('js/river-gpu.js'));
 }
 
-const ctx={console,Math,Number,Array,Float32Array,Float64Array,Int32Array,Int16Array,Uint8Array,
+const ctx={console,Math,Number,Array,Set,Float32Array,Float64Array,Int32Array,Int16Array,Uint8Array,
   WEATHER_CORE_FIXED_DT_SEC:300,
   weatherCoreCreate:()=>({count:1}),weatherCoreStep:c=>c,weatherCoreFinite:()=>true};
 vm.createContext(ctx);
@@ -72,6 +77,14 @@ function chainCore(n=8){
       'every tributary step must get closer to the receiver');
     assert.ok(c.riverFilledTerrain[cells[k]]<=c.riverFilledTerrain[cells[k-1]]+1e-5,'tributary may not climb uphill');
   }
+
+  const feeder=ctx.riverVisualTraceFeeder(c,receiver,123);
+  assert.ok(feeder&&feeder.length>=2,'wet confirmed trunk must be able to recruit an uphill side feeder');
+  assert.equal(feeder[feeder.length-1],receiver,'feeder must end at the diagnosed receiver after reversal');
+  for(let k=1;k<feeder.length;k++){
+    assert.equal(c.riverVisualBasin[feeder[k]],c.riverVisualBasin[feeder[0]],'feeder may not cross a basin divide');
+    assert.ok(c.riverFilledTerrain[feeder[k]]<=c.riverFilledTerrain[feeder[k-1]]+1e-5,'reversed feeder must flow downhill');
+  }
 }
 
 {
@@ -79,6 +92,8 @@ function chainCore(n=8){
   ctx.riverVisualHash01=()=>0;
   ctx.riverVisualBuildBranches(c);
   assert.ok(c.riverVisualBranches.length>0,'wet sloping basin should receive fine visual tributaries');
+  assert.ok(c.riverVisualFeederCount>0,'wet physical trunk should receive deterministic fine feeder branches');
+  assert.ok(c.riverVisualBranches.some(b=>b.kind==='feeder'),'feeder pass must contribute to the display graph');
   for(const b of c.riverVisualBranches){
     const end=b.cells[b.cells.length-1];
     assert.ok(ctx.riverVisualIsReceiver(c,end)||ctx.riverIsOcean(c,end),'every visual branch must join a physical receiver');
@@ -89,6 +104,7 @@ function chainCore(n=8){
   const c=chainCore();c.relativeHumidity.fill(0);c.soilMoisture.fill(0);c.runoffGenerationRate.fill(0);c.riverRunoffMean.fill(0);
   ctx.riverVisualHash01=()=>0;ctx.riverVisualBuildBranches(c);
   assert.equal(c.riverVisualBranches.length,0,'dry terrain must not grow decorative tributaries');
+  assert.equal(c.riverVisualFeederCount,0,'dry physical channels must not recruit decorative feeders');
 }
 
 console.log('river-visual-tributaries.test.js: OK');
