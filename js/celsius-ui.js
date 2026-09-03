@@ -1,4 +1,4 @@
-/* ============ 0.5.134: user-facing temperature units + Ta/Tf telemetry ============ */
+/* ============ 0.5.135: user-facing temperature units + stable Ta/Tf telemetry ============ */
 /*
    Physics remains Kelvin internally. This late UI adapter converts every
    temperature value currently exposed by the Planet/Weather diagnostics to
@@ -11,6 +11,11 @@
    coloured with the same visual scale as the thermal imager. T_f stays
    visually secondary so a radiative attractor can never masquerade as an
    observation again.
+
+   0.5.135 also makes the telemetry layout non-reflowing: labels live in the
+   left column, every numeric/value readout owns a fixed 104 px right-aligned
+   slot, and tabular figures keep changing decimals/signs from making the whole
+   block jump left and right.
 */
 (function installCelsiusUi(){
   if(typeof document==='undefined')return;
@@ -32,6 +37,7 @@
      climate temperatures keep useful colour resolution while lava still fits. */
   const TELEMETRY_TEMP_POS=[[-100,0],[-50,.28],[0,.53],[50,.77],[1200,1]];
   const TELEMETRY_TEMP_RGB=[[0,[20,3,38]],[.20,[20,31,158]],[.42,[0,194,230]],[.64,[250,230,31]],[.84,[245,46,8]],[1,[255,247,229]]];
+  const TELEMETRY_VALUE_WIDTH_PX=104;
   function temperatureTelemetryPosition(C){
     C=Number(C);if(!Number.isFinite(C))return NaN;
     if(C<=TELEMETRY_TEMP_POS[0][0])return 0;
@@ -60,6 +66,28 @@
     label.replaceChildren(document.createTextNode('T'));
     const sub=document.createElement('sub');sub.textContent=index;sub.style.cssText='font-size:.72em;line-height:0;vertical-align:-.22em';label.appendChild(sub);
   }
+  function temperatureTelemetryStabilizeLayout(box){
+    if(!box)return;
+    box.style.gridTemplateColumns='max-content '+TELEMETRY_VALUE_WIDTH_PX+'px';
+    box.style.columnGap='12px';
+    box.style.width='max-content';
+    for(const label of box.querySelectorAll('span')){
+      label.style.textAlign='left';
+      label.style.justifySelf='start';
+      label.style.whiteSpace='nowrap';
+    }
+    for(const value of box.querySelectorAll('[data-live]')){
+      value.style.width=TELEMETRY_VALUE_WIDTH_PX+'px';
+      value.style.minWidth=TELEMETRY_VALUE_WIDTH_PX+'px';
+      value.style.maxWidth=TELEMETRY_VALUE_WIDTH_PX+'px';
+      value.style.boxSizing='border-box';
+      value.style.textAlign='right';
+      value.style.justifySelf='stretch';
+      value.style.whiteSpace='nowrap';
+      value.style.fontVariantNumeric='tabular-nums';
+      value.style.fontFeatureSettings='"tnum" 1';
+    }
+  }
   function temperatureTelemetryEnsure(){
     if(typeof smoothTelemetryEnsure!=='function'||typeof smoothTelemetryValues==='undefined')return null;
     const box=smoothTelemetryEnsure();if(!box||!smoothTelemetryValues?.temp)return null;
@@ -76,6 +104,7 @@
       box.insertBefore(label,starLabel);box.insertBefore(forecast,starLabel);
       smoothTelemetryValues.forecast=forecast;
     }
+    temperatureTelemetryStabilizeLayout(box);
     return box;
   }
   function temperatureTelemetryFormat(C){
@@ -167,5 +196,5 @@
   else bootstrapActual();
 
   window.__madPlanetTemperatureUnits={celsiusFromK,celsiusTextFromK,deltaCText,unit:'°C',temperatureColour:temperatureTelemetryColour};
-  window.__madPlanetTemperatureTelemetry={refresh:temperatureTelemetryRefresh,position:temperatureTelemetryPosition,rgb:temperatureTelemetryRgb};
+  window.__madPlanetTemperatureTelemetry={refresh:temperatureTelemetryRefresh,position:temperatureTelemetryPosition,rgb:temperatureTelemetryRgb,stabilizeLayout:temperatureTelemetryStabilizeLayout};
 })();
