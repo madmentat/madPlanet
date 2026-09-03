@@ -9,6 +9,8 @@ const phys=read('js/river-physics.js');
 const refine=read('js/river-routing-refinement.js');
 const visual=read('js/river-visual-tributaries.js');
 const gpu=read('js/river-gpu.js');
+const surfacePre=read('shaders/surface-artifact-prelude.glsl');
+const surfacePost=read('shaders/surface-artifact-postlude.glsl');
 const sh=read('build.sh'),ps=read('build.ps1');
 
 const executableVisual=visual.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\/.*$/gm,'$1');
@@ -27,6 +29,10 @@ assert.match(visual,/kind:'feeder'/,'display graph needs explicit fine side feed
 assert.match(gpu,/RIVER_GPU_MODEL=5/);
 assert.match(gpu,/RIVER_GPU_UPSCALE=8/);
 assert.ok(gpu.includes('riverGpuPaintVisualBranches')&&gpu.includes('riverVisualBranches'),'GPU bridge must rasterize fine tributaries');
+assert.match(surfacePre,/#define shadeSurface shadeSurfaceLegacy/,'surface wrapper must preserve the legacy shader as a callable base');
+assert.match(surfacePost,/vec3 shadeSurface\(vec3 pos, vec3 rd, float tHit, out float dayOut\)/,'physical river visibility wrapper missing');
+assert.match(surfacePost,/texture\(uRiverTex,sN\)/,'surface visibility pass must read the authoritative river cubemap');
+assert.match(surfacePost,/fineCore\*liquid\*0\.76/,'fine diagnosed streams must survive the legacy procedural width gate');
 for(const build of [sh,ps]){
   assert.ok(build.indexOf('js/river-routing-refinement.js')<build.indexOf('js/river-visual-tributaries.js'));
   assert.ok(build.indexOf('js/river-visual-tributaries.js')<build.indexOf('js/river-gpu.js'));
