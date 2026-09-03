@@ -1,14 +1,13 @@
-VERSION 0.5.142
-Base: 0.5.141
-Changes: Polish river geometry and restore Android rendering performance after the 0.5.141 fine-river visibility experiment.
-  - remove the second shadeSurface river-visibility wrapper introduced in 0.5.141; the base surface shader is again the only surface shading pass
-  - eliminate the wrapper's duplicate river cubemap read and duplicate physicalFogSample path, which could add up to ten extra fog cubemap reads near dense river networks and disproportionately hurt mobile tile GPUs
-  - keep fine streams visible by writing a narrow high-confidence centre-line into the existing uRiverTex rather than re-shading the surface a second time
-  - thin fine tributary/feeder raster brushes to roughly one river-texture texel and raise their centre signal so legacy surface width gates no longer erase the line while the visible corridor stays narrow
-  - add a second deterministic bend harmonic to fine branches so neighbouring tributaries do not read as parallel ruler strokes
-  - prune adjacent feeder receivers and discard one-cell feeder stubs, reducing the comb/rake pattern seen on large wet continents
-  - retain long basin-constrained tributaries and the authoritative Priority-Flood/Q/downstream physical graph; this release changes display only, not runoff or drainage physics
-  - keep desktop river cubemap reconstruction at 8x Weather Core resolution, but use 6x on mobile; this reduces river cubemap area/packing buffers to 56.25% of the 8x mobile cost while preserving sub-synoptic thin lines on phone/tablet screens
-  - preserve the 0.5.140 presentation clock, Weather Core idle budget and coalesced river publication pacing
-Regression: update river-visual-tributaries.test.js to forbid the duplicate surface wrapper, require mobile 6x river reconstruction, adjacent-feeder pruning, narrow brush radii and strong fine-centre river signal.
+VERSION 0.5.143
+Base: 0.5.142
+Changes: Kill D8 staircases and make rivers read as smooth natural streams.
+  - river paths no longer snap through Weather Core cell centres with zero endpoint offset
+  - meander amplitude is a fraction of synoptic cell size, not sin of the tiny inter-cell angle
+  - residual lateral offset at segment ends breaks grid polylines / ladder corners
+  - denser edge sampling and higher river cubemap upscale (16x) for continuous corridors
+  - multi-harmonic continuous-phase bends on trunks and visual tributaries
+  - thinner paint radii with softer falloff so channels stay fine without blocky fills
+  - denser basin-constrained feeders/headwaters retained from the display polish
+  - physical Priority-Flood / discharge / downstream graph unchanged; display only
+Regression: visual inspection at high zoom must not show orthogonal D8 ladders; rivers should meander smoothly between drainage cells.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
