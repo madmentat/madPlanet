@@ -1,13 +1,14 @@
-VERSION 0.5.138
-Base: 0.5.137
-Changes: Make physical rivers visible as continuous drainage networks and suppress coarse marine fog squares.
-  - keep Priority-Flood, D8 routing, runoff accumulation and discharge-based hydraulic geometry as the authoritative river physics
-  - lower only the display initiation thresholds enough for a runoff-supported headwater to exist inside a very large 24..36-cell Weather Core catchment; dry cells still cannot create decorative rivers
-  - add a downstream continuity pass that may carry channel display strength only along the diagnosed receiver graph and only while the receiver has physically supported discharge
-  - retain discharge/contributing-area growth so trunk channels become stronger and wider downstream rather than every wet cell becoming an equal blue line
-  - increase the physical river cubemap from 5x to 7x Weather Core resolution and sample each graph link more densely on the sphere, keeping exact confluence endpoints while hiding coarse lattice segments
-  - reconstruct physical fog R/G from a compact five-tap spherical footprint instead of exposing one magnified Weather Core texel, targeting the translucent square patches that accumulate over ocean as fog develops
-  - keep fog morphology CPU/Weather-Core-owned: the shader only averages physical samples and then applies subtractive erosion/detail; it does not procedurally create new fog banks
-  - retain 0.5.137 single-writer whole-degree T_a/T_f telemetry
-Regression: river-physics.test.js now checks runoff-supported headwaters, downstream graph continuity, model-4 7x river rasterization and dense spherical edge sampling; physical-fog.test.js requires spatial reconstruction of the fog optical field.
+VERSION 0.5.139
+Base: 0.5.138
+Changes: Split visible rivers from the coarse Weather Core drainage lattice with basin-constrained fine tributaries.
+  - keep Priority-Flood, runoff accumulation, discharge and the diagnosed physical downstream graph authoritative for water, basins and outlets
+  - add river-visual-tributaries.js as a display-only secondary network: candidate headwaters require real humidity/soil water/runoff plus usable terrain slope
+  - compute a physical basin id and graph distance to the nearest diagnosed channel/lake/ocean for every land cell
+  - allow a visual tributary to choose among several neighbouring downhill cells only when they stay in the same physical basin and reduce distance to a diagnosed receiver; uphill and cross-divide steps are rejected
+  - rebuild the visual tributary topology only every six Weather Core ticks or after a topology/seed change, keeping it off render FPS
+  - rasterize tributaries as thin sub-cell curves whose lateral offsets collapse to zero at confluences, so small branches merge cleanly into the physical trunk instead of following cell centres
+  - raise river display cubemap reconstruction from 7x to 8x Weather Core resolution while narrowing the physical trunk brush to reduce the broad blocky blue-groove look
+  - preserve physical trunk/lake dominance at confluences by painting fine tributaries first and authoritative channels afterwards with max compositing
+  - retain the 0.5.138 physical-fog spatial reconstruction and 0.5.137 single-writer integer T_a/T_f telemetry
+Regression: add river-visual-tributaries.test.js for deterministic wetness/slope gating, basin locking, downhill routing, receiver convergence and dry-basin rejection; update river GPU expectations to model 5 / 8x reconstruction.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
