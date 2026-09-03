@@ -27,6 +27,9 @@ tests=(
   tests/smooth-motion-ui.test.js
   tests/input-frame-pacing.test.js
   tests/frame-pacing-polish.test.js
+  tests/presentation-clock.test.js
+  tests/weather-frame-budget.test.js
+  tests/river-frame-pacing.test.js
   tests/climate-consistency.test.js
   tests/runtime-settings.test.js
   tests/rubric-orbit-ui.test.js
