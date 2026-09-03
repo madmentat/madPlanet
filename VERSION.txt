@@ -1,12 +1,14 @@
-VERSION 0.5.141
-Base: 0.5.140
-Changes: Rework visible river detail into a denser basin-constrained dendritic network without giving decorative code authority over physical drainage.
-  - upgrade river-visual-tributaries to model 2: lower the coarse-grid headwater threshold, select wet/slope-supported local source maxima instead of blanking an entire neighbouring Weather Core cell around every chosen source, and allow longer receiver-distance headwaters
-  - add a second feeder pass along confirmed physical trunks: short side tributaries are traced upstream through wetter/higher cells, locked to the same physical basin, then reversed so the displayed branch always flows downhill into a diagnosed channel/lake receiver
-  - increase sub-cell lateral displacement for feeder branches so the visible network no longer runs primarily through the centres of huge synoptic cells
-  - strengthen fine tributary display amplitudes while keeping physical trunk/lake rasterization authoritative at confluences
-  - rebuild display-only river topology every 12 Weather Core ticks instead of every 6, preserving the 0.5.140 frame-pacing improvement at x4 simulation speed
-  - wrap the legacy shadeSurface output with a cheap physical-river visibility pass: an already diagnosed river cubemap line can no longer disappear solely because the historical procedural FBM width/climate gates reject the same pixel
-  - the visibility pass preserves the existing lit surface colour and only darkens/tints diagnosed river pixels; frozen/thermally invalid surface water is not deliberately created by this display layer
-Regression: extend river-visual-tributaries.test.js with reverse feeder routing, dry-basin rejection, basin/downhill invariants and the physical river surface-visibility wrapper.
+VERSION 0.5.142
+Base: 0.5.141
+Changes: Polish river geometry and restore Android rendering performance after the 0.5.141 fine-river visibility experiment.
+  - remove the second shadeSurface river-visibility wrapper introduced in 0.5.141; the base surface shader is again the only surface shading pass
+  - eliminate the wrapper's duplicate river cubemap read and duplicate physicalFogSample path, which could add up to ten extra fog cubemap reads near dense river networks and disproportionately hurt mobile tile GPUs
+  - keep fine streams visible by writing a narrow high-confidence centre-line into the existing uRiverTex rather than re-shading the surface a second time
+  - thin fine tributary/feeder raster brushes to roughly one river-texture texel and raise their centre signal so legacy surface width gates no longer erase the line while the visible corridor stays narrow
+  - add a second deterministic bend harmonic to fine branches so neighbouring tributaries do not read as parallel ruler strokes
+  - prune adjacent feeder receivers and discard one-cell feeder stubs, reducing the comb/rake pattern seen on large wet continents
+  - retain long basin-constrained tributaries and the authoritative Priority-Flood/Q/downstream physical graph; this release changes display only, not runoff or drainage physics
+  - keep desktop river cubemap reconstruction at 8x Weather Core resolution, but use 6x on mobile; this reduces river cubemap area/packing buffers to 56.25% of the 8x mobile cost while preserving sub-synoptic thin lines on phone/tablet screens
+  - preserve the 0.5.140 presentation clock, Weather Core idle budget and coalesced river publication pacing
+Regression: update river-visual-tributaries.test.js to forbid the duplicate surface wrapper, require mobile 6x river reconstruction, adjacent-feeder pruning, narrow brush radii and strong fine-centre river signal.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
