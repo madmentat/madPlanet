@@ -11,7 +11,8 @@ const visual=read('js/river-visual-tributaries.js');
 const gpu=read('js/river-gpu.js');
 const sh=read('build.sh'),ps=read('build.ps1');
 
-assert.ok(!/Math\.random|requestAnimationFrame/.test(visual),'visual tributaries must be deterministic and off render FPS');
+const executableVisual=visual.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\/.*$/gm,'$1');
+assert.ok(!/Math\.random|requestAnimationFrame/.test(executableVisual),'visual tributaries must be deterministic and off render FPS');
 for(const token of ['riverVisualBasin','riverVisualDistToTrunk','riverVisualWetness','riverVisualTraceBranch','riverVisualChooseNext'])
   assert.ok(visual.includes(token),'missing tributary constraint '+token);
 assert.match(visual,/RIVER_VISUAL_MAX_TRUNK_DISTANCE=11/);
@@ -51,7 +52,7 @@ function chainCore(n=8){
   }
   ctx.riverEnsureFields(c);ctx.riverRebuildTopology(c,{radiusM:6371000});ctx.riverRoutingEnsureFields(c);
   c.riverRunoffMean.fill(1.8e-5);c.riverChannelStrength.fill(0);c.riverLakeFraction.fill(0);
-  c.riverChannelStrength[n-3]=0.82; // confirmed trunk before the ocean
+  c.riverChannelStrength[n-3]=0.82;
   return c;
 }
 
@@ -75,7 +76,7 @@ function chainCore(n=8){
 
 {
   const c=chainCore();
-  ctx.riverVisualHash01=()=>0; // force deterministic source acceptance for this unit test
+  ctx.riverVisualHash01=()=>0;
   ctx.riverVisualBuildBranches(c);
   assert.ok(c.riverVisualBranches.length>0,'wet sloping basin should receive fine visual tributaries');
   for(const b of c.riverVisualBranches){
