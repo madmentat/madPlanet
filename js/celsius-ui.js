@@ -1,4 +1,4 @@
-/* ============ 0.5.136: user-facing temperature units + stable Ta/Tf telemetry ============ */
+/* ============ 0.5.137: user-facing temperature units + stable Ta/Tf telemetry ============ */
 /*
    Physics remains Kelvin internally. This late UI adapter converts every
    temperature value currently exposed by the Planet/Weather diagnostics to
@@ -16,10 +16,11 @@
    column, every numeric/value readout owns a fixed 104 px right-aligned slot,
    and tabular figures keep changing signs/digits from moving the whole block.
 
-   0.5.136 deliberately removes fractional degrees from the compact T_a/T_f
-   thermometer. The weather model is not precise enough for tenths of a degree
-   to be useful here, and repeatedly appearing/disappearing decimals made the
-   headline readout visually noisy even with a fixed value column.
+   0.5.136 deliberately removed fractional degrees from compact T_a/T_f.
+   0.5.137 closes the remaining legacy-writer race: smooth-motion-ui still
+   writes its historical climateModel().C with toFixed(1) every ~400 ms. The
+   late adapter now detects that fractional legacy write and synchronously
+   restores integer T_a before the browser can paint it.
 */
 (function installCelsiusUi(){
   if(typeof document==='undefined')return;
@@ -179,13 +180,23 @@
   }
 
   let temperatureTelemetryLastMs=-1e12;
+  function temperatureTelemetryLegacyFractionVisible(){
+    const text=String(smoothTelemetryValues?.temp?.textContent||'');
+    return /[0-9][.,][0-9]+\s*°C/.test(text);
+  }
   if(typeof smoothTelemetryUpdate==='function'){
     const beforeTelemetry=smoothTelemetryUpdate;
     smoothTelemetryUpdate=function(now){
       beforeTelemetry(now);
       const t=Number(now)||((typeof performance!=='undefined')?performance.now():Date.now());
-      if(t-temperatureTelemetryLastMs<250)return;
-      temperatureTelemetryLastMs=t;temperatureTelemetryRefresh(false);
+      /* smooth-motion-ui predates T_a/T_f and still writes climateModel().C
+         using toFixed(1). If that legacy write happened in beforeTelemetry(),
+         replace it synchronously in this same call so no fractional frame is
+         ever presented. Otherwise retain the cheap 250 ms refresh cadence. */
+      const legacyFraction=temperatureTelemetryLegacyFractionVisible();
+      if(!legacyFraction && t-temperatureTelemetryLastMs<250)return;
+      temperatureTelemetryLastMs=t;
+      temperatureTelemetryRefresh(false);
     };
   }
 
