@@ -1,12 +1,11 @@
-VERSION 0.5.144
-Base: 0.5.143
-Changes: Hierarchical natural rivers - calmer meanders, denser fine network.
-  - reduce meander amplitude so channels no longer read as bacterial rods / serpentine scribbles
-  - dominant low-frequency bend only; high harmonics kept weak for smooth strokes
-  - hierarchical width: hairline headwaters, bulk only on high-discharge stems
-  - denser basin-locked visual tributaries and side feeders (up to 1800 / 960)
-  - lower wetness thresholds for headwater recruitment without crossing divides
-  - tighter surface.glsl physical core/halo and reduced procedural width gain
-  - physical Priority-Flood / discharge / downstream graph unchanged; display only
-Regression: at planetary view rivers should show clear trunk vs tributary hierarchy; fine streams fill wet basins; no uniform rod thickness or aggressive scribble meanders.
+VERSION 0.5.145
+Base: 0.5.144
+Changes: Radical river display - Catmull-Rom splines instead of D8 edge paint.
+  - trunks painted as smooth 4-point Catmull-Rom curves through upstream/i/j/downstream
+  - continuous arc-length meander leaves the lattice without per-edge kinks
+  - visual tributaries/feeders use the same spline treatment
+  - denser fine network (2400 branches / 1400 feeders, lower wetness gates)
+  - hierarchical thin stroke retained
+  - physical drainage graph unchanged; display only
+Regression: rivers must not read as road networks or orthogonal polylines at planetary or regional zoom; trunks and tributaries should be smooth curves with clear width hierarchy.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
