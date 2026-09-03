@@ -1,4 +1,4 @@
-/* ============ 0.5.131 .. 0.5.144: physical rivers -> GPU cubemap ============ */
+/* ============ 0.5.131 .. 0.5.145: physical rivers -> GPU cubemap ============ */
 /*
    R/G = previous river/lake support, B/A = current river/lake support.
    One RGBA8 cubemap keeps the bridge WebGL1-friendly; the texture is updated
@@ -11,16 +11,16 @@
    lateral displacement collapses to zero at confluences so tributaries merge
    cleanly into the physical trunk rather than ending beside it.
 
-   0.5.143: thinner channels, stronger meanders, higher display resolution.
+   0.5.144: kill D8 staircases with continuous cell-scale meanders.
 
-   0.5.144: kill D8 staircases. Paths no longer snap through cell centres with
-   zero endpoint offset. Each edge is drawn with continuous lateral meander
-   whose amplitude is a fraction of the synoptic cell size (not sin of the
-   tiny inter-cell angle), plus dense sampling so the rasterised corridor
-   reads as a smooth natural stream instead of a grid polyline.
+   0.5.145: hierarchical natural look. Meander amplitude is reduced so channels
+   no longer read as bacterial rods / serpentine scribbles. Width follows
+   discharge more aggressively (thin headwaters, only major stems get bulk).
+   Visual tributaries stay hairline so the dendritic fine structure fills the
+   basins without competing with the trunk hierarchy.
 */
 
-const RIVER_GPU_MODEL=7;
+const RIVER_GPU_MODEL=8;
 const RIVER_TEX_UNIT=2;
 const RIVER_GPU_UPSCALE=16;
 const RIVER_BLEND_DEFAULT_MS=900;
@@ -107,32 +107,30 @@ function riverGpuPaintEdge(core,i,j,tmp){
   const h2=riverGpuEdgeHash(core.seed|0,i,j,0x165667b1);
   const h3=riverGpuEdgeHash(core.seed|0,i,j,0x27d4eb2d);
   const h4=riverGpuEdgeHash(core.seed|0,i,j,0x85ebca77);
-  /* Angular size of one Weather Core cell - meander scale is tied to this,
-     not to the small chord angle between neighbours (that is what made every
-     edge collapse to a grid polyline with zero offset at the endpoints). */
+  /* Cell angular size sets the meander scale. Amplitude is deliberately mild:
+     real rivers bend, they do not thrash like bacterial rods. */
   const cellAng=2/Math.max(8,core.N||32);
-  /* Continuous phase so consecutive edges do not reset the meander wave. */
   const phase0=h4*Math.PI;
   const steps=Math.max(12,Math.min(72,Math.ceil(Math.max(ang,cellAng)*riverGpuN*2.6)));
   for(let s=0;s<=steps;s++){
     const t=s/steps,omt=1-t;
-    /* Spherical linear-ish blend of directions. */
     let dx=ix*omt+jx*t,dy=iy*omt+jy*t,dz=iz*omt+jz*t;
     let q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
-    /* Multi-harmonic meander whose amplitude is a fraction of the cell size.
-       Endpoints keep a residual offset (no forced zero) so stair corners die. */
+    /* Dominant low-frequency bend + light secondary harmonic. High harmonics
+       stayed weak so the stroke stays smooth instead of scribbly. Residual
+       endpoint offset still kills D8 stair corners. */
     const wave=
-      0.55*h1*Math.sin(Math.PI*t+phase0)+
-      0.28*h2*Math.sin(2.15*Math.PI*t+phase0*1.7)+
-      0.12*h3*Math.sin(3.7*Math.PI*t+phase0*0.6)+
-      0.06*h1*Math.sin(5.3*Math.PI*t);
-    const amp=cellAng*(0.38+0.22*Math.abs(h2))*(0.72+0.28*Math.sin(Math.PI*t));
+      0.78*h1*Math.sin(Math.PI*t+phase0)+
+      0.18*h2*Math.sin(2.05*Math.PI*t+phase0*1.4)+
+      0.04*h3*Math.sin(3.4*Math.PI*t);
+    const amp=cellAng*(0.14+0.08*Math.abs(h2))*(0.78+0.22*Math.sin(Math.PI*t));
     const bend=amp*wave;
     dx+=nx*bend;dy+=ny*bend;dz+=nz*bend;q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
     const strength=si+(sj-si)*t,width=wi+(wj-wi)*t;
-    const widthScale=riverGpuClamp(Math.log2(1+width/22)/6.2,0,1);
-    const radius=0.10+0.22*Math.sqrt(strength)+0.20*widthScale;
-    riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.24+0.76*strength,tmp);
+    /* Hierarchical width: hairline headwaters, only high-Q stems get bulk. */
+    const widthScale=riverGpuClamp(Math.log2(1+width/18)/7.0,0,1);
+    const radius=0.055+0.12*Math.pow(strength,0.85)+0.28*widthScale*widthScale;
+    riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.20+0.80*strength,tmp);
   }
 }
 
@@ -153,8 +151,8 @@ function riverGpuVisualNode(core,branch,p,out){
       sx/=sq;sy/=sq;sz/=sq;
       const cellAng=2/Math.max(8,core.N||32);
       const sign=riverGpuEdgeHash(core.seed|0,branch.source|0,i,0x5317+p*97);
-      const taper=0.35+0.65*Math.pow(Math.max(0,1-progress),0.55);
-      const amp=cellAng*(0.28+0.22*Math.abs(branch.phase||0))*taper*sign;
+      const taper=0.30+0.70*Math.pow(Math.max(0,1-progress),0.55);
+      const amp=cellAng*(0.12+0.10*Math.abs(branch.phase||0))*taper*sign;
       dx+=sx*amp;dy+=sy*amp;dz+=sz*amp;
       const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
     }
@@ -177,16 +175,16 @@ function riverGpuPaintVisualEdge(core,branch,p,tmp,a,b){
     let dx=a.x*omt+b.x*t,dy=a.y*omt+b.y*t,dz=a.z*omt+b.z*t;
     let q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
     const wave=
-      0.50*h*Math.sin(Math.PI*t+phase0)+
-      0.22*h2*Math.sin(2.4*Math.PI*t+phase0*1.3)+
-      0.08*h*Math.sin(4.1*Math.PI*t);
-    const amp=cellAng*(0.30+0.18*Math.abs(branch.phase||0))*(0.70+0.30*Math.sin(Math.PI*t));
+      0.82*h*Math.sin(Math.PI*t+phase0)+
+      0.14*h2*Math.sin(2.1*Math.PI*t+phase0*1.2)+
+      0.04*h*Math.sin(3.5*Math.PI*t);
+    const amp=cellAng*(0.11+0.07*Math.abs(branch.phase||0))*(0.75+0.25*Math.sin(Math.PI*t));
     const bend=amp*wave;
     dx+=nx*bend;dy+=ny*bend;dz+=nz*bend;q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
     const progress=(p+t)/last;
-    const strength=riverGpuClamp((branch.strength||0.12)*(0.48+0.52*progress),0.03,0.30);
-    const radius=0.07+0.12*Math.sqrt(strength);
-    const value=0.14+0.50*strength;
+    const strength=riverGpuClamp((branch.strength||0.10)*(0.40+0.60*progress),0.02,0.22);
+    const radius=0.040+0.070*Math.sqrt(strength);
+    const value=0.12+0.42*strength;
     riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,value,tmp);
   }
 }
@@ -216,8 +214,8 @@ function riverGpuReadCurrent(core){
     if(strength<0.008)continue;
     const j=core.riverDownstream?.[i]|0;
     if(j<0||j>=core.count){
-      const width=Math.max(0,Number(core.riverWidthM?.[i])||0),ws=riverGpuClamp(Math.log2(1+width/22)/6.2,0,1);
-      riverGpuPaintDir(riverGpuCurrRiver,ix,iy,iz,0.10+0.22*Math.sqrt(strength)+0.20*ws,0.24+0.76*strength,tmp);
+      const width=Math.max(0,Number(core.riverWidthM?.[i])||0),ws=riverGpuClamp(Math.log2(1+width/18)/7.0,0,1);
+      riverGpuPaintDir(riverGpuCurrRiver,ix,iy,iz,0.055+0.12*Math.pow(strength,0.85)+0.28*ws*ws,0.20+0.80*strength,tmp);
       continue;
     }
     riverGpuPaintEdge(core,i,j,tmp);
