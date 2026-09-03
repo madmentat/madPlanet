@@ -30,8 +30,11 @@ assert.match(shader,/physicalFogSample/);assert.match(shader,/uRotS\*normalize\(
 assert.match(shader,/#define FOG_TAP\(D\) mix\([^\n]*uFogTexPrev[^\n]*uFogTex[^\n]*b\)/,
   'fog samples must interpolate previous/current fixed-tick targets before spatial averaging');
 assert.match(shader,/vec4 c0 = FOG_TAP\(body\)/,'fog center sample must use the interpolated fixed-tick helper');
-assert.match(shader,/c0\.ba = \(c0\.ba \+ c1\.ba \+ c2\.ba \+ c3\.ba \+ c4\.ba\) \* 0\.2/,
-  'soil/temperature channels may spatially average only after temporal interpolation');
+assert.match(shader,/const float o = 0\.035/,'fog reconstruction must span enough of a coarse Weather Core cell to hide square texels');
+assert.match(shader,/c0\.rg = c0\.rg\*0\.56 \+ \(c1\.rg\+c2\.rg\+c3\.rg\+c4\.rg\)\*0\.11/,
+  'physical fog optical/depth channels must receive compact spherical spatial reconstruction');
+assert.match(shader,/c0\.ba = c0\.ba\*0\.44 \+ \(c1\.ba\+c2\.ba\+c3\.ba\+c4\.ba\)\*0\.14/,
+  'soil/temperature channels must remain spatially reconstructed after temporal interpolation');
 assert.match(shader,/float shaped=max\(0\.0,optical-erosion\)/,'procedural erosion must only subtract from physical fog');
 assert.match(shader,/float density=shaped\*softVisibility\*textureMod/,'procedural texture may modulate already-positive physical fog only');
 const executablePhys=phys.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\/.*$/gm,'$1');
