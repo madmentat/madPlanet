@@ -43,13 +43,19 @@ assert.match(units,/\[20,3,38\].*\[20,31,158\].*\[0,194,230\].*\[250,230,31\].*\
 assert.match(units,/current\.style\.textShadow=temperatureTelemetryGlow/,'T_a must be visually prominent at a glance');
 assert.match(units,/predicted\.title='T_f — ожидаемая температура/,'T_f must explicitly state that it is not current temperature');
 
-/* Changing 416 -> 416.7 or adding a sign/unit must not resize the compact
-   telemetry grid. Reserve a real value column and use tabular digits. */
+/* Headline temperatures are intentionally whole degrees. Tenths are visual
+   noise for this model and made the changing readout look more unstable than
+   the underlying climate state actually is. */
+assert.match(units,/const n=Math\.round\(C\)/,'headline T_a/T_f must round to whole degrees');
+assert.match(units,/Math\.abs\(n\)\+' °C'/,'headline thermometer must format integer Celsius values');
+assert.doesNotMatch(units,/const a=Math\.abs\(C\),digits=a<100\?1:0/,'headline thermometer must not switch fractional precision by magnitude');
+
+/* Changing value width/sign must not resize the compact telemetry grid. */
 assert.match(units,/const TELEMETRY_VALUE_WIDTH_PX=104/,'telemetry must reserve a stable numeric column');
 assert.match(units,/gridTemplateColumns='max-content '\+TELEMETRY_VALUE_WIDTH_PX\+'px'/,'telemetry labels and values must use separate fixed columns');
 assert.match(units,/label\.style\.textAlign='left'/,'telemetry variable names must stay left-aligned');
 assert.match(units,/value\.style\.width=TELEMETRY_VALUE_WIDTH_PX\+'px'/,'telemetry values must keep a fixed width');
-assert.match(units,/value\.style\.minWidth=TELEMETRY_VALUE_WIDTH_PX\+'px'/,'telemetry values must reserve their width before decimals appear');
+assert.match(units,/value\.style\.minWidth=TELEMETRY_VALUE_WIDTH_PX\+'px'/,'telemetry values must reserve their width before wider numbers appear');
 assert.match(units,/value\.style\.maxWidth=TELEMETRY_VALUE_WIDTH_PX\+'px'/,'telemetry values must not grow the grid');
 assert.match(units,/value\.style\.textAlign='right'/,'telemetry numbers and units must stay right-aligned');
 assert.match(units,/value\.style\.whiteSpace='nowrap'/,'telemetry numeric values must never wrap');
