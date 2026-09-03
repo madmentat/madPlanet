@@ -22,13 +22,16 @@ assert.ok(src.includes('Math.pow(Q,RIVER_WIDTH_EXP)'),'channel width must derive
 const executable=src.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/.*$/gm,'');
 assert.ok(!/latitude|latGate|riverBand/.test(executable),'river placement must not contain a latitude band');
 
-/* 0.5.132: a Weather Core cell is a catchment element, not automatically a
-   visible channel. Routing must have diagonal choices and channel initiation
-   must require accumulated contributing area/discharge. */
+/* Weather Core cells are catchment elements, not display pixels. Routing must
+   have diagonal choices, headwater initiation must still require real runoff,
+   and an established graph channel must remain continuous downstream. */
 assert.match(refine,/Array\.from\(\{length:8\}/,'river routing needs an eight-neighbour D8-like stencil');
 assert.match(refine,/riverContributingArea/,'resolved contributing area gate is missing');
-assert.match(refine,/RIVER_AREA_START_CELLS/);
-assert.match(refine,/RIVER_Q_START_LOCAL_MULT/);
+assert.match(refine,/RIVER_AREA_START_CELLS=0\.72/,'coarse Weather Core must allow a runoff-supported fractional-cell headwater');
+assert.match(refine,/RIVER_Q_START_LOCAL_MULT=1\.05/,'headwaters must still require more than the climate baseflow reference');
+assert.match(refine,/riverRoutingCarryChannelsDownstream/,'real channel support must be carried along its diagnosed downstream graph');
+assert.match(refine,/RIVER_CONTINUITY_DECAY=0\.90/,'downstream visual continuity needs a bounded decay');
+assert.match(refine,/RIVER_ROUTING_REFINEMENT_MODEL=2/,'river routing refinement model must be bumped');
 
 for(const file of [buildSh,buildPs]){
   assert.ok(file.indexOf('js/soil-hydrology.js')<file.indexOf('js/river-physics.js'));
@@ -43,7 +46,9 @@ assert.match(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,riverGeomProc\*physR
 assert.ok(gpu.includes('riverDownstream'),'GPU river map must rasterize the diagnosed drainage graph');
 assert.ok(gpu.includes('riverGpuPaintEdge'),'GPU river map must paint graph edges rather than hydrology cells');
 assert.ok(gpu.includes('riverGpuEdgeHash')&&gpu.includes('Math.sin(Math.PI*t)'),'coarse graph edges need deterministic sub-cell bending to hide lattice directions');
-assert.equal((gpu.match(/RIVER_GPU_MODEL=3/g)||[]).length,1,'river GPU lattice fix must use model 3');
+assert.match(gpu,/RIVER_GPU_MODEL=4/,'river display bridge must use the higher-resolution model');
+assert.match(gpu,/RIVER_GPU_UPSCALE=7/,'river cubemap must resolve well below the Weather Core cell size');
+assert.match(gpu,/Math\.min\(36,Math\.ceil\(ang\*riverGpuN\*1\.45\)\)/,'long graph links need dense spherical samples rather than chunky segments');
 assert.ok(!gpu.includes('requestAnimationFrame'),'river texture must not upload from render FPS');
 assert.ok(render.includes('uRiverPhysicsOn')&&render.includes('uRiverTex'));
 
@@ -93,9 +98,27 @@ function chainCore(terrain){
   assert.ok(c.riverDischargeTarget[2]>c.riverDischargeTarget[1]);
   assert.ok(c.riverDischargeTarget[3]>c.riverDischargeTarget[2],'discharge must grow downstream as contributing area grows');
   assert.ok(c.riverWidthM[3]>c.riverWidthM[0],'hydraulic geometry must widen a larger river');
-  assert.equal(c.riverChannelStrength[0],0,'one resolved hillslope cell must not be drawn as a river');
-  assert.ok(c.riverChannelStrength[3]>0.15,'multi-cell accumulated basin must still produce a visible trunk channel');
+  assert.ok(c.riverChannelStrength[0]>=0&&c.riverChannelStrength[0]<c.riverChannelStrength[3],
+    'a runoff-supported headwater may appear, but the accumulated trunk must be stronger');
+  assert.ok(c.riverChannelStrength[3]>0.20,'multi-cell accumulated basin must produce a visible trunk channel');
   assert.ok(c.riverContributingArea[3]>c.riverContributingArea[1],'contributing area must accumulate downstream');
+
+  for(let i=0;i<3;i++)if(c.riverChannelStrength[i]>0.025){
+    assert.ok(c.riverChannelStrength[i+1]>=c.riverChannelStrength[i]*0.50,
+      'a diagnosed channel must not visually vanish in the next downstream land cell');
+  }
+}
+
+// Continuity is graph-bound: it strengthens only the diagnosed downstream cell.
+{
+  const c=chainCore([5,4,3,2,0]);ctx.riverEnsureFields(c);ctx.riverRebuildTopology(c,{radiusM:6371000});
+  ctx.riverRoutingEnsureFields(c);
+  const area=ctx.riverCellAreas(c,{radiusM:6371000});
+  c.riverChannelStrength.fill(0);c.riverChannelStrength[0]=0.8;
+  c.riverDischarge.fill(0);c.riverDischarge[1]=10*c.riverRoutingReferenceQ(area[1]);
+  ctx.riverRoutingCarryChannelsDownstream(c,area);
+  assert.ok(c.riverChannelStrength[1]>0.4,'supported downstream receiver must inherit channel continuity');
+  assert.equal(c.riverChannelStrength[2],0,'continuity must stop when the next receiver has no physical discharge');
 }
 
 // A closed pit must be lifted to its spill elevation and still drain.
