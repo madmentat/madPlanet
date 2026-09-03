@@ -2,9 +2,9 @@ VERSION 0.5.137
 Base: 0.5.136
 Changes: Eliminate the remaining fractional-temperature writer race in compact telemetry.
   - keep T_a and T_f as whole Celsius degrees only in the top-left headline thermometer
-  - detect the legacy smooth-motion telemetry writer that still injects climateModel().C with one decimal place every ~400 ms
-  - synchronously replace any fractional Celsius legacy write with the integer Weather Core T_a in the same JavaScript call, before the browser can paint that frame
+  - make T_a effectively single-writer: the legacy smooth-motion telemetry pass may still update FPS/star/orbit, but any write targeting the temperature cell is suppressed
+  - prevent the historical climateModel().C toFixed(1) path from ever reaching the rendered T_a element, rather than merely repainting over the decimal afterwards
   - preserve the fixed 104 px right-aligned value column, left-aligned labels, nowrap values and tabular numeric glyphs
   - retain floating-point temperatures internally and in detailed diagnostics; only headline T_a/T_f are intentionally integer
-Regression: thermal-celsius.test.js now requires immediate repair of any legacy fractional Celsius write so the compact thermometer cannot flash tenths between integer updates.
+Regression: thermal-celsius.test.js now requires a write gate around the legacy telemetry pass so no second writer can inject fractional T_a values.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
