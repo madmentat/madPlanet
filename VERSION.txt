@@ -1,8 +1,9 @@
-VERSION 0.5.156
-Base: 0.5.155, retaining the narrow coast-safe river geometry recovered from 0.5.148.
-Changes: stable river visibility across camera distance without widening channels.
-  - WebGL2 uses mipmapped minification for the river corridor cubemap, preserving sub-pixel coverage instead of producing dotted or missing lines at orbit scale.
-  - Physical rivers receive a bounded opacity floor after the existing one-pixel morphology calculation; procedural rivers keep their legacy area-correct fade.
-  - No direct corridor painting, footprint max-dilation, Chaikin chain painter or trunkLine water path is reintroduced.
-Regression: guards require mipmapped minification, a bounded physical LOD floor and the existing one-texel corridor limits.
+VERSION 0.5.157
+Base: 0.5.156, keeping the narrow one-texel permission corridor, mipmapped minification and the bounded physical LOD floor.
+Changes: analytic vector rivers on WebGL2, texel-independent at every zoom.
+  - The Catmull edges with their node-anchored meanders are also published as short great-circle chords (unit endpoints, strength, angular half-width) with a per-cubemap-bin index, sorted by strength.
+  - surface.glsl draws the channel as the distance to the nearest chord with pixel anti-aliasing, a hairline floor whose opacity follows true coverage and strength, and one continuous domain warp for sub-grid meanders that fades toward the coast.
+  - The raster corridor remains the WebGL1 fallback, the riparian halo and the mip-level-2 gate that keeps the chord loop off pixels far from any drainage.
+  - The Weather Core worker transfers the chord table with the river faces; the main thread never re-rasterizes.
+Regression: guards require the chord collection inside the spline painter, the strength-sorted bin index, the WebGL2-only shader path and the unchanged corridor limits.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

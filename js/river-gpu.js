@@ -17,15 +17,153 @@
    visible wiggles belong to the sub-grid channel.
 */
 
-const RIVER_GPU_MODEL=16;
+/*
+   0.5.157: VECTOR channels. Even at 16x a corridor texel is ~13 km on the
+   desktop grid and ~60 km on a phone (6x of a 28-cell face), so the visible
+   channel could only be an FBM crack gated by a blocky mask: sticks, combs and
+   right angles. The same Catmull edges (with their node-anchored meanders)
+   are now ALSO collected as short great-circle chords with a physical angular
+   half-width, indexed per cubemap bin, and drawn by shaders/surface.glsl as
+   an analytic distance field with pixel anti-aliasing and a small continuous
+   domain warp for sub-grid meanders. Geometry is then texel-independent at
+   every zoom. The raster corridor remains the WebGL1 fallback, the riparian
+   halo and the cheap LOD gate for the vector loop.
+*/
+const RIVER_GPU_MODEL=17;
 const RIVER_TEX_UNIT=2;
+const RIVER_VEC_BIN_N=40;             /* bins per cubemap face edge */
+const RIVER_VEC_TEX_W=2048;           /* data texture width in texels */
+const RIVER_VEC_MAX_SEGMENTS=180000;
+const RIVER_VEC_PIECES_PER_EDGE=6;    /* chords per coarse graph edge */
+const RIVER_VEC_BIN_MARGIN_RAD=0.016; /* widest channel + shader warp + AA reach */
+const RIVER_VEC_SEG_UNIT=12,RIVER_VEC_BIN_UNIT=13,RIVER_VEC_LIST_UNIT=14;
 const RIVER_GPU_UPSCALE=16;
 const RIVER_BLEND_DEFAULT_MS=900;
 const RIVER_BLEND_MIN_MS=250;
 const RIVER_BLEND_MAX_MS=1200;
 
 if(typeof UNIFORM_NAMES!=='undefined'){
-  for(const n of ['uRiverTex','uRiverBlend','uRiverPhysicsOn'])if(!UNIFORM_NAMES.includes(n))UNIFORM_NAMES.push(n);
+  for(const n of ['uRiverTex','uRiverBlend','uRiverPhysicsOn','uRiverSegTex','uRiverBinTex','uRiverListTex','uRiverVecOn','uRiverBinN','uRiverTexW'])if(!UNIFORM_NAMES.includes(n))UNIFORM_NAMES.push(n);
+}
+
+/* ---------------- vector channel table ---------------- */
+let riverVecSegments=new Float32Array(0),riverVecCount=0,riverVecSegCap=0;
+let riverVecBins=new Float32Array(0),riverVecList=new Float32Array(0),riverVecListCount=0;
+let riverVecDirty=false,riverVecVersion=0,riverVecCollectOn=false;
+function riverVecReset(){
+  if(riverVecSegCap<RIVER_VEC_MAX_SEGMENTS){riverVecSegCap=RIVER_VEC_MAX_SEGMENTS;riverVecSegments=new Float32Array(riverVecSegCap*8);}
+  riverVecCount=0;riverVecCollectOn=true;
+}
+/* Angular half-width of the drawn channel. Deliberately exaggerated against
+   hydraulic geometry (a 200 m creek is invisible from orbit), but monotonic
+   in channel strength and physical width so trunks read wider than feeders. */
+function riverVecHalfWidthRad(strength,widthM,visual){
+  strength=riverGpuClamp(strength,0,1);
+  if(visual)return 0.00035+0.00100*strength;
+  const ws=riverGpuClamp(Math.log2(1+Math.max(0,widthM)/18)/7.0,0,1);
+  return 0.00045+0.00220*Math.pow(strength,1.3)+0.00120*ws*ws;
+}
+function riverVecPush(ax,ay,az,bx,by,bz,strength,halfWidth){
+  if(riverVecCount>=riverVecSegCap)return;
+  const o=riverVecCount*8,g=riverVecSegments;
+  g[o]=ax;g[o+1]=ay;g[o+2]=az;g[o+3]=strength;g[o+4]=bx;g[o+5]=by;g[o+6]=bz;g[o+7]=halfWidth;
+  riverVecCount++;
+}
+function riverVecBinOf(x,y,z){
+  const ax=Math.abs(x),ay=Math.abs(y),az=Math.abs(z);let face,u,v;
+  if(ax>=ay&&ax>=az){if(x>=0){face=0;u=-z/ax;v=y/ax;}else{face=1;u=z/ax;v=y/ax;}}
+  else if(ay>=az){if(y>=0){face=2;u=x/ay;v=-z/ay;}else{face=3;u=x/ay;v=z/ay;}}
+  else{if(z>=0){face=4;u=x/az;v=y/az;}else{face=5;u=-x/az;v=y/az;}}
+  const B=RIVER_VEC_BIN_N;
+  const cx=Math.max(0,Math.min(B-1,Math.floor((u+1)*0.5*B))),cy=Math.max(0,Math.min(B-1,Math.floor((v+1)*0.5*B)));
+  return (face*B+cy)*B+cx;
+}
+/* Every bin whose area comes within the margin of a chord must list it.
+   Samples along the chord plus eight margin offsets in the local tangent
+   plane cover that, including across cubemap face seams. Lists are sorted
+   by strength so a capped shader loop always sees the trunks first. */
+function riverVecBuildIndex(){
+  const B=RIVER_VEC_BIN_N,nb=6*B*B,m=RIVER_VEC_BIN_MARGIN_RAD;
+  const counts=new Int32Array(nb),perSeg=new Array(riverVecCount),seen=new Set(),g=riverVecSegments;
+  for(let i=0;i<riverVecCount;i++){
+    const o=i*8,ax=g[o],ay=g[o+1],az=g[o+2],bx=g[o+4],by=g[o+5],bz=g[o+6];
+    seen.clear();
+    const mx=ax+bx,my=ay+by,mz=az+bz,mq=Math.hypot(mx,my,mz)||1,nx=mx/mq,ny=my/mq,nz=mz/mq;
+    let t1x,t1y,t1z;
+    if(Math.abs(ny)<0.9){t1x=-nz;t1y=0;t1z=nx;}else{t1x=0;t1y=nz;t1z=-ny;}
+    const q=Math.hypot(t1x,t1y,t1z)||1;t1x/=q;t1y/=q;t1z/=q;
+    const t2x=ny*t1z-nz*t1y,t2y=nz*t1x-nx*t1z,t2z=nx*t1y-ny*t1x;
+    for(let s=0;s<=3;s++){
+      const t=s/3,px=ax+(bx-ax)*t,py=ay+(by-ay)*t,pz=az+(bz-az)*t;
+      for(let oy=-1;oy<=1;oy++)for(let ox=-1;ox<=1;ox++)
+        seen.add(riverVecBinOf(px+(t1x*ox+t2x*oy)*m,py+(t1y*ox+t2y*oy)*m,pz+(t1z*ox+t2z*oy)*m));
+    }
+    const arr=Array.from(seen);perSeg[i]=arr;for(const b of arr)counts[b]++;
+  }
+  const starts=new Int32Array(nb);let acc=0;for(let b=0;b<nb;b++){starts[b]=acc;acc+=counts[b];}
+  const list=new Float32Array(Math.max(1,acc)),fill=new Int32Array(nb);
+  for(let i=0;i<riverVecCount;i++)for(const b of perSeg[i]){list[starts[b]+fill[b]]=i;fill[b]++;}
+  for(let b=0;b<nb;b++){
+    const n=counts[b];if(n<2)continue;
+    const sub=Array.from(list.subarray(starts[b],starts[b]+n));
+    sub.sort((p,r)=>g[r*8+3]-g[p*8+3]);list.set(sub,starts[b]);
+  }
+  const bins=new Float32Array(nb*2);for(let b=0;b<nb;b++){bins[2*b]=starts[b];bins[2*b+1]=counts[b];}
+  riverVecBins=bins;riverVecList=list;riverVecListCount=acc;
+}
+function riverVecFinish(){
+  riverVecCollectOn=false;riverVecBuildIndex();riverVecDirty=true;riverVecVersion++;
+}
+/* Snapshot for the worker -> main transfer (copies, so the worker keeps its own). */
+function riverGpuVectorData(){
+  const seg=riverVecSegments.slice(0,riverVecCount*8),bins=riverVecBins.slice(),list=riverVecList.slice(0,Math.max(1,riverVecListCount));
+  return {count:riverVecCount,binN:RIVER_VEC_BIN_N,seg,bins,list,listCount:riverVecListCount,transfer:[seg.buffer,bins.buffer,list.buffer]};
+}
+function riverGpuVectorSet(data){
+  if(!data||!data.seg||!data.bins||!data.list)return;
+  riverVecSegments=data.seg;riverVecCount=data.count|0;riverVecSegCap=riverVecCount;
+  riverVecBins=data.bins;riverVecList=data.list;riverVecListCount=data.listCount|0;
+  riverVecDirty=true;riverVecVersion++;
+}
+/* Data textures (WebGL2 only): chords RGBA32F (two texels: A.xyz+strength,
+   B.xyz+half-width), bins RG32F (start,count), list R32F (chord index).
+   texelFetch in the shader addresses them with a fixed RIVER_VEC_TEX_W. */
+let riverVecSegTex=null,riverVecBinTex=null,riverVecListTex=null,riverVecUploadedVersion=-1;
+function riverVecUploadTexture(tex,unit,internal,format,channels,data,texelCount){
+  const W=RIVER_VEC_TEX_W,rows=Math.max(1,Math.ceil(texelCount/W));
+  const padded=new Float32Array(W*rows*channels);padded.set(data.subarray(0,Math.min(data.length,texelCount*channels)));
+  gl.activeTexture(gl.TEXTURE0+unit);gl.bindTexture(gl.TEXTURE_2D,tex);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,internal,W,rows,0,format,gl.FLOAT,padded);
+  return rows;
+}
+function riverGpuVectorAvailable(){return typeof webglVersion==='number'&&webglVersion>=2&&typeof gl!=='undefined'&&!!gl;}
+function riverGpuVectorUpload(){
+  if(!riverGpuVectorAvailable()||!riverVecDirty||riverVecCount<1)return false;
+  if(!riverVecSegTex){riverVecSegTex=gl.createTexture();riverVecBinTex=gl.createTexture();riverVecListTex=gl.createTexture();}
+  riverVecUploadTexture(riverVecSegTex,RIVER_VEC_SEG_UNIT,gl.RGBA32F,gl.RGBA,4,riverVecSegments,riverVecCount*2);
+  riverVecUploadTexture(riverVecBinTex,RIVER_VEC_BIN_UNIT,gl.RG32F,gl.RG,2,riverVecBins,riverVecBins.length/2);
+  riverVecUploadTexture(riverVecListTex,RIVER_VEC_LIST_UNIT,gl.R32F,gl.RED,1,riverVecList,Math.max(1,riverVecListCount));
+  gl.activeTexture(gl.TEXTURE0);
+  riverVecDirty=false;riverVecUploadedVersion=riverVecVersion;return true;
+}
+function riverGpuVectorBind(prog,U){
+  if(!U)return;
+  if(riverVecDirty)riverGpuVectorUpload();
+  if(!riverVecSegTex||!riverGpuVectorAvailable()){
+    if(U.uRiverVecOn!==null&&U.uRiverVecOn!==undefined)gl.uniform1f(U.uRiverVecOn,0.0);return;
+  }
+  gl.activeTexture(gl.TEXTURE0+RIVER_VEC_SEG_UNIT);gl.bindTexture(gl.TEXTURE_2D,riverVecSegTex);
+  gl.activeTexture(gl.TEXTURE0+RIVER_VEC_BIN_UNIT);gl.bindTexture(gl.TEXTURE_2D,riverVecBinTex);
+  gl.activeTexture(gl.TEXTURE0+RIVER_VEC_LIST_UNIT);gl.bindTexture(gl.TEXTURE_2D,riverVecListTex);
+  gl.activeTexture(gl.TEXTURE0);
+  if(U.uRiverSegTex!==null&&U.uRiverSegTex!==undefined)gl.uniform1i(U.uRiverSegTex,RIVER_VEC_SEG_UNIT);
+  if(U.uRiverBinTex!==null&&U.uRiverBinTex!==undefined)gl.uniform1i(U.uRiverBinTex,RIVER_VEC_BIN_UNIT);
+  if(U.uRiverListTex!==null&&U.uRiverListTex!==undefined)gl.uniform1i(U.uRiverListTex,RIVER_VEC_LIST_UNIT);
+  if(U.uRiverVecOn!==null&&U.uRiverVecOn!==undefined)gl.uniform1f(U.uRiverVecOn,1.0);
+  if(U.uRiverBinN!==null&&U.uRiverBinN!==undefined)gl.uniform1f(U.uRiverBinN,RIVER_VEC_BIN_N);
+  if(U.uRiverTexW!==null&&U.uRiverTexW!==undefined)gl.uniform1f(U.uRiverTexW,RIVER_VEC_TEX_W);
 }
 
 let riverGpuTex=null,riverGpuN=0,riverGpuFaces=[];
@@ -183,16 +321,28 @@ function riverGpuPaintSplineSegment(core,i0,i1,i2,i3,s0,s1,w0,w1,tmp,salt=0,visu
   const nq=Math.hypot(nx,ny,nz);if(nq>1e-9){nx/=nq;ny/=nq;nz/=nq;}else{nx=ny=nz=0;}
   const cellAng=2/Math.max(8,core.N||32);
   const steps=Math.max(16,Math.min(96,Math.ceil(Math.max(ang,cellAng)*riverGpuN*3.2)));
+  /* Vector chords sample the same displaced spline at a coarser stride; the
+     chain always starts on the node and ends either on the next node or at
+     the first ocean sample so the mouth reaches the detailed coastline. */
+  const vecEvery=Math.max(1,Math.round(steps/RIVER_VEC_PIECES_PER_EDGE));
+  let vx=0,vy=0,vz=0,vs=0,vw=0,vHave=false;
   for(let q=0;q<=steps;q++){
     const t=q/steps;riverGpuCatmullDir(p0,p1,p2,p3,t,d);
     const bend=riverGpuEdgeBend(core,i1,i2,t,cellAng,salt)*(visual?0.88:1.0);
     let dx=d.x+nx*bend,dy=d.y+ny*bend,dz=d.z+nz*bend;
     const len=Math.hypot(dx,dy,dz)||1;dx/=len;dy/=len;dz/=len;
-    if(!riverGpuDetailedLandAt(core,dx,dy,dz))return false;
     const strength=s0+(s1-s0)*t,width=w0+(w1-w0)*t;
+    if(!riverGpuDetailedLandAt(core,dx,dy,dz)){
+      if(riverVecCollectOn&&vHave)riverVecPush(vx,vy,vz,dx,dy,dz,0.5*(vs+strength),riverVecHalfWidthRad(0.5*(vs+strength),0.5*(vw+width),visual));
+      return false;
+    }
     const radius=visual?(0.035+0.055*Math.sqrt(strength)):riverGpuCorridorRadius(strength,width);
     const value=visual?(0.16+0.50*strength):(0.22+0.78*strength);
     riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,value,tmp);
+    if(riverVecCollectOn&&(q%vecEvery===0||q===steps)){
+      if(vHave)riverVecPush(vx,vy,vz,dx,dy,dz,0.5*(vs+strength),riverVecHalfWidthRad(0.5*(vs+strength),0.5*(vw+width),visual));
+      vx=dx;vy=dy;vz=dz;vs=strength;vw=width;vHave=true;
+    }
   }
   return true;
 }
@@ -226,6 +376,7 @@ function riverGpuReadCurrent(core){
   for(let f=0;f<6;f++){riverGpuCurrRiver[f].fill(0);riverGpuCurrLake[f].fill(0);}
   const tmp={face:0,u:0,v:0};
   const up=riverGpuBuildUpstream(core);
+  riverVecReset();
   riverGpuPaintVisualBranches(core,tmp);
   for(let i=0;i<core.count;i++){
     const strength=riverGpuClamp(core.riverChannelStrength?.[i]||0,0,1);
@@ -242,6 +393,7 @@ function riverGpuReadCurrent(core){
     }
     riverGpuPaintEdge(core,i,j,up,tmp);
   }
+  riverVecFinish();
 }
 function riverGpuCollapseVisible(blend){
   for(let f=0;f<6;f++){
@@ -264,7 +416,7 @@ function riverGpuUpload(core){
   const now=riverGpuNowMs(),seed=core.seed|0,seedChanged=Number.isFinite(riverGpuLastSeed)&&riverGpuLastSeed!==seed;
   if(!riverGpuHasFrame||seedChanged){riverGpuReadCurrent(core);for(let f=0;f<6;f++){riverGpuPrevRiver[f].set(riverGpuCurrRiver[f]);riverGpuPrevLake[f].set(riverGpuCurrLake[f]);}riverGpuBlendDurationMs=1;riverGpuBlendStartMs=now;riverGpuHasFrame=true;}
   else{riverGpuCollapseVisible(riverGpuBlendAt(now));riverGpuReadCurrent(core);const interval=Number.isFinite(riverGpuLastUploadMs)?Math.max(1,now-riverGpuLastUploadMs):RIVER_BLEND_DEFAULT_MS;riverGpuBlendDurationMs=Math.max(RIVER_BLEND_MIN_MS,Math.min(RIVER_BLEND_MAX_MS,interval));riverGpuBlendStartMs=now;}
-  riverGpuPackUpload();riverGpuLastUploadMs=now;riverGpuLastSeed=seed;core.riverGpuModel=RIVER_GPU_MODEL;return true;
+  riverGpuPackUpload();riverGpuVectorUpload();riverGpuLastUploadMs=now;riverGpuLastSeed=seed;core.riverGpuModel=RIVER_GPU_MODEL;return true;
 }
 const weatherCoreCreateBeforeRiverGpu=weatherCoreCreate;
 weatherCoreCreate=function(seed,N,climate,axis){const core=weatherCoreCreateBeforeRiverGpu(seed,N,climate,axis);riverGpuUpload(core);return core;};

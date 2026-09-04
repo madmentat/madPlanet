@@ -137,7 +137,9 @@ if(MP_IS_WEATHER_WORKER){
     wwTicksSinceRiver=0;wwRiverSeed=core.seed|0;
     riverGpuEnsure(wwRiverN);riverGpuReadCurrent(core);
     const qr=wwQuantizeFaces(riverGpuCurrRiver),ql=wwQuantizeFaces(riverGpuCurrLake);
-    return {N:riverGpuN,river:qr.out,lake:ql.out,transfer:qr.transfer.concat(ql.transfer)};
+    const vec=(typeof riverGpuVectorData==='function')?riverGpuVectorData():null;
+    const transfer=qr.transfer.concat(ql.transfer);if(vec)transfer.push(...vec.transfer);
+    return {N:riverGpuN,river:qr.out,lake:ql.out,vec:vec?{count:vec.count,binN:vec.binN,seg:vec.seg,bins:vec.bins,list:vec.list,listCount:vec.listCount}:null,transfer};
   }
   self.onmessage=function(e){
     const m=e.data;if(!m||m.type!=='tick')return;
@@ -154,7 +156,7 @@ if(MP_IS_WEATHER_WORKER){
       const cryo=wwCryoFaces(core);if(cryo)mir.transfer.push(...cryo.transfer);
       const river=wwRiverFaces(core,created);if(river)mir.transfer.push(...river.transfer);
       self.postMessage({type:'core',ok:true,fields:mir.fields,cryo:cryo?{N:cryo.N,land:cryo.land,sea:cryo.sea}:null,
-        river:river?{N:river.N,river:river.river,lake:river.lake}:null,ms:performance.now()-t0,requestId:m.requestId},mir.transfer);
+        river:river?{N:river.N,river:river.river,lake:river.lake,vec:river.vec}:null,ms:performance.now()-t0,requestId:m.requestId},mir.transfer);
     }catch(err){
       self.postMessage({type:'core',ok:false,reason:String(err&&err.stack||err),requestId:m.requestId});
     }
@@ -214,7 +216,7 @@ function weatherWorkerApplyStep(){
     const mirror=m.fields;mirror.__mirror=true;
     weatherWorkerMirror=mirror;weatherCore=mirror;
     if(m.cryo)weatherWorkerCryoFaces=m.cryo;
-    if(m.river)weatherWorkerRiverFaces=m.river;
+    if(m.river){weatherWorkerRiverFaces=m.river;if(m.river.vec&&typeof riverGpuVectorSet==='function')riverGpuVectorSet(m.river.vec);}
     if(typeof weatherCloudGpuUpload==='function')try{weatherCloudGpuUpload(mirror);}catch(_e){}
     if(typeof fogGpuUpload==='function')try{fogGpuUpload(mirror);}catch(_e){}
     weatherWorkerApplyStage=1;

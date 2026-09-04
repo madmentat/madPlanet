@@ -30,11 +30,11 @@ assert.match(visual,/dj>d0/,'reverse feeder tracing must move away from the rece
 assert.match(visual,/kind:'feeder'/,'display graph needs explicit fine side feeders');
 assert.match(visual,/riverCoastDistance&&\(core\.riverCoastDistance\[i\]\|0\)<=1/,'visual tributaries must not originate in the coastal ring');
 assert.match(visual,/riverCoastDistance&&\(core\.riverCoastDistance\[j\]\|0\)<=1/,'reverse feeders must not recruit a coastal source');
-assert.match(gpu,/RIVER_GPU_MODEL=16/);
+assert.match(gpu,/RIVER_GPU_MODEL=17/);
 assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'desktop authoritative river reconstruction is 16x');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches')&&gpu.includes('riverVisualBranches'),'GPU bridge must rasterize fine tributaries');
 assert.match(gpu,/function riverGpuDetailedLandAt\(core,dx,dy,dz\)/,'river rasterizer must sample the detailed coastline');
-assert.match(gpu,/if\(!riverGpuDetailedLandAt\(core,dx,dy,dz\)\)return false;/,'base spline rasterizer must stop at first ocean crossing');
+assert.match(gpu,/if\(!riverGpuDetailedLandAt\(core,dx,dy,dz\)\)\{[^}]*return false;/,'base spline rasterizer must stop at first ocean crossing');
 assert.doesNotMatch(pacing,/riverGpuPaintVisualEdge=function/,'frame pacing must not replace the authoritative geometry painter');
 
 /* 0.5.142: the second shadeSurface wrapper was expensive on mobile because it

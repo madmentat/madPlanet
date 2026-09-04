@@ -1,3 +1,52 @@
+/* ---------- 0.5.157 vector rivers ---------- */
+/* The CPU publishes the diagnosed drainage graph as short great-circle chords
+   (unit endpoints in surface space, channel strength, angular half-width) with
+   a per-cubemap-bin index. The visible channel is the analytic distance to the
+   nearest chord: no texel footprint exists, so a river is a thin continuous
+   line at every zoom and gets pixel anti-aliasing instead of a fade. */
+#if __VERSION__ >= 300
+vec4 riverVecFetch(sampler2D tex, float index){
+  float y = floor((index + 0.5) / uRiverTexW);
+  float x = index - y*uRiverTexW;
+  return texelFetch(tex, ivec2(int(x + 0.5), int(y)), 0);
+}
+float riverVecBin(vec3 p){
+  vec3 a = abs(p); float face, u, v;
+  if(a.x >= a.y && a.x >= a.z){
+    if(p.x >= 0.0){ face = 0.0; u = -p.z/a.x; v = p.y/a.x; } else { face = 1.0; u = p.z/a.x; v = p.y/a.x; }
+  } else if(a.y >= a.z){
+    if(p.y >= 0.0){ face = 2.0; u = p.x/a.y; v = -p.z/a.y; } else { face = 3.0; u = p.x/a.y; v = p.z/a.y; }
+  } else {
+    if(p.z >= 0.0){ face = 4.0; u = p.x/a.z; v = p.y/a.z; } else { face = 5.0; u = -p.x/a.z; v = p.y/a.z; }
+  }
+  float B = uRiverBinN;
+  float cx = clamp(floor((u + 1.0)*0.5*B), 0.0, B - 1.0);
+  float cy = clamp(floor((v + 1.0)*0.5*B), 0.0, B - 1.0);
+  return (face*B + cy)*B + cx;
+}
+/* x = distance to the nearest channel axis (rad), y = its half-width (rad),
+   z = its strength. "Nearest" is measured to the bank, so at a confluence the
+   wider trunk owns the overlap. Lists are strength-sorted on the CPU, so the
+   loop cap only ever drops the faintest feeders of a crowded bin. */
+vec3 riverVectorNearest(vec3 p){
+  vec2 bin = riverVecFetch(uRiverBinTex, riverVecBin(p)).xy;
+  int count = int(min(bin.y, 40.0) + 0.5);
+  float bestScore = 1.0e9, bestD = 1.0, bestHw = 0.0, bestS = 0.0;
+  for(int k = 0; k < 40; k++){
+    if(k >= count) break;
+    float si = riverVecFetch(uRiverListTex, bin.x + float(k)).x;
+    vec4 A = riverVecFetch(uRiverSegTex, si*2.0);
+    vec4 B = riverVecFetch(uRiverSegTex, si*2.0 + 1.0);
+    vec3 ab = B.xyz - A.xyz;
+    float t = clamp(dot(p - A.xyz, ab)/max(dot(ab, ab), 1.0e-14), 0.0, 1.0);
+    float d = length(p - A.xyz - ab*t);
+    float score = d - B.w;
+    if(score < bestScore){ bestScore = score; bestD = d; bestHw = B.w; bestS = A.w; }
+  }
+  return vec3(bestD, bestHw, bestS);
+}
+#endif
+
 /* ---------- поверхность ---------- */
 vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec3 n0 = normalize(pos);
@@ -24,6 +73,40 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float physRiverCore = ss(0.08,0.42,riverPhys);
   float physRiverHalo = ss(0.012,0.15,riverPhys);
   float physLakeCore = ss(0.04,0.34,lakePhys);
+  /* 0.5.157: analytic vector channel. The coarse corridor's mip level 2 is a
+     cheap "is any river within reach" gate so the chord loop and the warp
+     noise run only near diagnosed drainage. */
+  float vecOn = 0.0, vecCov = 0.0, vecFlood = 0.0;
+#if __VERSION__ >= 300
+  if(uRiverVecOn > 0.5 && uRiverPhysicsOn > 0.5){
+    vecOn = 1.0;
+    vec4 riverLod = textureLod(uRiverTex, normalize(sN), 2.0);
+    float riverNear = max(riverLod.r, riverLod.b);
+    if(riverNear > 0.0005 && h > 0.0){
+      float pixAng = tHit*uPixA;
+      /* Sub-grid meanders: one continuous domain warp bends every chord
+         without breaking the network. It fades toward the coast so a mouth
+         still meets the detailed shoreline. */
+      float warpAmp = 0.0034*ss(0.003, 0.028, h);
+      vec3 wq = sN*62.0 + uSeedS*2.3;
+      vec3 meander = vec3(fbm(wq, 2), fbm(wq + vec3(9.1, 3.7, 1.3), 2), fbm(wq + vec3(2.9, 17.3, 6.1), 2));
+      vec3 wq2 = sN*240.0 + uSeedS*1.7;
+      vec3 ripple = vec3(fbm(wq2, 2), fbm(wq2 + vec3(4.3), 2), fbm(wq2 + vec3(8.9), 2));
+      vec3 wp = normalize(sN + warpAmp*meander + 0.0006*ripple);
+      vec3 nr = riverVectorNearest(wp);
+      float hw = nr.y;
+      /* A channel narrower than a pixel keeps at least a hairline whose
+         opacity follows its true coverage, floored by channel strength, so
+         trunks never vanish from orbit while creeks stay faint. */
+      float hwEff = max(hw, 0.60*pixAng);
+      float aa = max(0.70*pixAng, 3.0e-5);
+      float cov = 1.0 - ss(hwEff - aa, hwEff + aa, nr.x);
+      float opacity = clamp(max(hw/hwEff, 0.34 + 0.55*nr.z), 0.0, 1.0);
+      vecCov = cov*opacity;
+      vecFlood = (1.0 - ss(hw*1.6, hw*5.0 + 0.0025, nr.x))*(1.0 - ss(0.14, 0.32, h));
+    }
+  }
+#endif
   /* 0.5.100: never let cubemap B/A fully own biomes — residual face seams
      still read as knife cuts through rivers. Continuous FBM carries ≥45%. */
   float soilCont = clamp(0.38 + 0.48*fbm(sN*1.9 + uSeedS*1.3 + vec3(41.0,7.0,19.0), 3), 0.0, 1.0);
@@ -119,10 +202,12 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float trunkChannel = 1.0 - ss(w*1.05, w*1.65, riverSignal);
   float riverGeomPhys = max(riverGeomProc*physRiverHalo, trunkChannel*physRiverCore);
   float riverGeom = mix(riverGeomProc,riverGeomPhys,uRiverPhysicsOn);
+  riverGeom = mix(riverGeom, vecCov, vecOn);
   float floodplainProc = 1.0-ss(wReal*1.7,wReal*6.2,abs(rn));
   floodplainProc *= 1.0-ss(0.14,0.32,h);
   float floodplainPhys = floodplainProc*(0.55+0.45*physRiverHalo);
   float floodplain = mix(floodplainProc,floodplainPhys,uRiverPhysicsOn);
+  floodplain = mix(floodplain, max(floodplain*0.35, vecFlood), vecOn);
 
   float lakeN = fbm(sN*3.4 + uSeedS*3.7 + vec3(53.0), 4);
   float lth = mix(0.46, 0.20, uLake);
@@ -263,8 +348,11 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     float riverCoverage = clamp(wReal/max(wPix,1.0e-6)*0.8, 0.0, 1.0);
     float riverLodFloor = mix(0.34,0.52,physRiverCore);
     riverCoverage = mix(riverCoverage,max(riverCoverage,riverLodFloor),uRiverPhysicsOn);
+    /* the vector channel carries its own pixel coverage and opacity */
+    riverCoverage = mix(riverCoverage, 1.0, vecOn);
     riv *= riverCoverage;
     float riverClimateGate = mix(ss(0.24,0.44,moist),ss(0.12,0.40,max(soilMoistPhys,physRiverHalo)),uRiverPhysicsOn);
+    riverClimateGate = mix(riverClimateGate, 1.0, vecOn);
     float riverHighlandGate = mix(1.0-ss(0.16,0.30,h),1.0-0.45*ss(0.20,0.42,h),uRiverPhysicsOn);
     riv *= riverClimateGate*riverHighlandGate;
     float lakeClimateGate = mix(ss(0.20,0.38,moist),0.72+0.28*physLakeCore,uRiverPhysicsOn);

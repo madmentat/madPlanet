@@ -74,7 +74,7 @@ assert.match(shader,/float lthPhys = lth - 0\.22\*ss\(0\.15,0\.75,lakePhys\)/,'p
 assert.ok(gpu.includes('riverDownstream'),'GPU river map must rasterize the diagnosed drainage graph');
 assert.ok(gpu.includes('riverGpuPaintEdge')&&gpu.includes('ds[j]|0'),'GPU river map must paint diagnosed graph edges with downstream context');
 assert.ok(gpu.includes('riverGpuEdgeHash')&&gpu.includes('function riverGpuEdgeBend('),'coarse graph edges need deterministic node-anchored meanders');
-assert.match(gpu,/RIVER_GPU_MODEL=16/,'river display bridge must use coverage-preserving minification');
+assert.match(gpu,/RIVER_GPU_MODEL=17/,'river display bridge must use coverage-preserving minification');
 assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'river cubemap must resolve well below the Weather Core cell size');
 assert.match(gpu,/gl\.LINEAR_MIPMAP_LINEAR/,'WebGL2 must minify the corridor from mip levels instead of undersampling level zero');
 assert.match(gpu,/if\(riverGpuUseMipmaps\(\)\)gl\.generateMipmap\(gl\.TEXTURE_CUBE_MAP\);/,'river uploads must rebuild the coverage mip chain');
@@ -85,7 +85,7 @@ assert.doesNotMatch(gpu,/riverGpuChaikin|riverGpuDisplace|riverGpuPaintTrunkChai
 assert.match(gpu,/function riverGpuDetailedLandAt\(core,dx,dy,dz\)/,'spline rasterization must sample the continuous coastline');
 assert.match(gpu,/new Uint8Array\(6\*N\*N\)/,'continuous coast samples must be memoized instead of rerunning terrain noise for every spline sample');
 assert.match(gpu,/\*4\)\)\)/,'coast guard must resolve below the synoptic Weather Core grid');
-assert.match(gpu,/if\(!riverGpuDetailedLandAt\(core,dx,dy,dz\)\)return false;/,'a raster path must terminate at its first ocean sample');
+assert.match(gpu,/if\(!riverGpuDetailedLandAt\(core,dx,dy,dz\)\)\{[^}]*return false;/,'a raster path must terminate at its first ocean sample');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches'),'GPU bridge must paint the fine tributary overlay');
 assert.ok(!gpu.includes('requestAnimationFrame'),'river texture must not upload from render FPS');
 assert.ok(render.includes('uRiverPhysicsOn')&&render.includes('uRiverTex'));
