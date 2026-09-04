@@ -395,7 +395,8 @@ function riverGpuPaintSplineSegment(core,i0,i1,i2,i3,s0,s1,w0,w1,tmp,salt=0,visu
 function riverGpuPaintEdge(core,i,j,up,tmp){
   const ds=core.riverDownstream,i0=(up[i]>=0)?up[i]:i;
   const i3=(j>=0&&j<core.count&&(ds[j]|0)>=0&&(ds[j]|0)<core.count)?(ds[j]|0):j;
-  const s0=riverGpuClamp(core.riverChannelStrength?.[i]||0,0,1);
+  /* a headwater tapers: the first edge starts at a fraction of its strength */
+  const s0=riverGpuClamp(core.riverChannelStrength?.[i]||0,0,1)*(up[i]<0?0.40:1.0);
   const s1=riverIsOcean(core,j)?s0:riverGpuClamp(core.riverChannelStrength?.[j]||0,0,1);
   const w0=Math.max(0,Number(core.riverWidthM?.[i])||0);
   const w1=Math.max(0,Number(core.riverWidthM?.[j])||w0);

@@ -136,7 +136,7 @@ function stellarEscapeOrbitalState(){
 }
 function stellarEscapeWeatherForcingCheck(){
   const o=stellarEscapeOrbitalState(),core=climateConsistencyCurrentCore();let meanIncoming=NaN,inferredS=NaN,error=NaN;
-  if(core?.insolation?.length===core?.count){meanIncoming=climateConsistencyWeightedFieldStats(core,core.insolation).mean;if(Number.isFinite(meanIncoming)){inferredS=4*meanIncoming/1361;error=100*(inferredS-o.S)/Math.max(1e-9,o.S);}}
+  if(core&&core.insolation&&core.insolation.length===core.count){meanIncoming=climateConsistencyWeightedFieldStats(core,core.insolation).mean;if(Number.isFinite(meanIncoming)){inferredS=4*meanIncoming/1361;error=100*(inferredS-o.S)/Math.max(1e-9,o.S);}}
   return {...o,meanIncoming,inferredS,error};
 }
 function stellarEscapeMagneticMomentRel(){if(typeof state==='undefined')return 1;const x=climateConsistencyClamp(state.magnet,0,1);return x<0.005?0:climateConsistencyClamp(Math.pow(x/0.52,2),0.005,12);}
