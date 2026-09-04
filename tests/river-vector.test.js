@@ -25,12 +25,15 @@ assert.match(gpu,/webglVersion>=2/,'chord textures are WebGL2-only');
 assert.ok(!gpu.includes('requestAnimationFrame'),'chord table must not be rebuilt from render FPS');
 assert.match(render,/riverGpuVectorBind\(prog,U\)/,'renderer must bind the chord tables every frame');
 assert.match(worker,/riverGpuVectorData\(\)/,'worker must snapshot the chord table');
-assert.match(worker,/seg:vec\.seg,bins:vec\.bins,list:vec\.list/,'worker must transfer chord table buffers');
+assert.match(worker,/seg:vec\.seg,bins:vec\.bins,list:vec\.list,chords:vec\.chords/,'worker must transfer chord table buffers');
 assert.match(worker,/riverGpuVectorSet\(m\.river\.vec\)/,'main thread must adopt the transferred chord table');
-for(const u of ['uRiverSegTex','uRiverBinTex','uRiverListTex','uRiverVecOn','uRiverBinN','uRiverTexW'])
-  assert.ok(header.includes('uniform')&&header.includes(u),'missing vector river uniform '+u);
+for(const u of ['uRiverBinTex','uRiverListTex'])
+  assert.match(header,new RegExp('uniform highp sampler2D '+u+';'),'vector river data sampler '+u+' must be highp (fp16 samplers snap chords on mobile GPUs)');
+for(const u of ['uRiverVecOn','uRiverBinN','uRiverTexW'])assert.ok(header.includes(u),'missing vector river uniform '+u);
+assert.doesNotMatch(header,/uRiverSegTex/,'the indirect chord index texture is retired');
 assert.match(shader,/#if __VERSION__ >= 300\s*vec4 riverVecFetch/,'chord fetch must be compiled only for GLSL ES 3.00');
-assert.match(shader,/vec3 riverVectorNearest\(vec3 p\)/,'nearest-chord distance field missing');
+assert.match(shader,/vec3 riverVectorNearest\(vec3 p, float stopInside\)/,'nearest-chord distance field missing');
+assert.match(shader,/vec4 A = riverVecFetch\(uRiverListTex, base \+ float\(2\*k\)\);/,'chords must be read directly from the de-indexed list');
 assert.match(shader,/float score = d - B\.w;/,'nearest chord must be measured to the bank so trunks own confluences');
 assert.match(shader,/textureLod\(uRiverTex, normalize\(sN\), 2\.0\)/,'the corridor mip must gate the chord loop');
 assert.match(shader,/riverGeom = mix\(riverGeom, vecCov, vecOn\);/,'vector coverage must replace the FBM crack when available');
@@ -101,9 +104,11 @@ for(let b=0;b<6*B*B;b++){
   const start=bins[2*b],n=bins[2*b+1];
   for(let k=1;k<n;k++)assert.ok(seg[list[start+k-1]*8+3]>=seg[list[start+k]*8+3],'bin lists must be strength-sorted');
 }
+const chords=g('riverVecListChords');
+for(let k=0;k<g('riverVecListCount');k++)for(let c=0;c<8;c++)assert.equal(chords[k*8+c],seg[list[k]*8+c],'de-indexed list entry must equal its chord record');
 const data=ctx.riverGpuVectorData();
-assert.equal(data.count,count);assert.equal(data.transfer.length,3,'three buffers must be transferable');
-ctx.riverGpuVectorSet({count:data.count,binN:data.binN,seg:data.seg,bins:data.bins,list:data.list,listCount:data.listCount});
+assert.equal(data.count,count);assert.equal(data.transfer.length,4,'four buffers must be transferable');
+ctx.riverGpuVectorSet({count:data.count,binN:data.binN,seg:data.seg,bins:data.bins,list:data.list,chords:data.chords,listCount:data.listCount});
 assert.equal(g('riverVecCount'),count,'main thread must adopt the transferred chord count');
 assert.equal(ctx.riverGpuVectorUpload(),false,'WebGL1 must never upload chord textures');
 const U={uRiverVecOn:{}};const calls=[];ctx.gl.uniform1f=(loc,v)=>calls.push([loc,v]);

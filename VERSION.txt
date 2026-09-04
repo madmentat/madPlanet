@@ -1,9 +1,8 @@
-VERSION 0.5.157
-Base: 0.5.156, keeping the narrow one-texel permission corridor, mipmapped minification and the bounded physical LOD floor.
-Changes: analytic vector rivers on WebGL2, texel-independent at every zoom.
-  - The Catmull edges with their node-anchored meanders are also published as short great-circle chords (unit endpoints, strength, angular half-width) with a per-cubemap-bin index, sorted by strength.
-  - surface.glsl draws the channel as the distance to the nearest chord with pixel anti-aliasing, a hairline floor whose opacity follows true coverage and strength, and one continuous domain warp for sub-grid meanders that fades toward the coast.
-  - The raster corridor remains the WebGL1 fallback, the riparian halo and the mip-level-2 gate that keeps the chord loop off pixels far from any drainage.
-  - The Weather Core worker transfers the chord table with the river faces; the main thread never re-rasterizes.
-Regression: guards require the chord collection inside the spline painter, the strength-sorted bin index, the WebGL2-only shader path and the unchanged corridor limits.
+VERSION 0.5.158
+Base: 0.5.157 analytic vector rivers.
+Changes: mobile-correct chord sampling and a cheaper channel loop.
+  - The chord data samplers are declared highp: a default-precision sampler2D returns fp16 texels on mobile GPUs, which snapped unit-sphere endpoints to ~0.001 rad and collapsed every chord index above 2048 onto its even neighbour, so trunks rendered as dashed sausages while early-indexed feeders stayed intact.
+  - The bin lists are de-indexed on the CPU (each entry carries its chord record), so the shader loop does two direct fetches per chord instead of a dependent index read plus two; the loop cap is 32 with 48 bins per face, and a fragment already inside a channel stops early.
+  - The sub-grid meander warp uses two tangent-plane FBM samples instead of six volumetric ones; the riparian halo around a vector channel is narrowed to about 2.6 half-widths.
+Regression: guards require highp chord samplers, direct chord reads from the de-indexed list, four transferable buffers and the retired index texture absent.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

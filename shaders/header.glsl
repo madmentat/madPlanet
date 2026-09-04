@@ -72,12 +72,12 @@ uniform float uCryosphereBlend;
 uniform samplerCube uRiverTex;
 uniform float uRiverBlend;
 uniform float uRiverPhysicsOn;
-/* 0.5.157 vector rivers (WebGL2): chord table, per-bin index and chord list.
+/* 0.5.157 vector rivers (WebGL2): per-bin index and de-indexed chord list.
    Chords are unit-sphere endpoints in surface space with an angular
-   half-width, so the channel is analytic at every zoom. */
-uniform sampler2D uRiverSegTex;
-uniform sampler2D uRiverBinTex;
-uniform sampler2D uRiverListTex;
+   half-width, so the channel is analytic at every zoom. highp is mandatory:
+   a default-precision sampler yields fp16 texels on mobile GPUs. */
+uniform highp sampler2D uRiverBinTex;
+uniform highp sampler2D uRiverListTex;
 uniform float uRiverVecOn;
 uniform float uRiverBinN;
 uniform float uRiverTexW;

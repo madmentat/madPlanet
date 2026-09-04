@@ -27,21 +27,22 @@ float riverVecBin(vec3 p){
 /* x = distance to the nearest channel axis (rad), y = its half-width (rad),
    z = its strength. "Nearest" is measured to the bank, so at a confluence the
    wider trunk owns the overlap. Lists are strength-sorted on the CPU, so the
-   loop cap only ever drops the faintest feeders of a crowded bin. */
-vec3 riverVectorNearest(vec3 p){
+   loop cap only ever drops the faintest feeders of a crowded bin, and a
+   fragment already deep inside a channel stops early. */
+vec3 riverVectorNearest(vec3 p, float stopInside){
   vec2 bin = riverVecFetch(uRiverBinTex, riverVecBin(p)).xy;
-  int count = int(min(bin.y, 40.0) + 0.5);
+  int count = int(min(bin.y, 32.0) + 0.5);
+  float base = bin.x*2.0;
   float bestScore = 1.0e9, bestD = 1.0, bestHw = 0.0, bestS = 0.0;
-  for(int k = 0; k < 40; k++){
+  for(int k = 0; k < 32; k++){
     if(k >= count) break;
-    float si = riverVecFetch(uRiverListTex, bin.x + float(k)).x;
-    vec4 A = riverVecFetch(uRiverSegTex, si*2.0);
-    vec4 B = riverVecFetch(uRiverSegTex, si*2.0 + 1.0);
+    vec4 A = riverVecFetch(uRiverListTex, base + float(2*k));
+    vec4 B = riverVecFetch(uRiverListTex, base + float(2*k + 1));
     vec3 ab = B.xyz - A.xyz;
     float t = clamp(dot(p - A.xyz, ab)/max(dot(ab, ab), 1.0e-14), 0.0, 1.0);
     float d = length(p - A.xyz - ab*t);
     float score = d - B.w;
-    if(score < bestScore){ bestScore = score; bestD = d; bestHw = B.w; bestS = A.w; }
+    if(score < bestScore){ bestScore = score; bestD = d; bestHw = B.w; bestS = A.w; if(score < -stopInside) break; }
   }
   return vec3(bestD, bestHw, bestS);
 }
@@ -89,21 +90,21 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
          still meets the detailed shoreline. */
       float warpAmp = 0.0034*ss(0.003, 0.028, h);
       vec3 wq = sN*62.0 + uSeedS*2.3;
-      vec3 meander = vec3(fbm(wq, 2), fbm(wq + vec3(9.1, 3.7, 1.3), 2), fbm(wq + vec3(2.9, 17.3, 6.1), 2));
-      vec3 wq2 = sN*240.0 + uSeedS*1.7;
-      vec3 ripple = vec3(fbm(wq2, 2), fbm(wq2 + vec3(4.3), 2), fbm(wq2 + vec3(8.9), 2));
-      vec3 wp = normalize(sN + warpAmp*meander + 0.0006*ripple);
-      vec3 nr = riverVectorNearest(wp);
+      vec3 wt1 = normalize(cross(sN, (abs(sN.y) < 0.9) ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0)));
+      vec3 wt2 = cross(sN, wt1);
+      vec3 meander = wt1*fbm(wq, 2) + wt2*fbm(wq + vec3(9.1, 3.7, 1.3), 2);
+      vec3 wp = normalize(sN + warpAmp*meander);
+      float pixAA = max(0.70*pixAng, 3.0e-5);
+      vec3 nr = riverVectorNearest(wp, pixAA);
       float hw = nr.y;
       /* A channel narrower than a pixel keeps at least a hairline whose
          opacity follows its true coverage, floored by channel strength, so
          trunks never vanish from orbit while creeks stay faint. */
       float hwEff = max(hw, 0.60*pixAng);
-      float aa = max(0.70*pixAng, 3.0e-5);
-      float cov = 1.0 - ss(hwEff - aa, hwEff + aa, nr.x);
+      float cov = 1.0 - ss(hwEff - pixAA, hwEff + pixAA, nr.x);
       float opacity = clamp(max(hw/hwEff, 0.34 + 0.55*nr.z), 0.0, 1.0);
       vecCov = cov*opacity;
-      vecFlood = (1.0 - ss(hw*1.6, hw*5.0 + 0.0025, nr.x))*(1.0 - ss(0.14, 0.32, h));
+      vecFlood = (1.0 - ss(hw*1.3, hw*2.6 + 0.0012, nr.x))*(1.0 - ss(0.14, 0.32, h));
     }
   }
 #endif

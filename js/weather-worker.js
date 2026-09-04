@@ -139,7 +139,7 @@ if(MP_IS_WEATHER_WORKER){
     const qr=wwQuantizeFaces(riverGpuCurrRiver),ql=wwQuantizeFaces(riverGpuCurrLake);
     const vec=(typeof riverGpuVectorData==='function')?riverGpuVectorData():null;
     const transfer=qr.transfer.concat(ql.transfer);if(vec)transfer.push(...vec.transfer);
-    return {N:riverGpuN,river:qr.out,lake:ql.out,vec:vec?{count:vec.count,binN:vec.binN,seg:vec.seg,bins:vec.bins,list:vec.list,listCount:vec.listCount}:null,transfer};
+    return {N:riverGpuN,river:qr.out,lake:ql.out,vec:vec?{count:vec.count,binN:vec.binN,seg:vec.seg,bins:vec.bins,list:vec.list,chords:vec.chords,listCount:vec.listCount}:null,transfer};
   }
   self.onmessage=function(e){
     const m=e.data;if(!m||m.type!=='tick')return;

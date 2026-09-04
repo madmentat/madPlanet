@@ -31,24 +31,28 @@
 */
 const RIVER_GPU_MODEL=17;
 const RIVER_TEX_UNIT=2;
-const RIVER_VEC_BIN_N=40;             /* bins per cubemap face edge */
+const RIVER_VEC_BIN_N=48;             /* bins per cubemap face edge */
 const RIVER_VEC_TEX_W=2048;           /* data texture width in texels */
 const RIVER_VEC_MAX_SEGMENTS=180000;
 const RIVER_VEC_PIECES_PER_EDGE=6;    /* chords per coarse graph edge */
 const RIVER_VEC_BIN_MARGIN_RAD=0.016; /* widest channel + shader warp + AA reach */
-const RIVER_VEC_SEG_UNIT=12,RIVER_VEC_BIN_UNIT=13,RIVER_VEC_LIST_UNIT=14;
+const RIVER_VEC_BIN_UNIT=13,RIVER_VEC_LIST_UNIT=14;
 const RIVER_GPU_UPSCALE=16;
 const RIVER_BLEND_DEFAULT_MS=900;
 const RIVER_BLEND_MIN_MS=250;
 const RIVER_BLEND_MAX_MS=1200;
 
 if(typeof UNIFORM_NAMES!=='undefined'){
-  for(const n of ['uRiverTex','uRiverBlend','uRiverPhysicsOn','uRiverSegTex','uRiverBinTex','uRiverListTex','uRiverVecOn','uRiverBinN','uRiverTexW'])if(!UNIFORM_NAMES.includes(n))UNIFORM_NAMES.push(n);
+  for(const n of ['uRiverTex','uRiverBlend','uRiverPhysicsOn','uRiverBinTex','uRiverListTex','uRiverVecOn','uRiverBinN','uRiverTexW'])if(!UNIFORM_NAMES.includes(n))UNIFORM_NAMES.push(n);
 }
 
 /* ---------------- vector channel table ---------------- */
 let riverVecSegments=new Float32Array(0),riverVecCount=0,riverVecSegCap=0;
 let riverVecBins=new Float32Array(0),riverVecList=new Float32Array(0),riverVecListCount=0;
+/* De-indexed copy of the bin lists: entry k carries the whole chord record
+   of riverVecList[k], so the shader loop needs two fetches per chord and no
+   dependent index read. */
+let riverVecListChords=new Float32Array(0);
 let riverVecDirty=false,riverVecVersion=0,riverVecCollectOn=false;
 function riverVecReset(){
   if(riverVecSegCap<RIVER_VEC_MAX_SEGMENTS){riverVecSegCap=RIVER_VEC_MAX_SEGMENTS;riverVecSegments=new Float32Array(riverVecSegCap*8);}
@@ -109,7 +113,9 @@ function riverVecBuildIndex(){
     sub.sort((p,r)=>g[r*8+3]-g[p*8+3]);list.set(sub,starts[b]);
   }
   const bins=new Float32Array(nb*2);for(let b=0;b<nb;b++){bins[2*b]=starts[b];bins[2*b+1]=counts[b];}
-  riverVecBins=bins;riverVecList=list;riverVecListCount=acc;
+  const chords=new Float32Array(Math.max(1,acc)*8);
+  for(let k=0;k<acc;k++){const o=list[k]*8;for(let c=0;c<8;c++)chords[k*8+c]=g[o+c];}
+  riverVecBins=bins;riverVecList=list;riverVecListCount=acc;riverVecListChords=chords;
 }
 function riverVecFinish(){
   riverVecCollectOn=false;riverVecBuildIndex();riverVecDirty=true;riverVecVersion++;
@@ -117,18 +123,21 @@ function riverVecFinish(){
 /* Snapshot for the worker -> main transfer (copies, so the worker keeps its own). */
 function riverGpuVectorData(){
   const seg=riverVecSegments.slice(0,riverVecCount*8),bins=riverVecBins.slice(),list=riverVecList.slice(0,Math.max(1,riverVecListCount));
-  return {count:riverVecCount,binN:RIVER_VEC_BIN_N,seg,bins,list,listCount:riverVecListCount,transfer:[seg.buffer,bins.buffer,list.buffer]};
+  const chords=riverVecListChords.slice(0,Math.max(1,riverVecListCount)*8);
+  return {count:riverVecCount,binN:RIVER_VEC_BIN_N,seg,bins,list,chords,listCount:riverVecListCount,transfer:[seg.buffer,bins.buffer,list.buffer,chords.buffer]};
 }
 function riverGpuVectorSet(data){
-  if(!data||!data.seg||!data.bins||!data.list)return;
+  if(!data||!data.seg||!data.bins||!data.list||!data.chords)return;
   riverVecSegments=data.seg;riverVecCount=data.count|0;riverVecSegCap=riverVecCount;
-  riverVecBins=data.bins;riverVecList=data.list;riverVecListCount=data.listCount|0;
+  riverVecBins=data.bins;riverVecList=data.list;riverVecListCount=data.listCount|0;riverVecListChords=data.chords;
   riverVecDirty=true;riverVecVersion++;
 }
-/* Data textures (WebGL2 only): chords RGBA32F (two texels: A.xyz+strength,
-   B.xyz+half-width), bins RG32F (start,count), list R32F (chord index).
-   texelFetch in the shader addresses them with a fixed RIVER_VEC_TEX_W. */
-let riverVecSegTex=null,riverVecBinTex=null,riverVecListTex=null,riverVecUploadedVersion=-1;
+/* Data textures (WebGL2 only): bins RG32F (start,count) and the de-indexed
+   chord list RGBA32F (two texels per entry: A.xyz+strength, B.xyz+half-width).
+   texelFetch in the shader addresses them with a fixed RIVER_VEC_TEX_W. The
+   samplers must be declared highp: a default-precision sampler returns fp16
+   on mobile GPUs, which snaps unit-sphere endpoints to ~0.001 rad. */
+let riverVecBinTex=null,riverVecListTex=null,riverVecUploadedVersion=-1;
 function riverVecUploadTexture(tex,unit,internal,format,channels,data,texelCount){
   const W=RIVER_VEC_TEX_W,rows=Math.max(1,Math.ceil(texelCount/W));
   const padded=new Float32Array(W*rows*channels);padded.set(data.subarray(0,Math.min(data.length,texelCount*channels)));
@@ -141,24 +150,21 @@ function riverVecUploadTexture(tex,unit,internal,format,channels,data,texelCount
 function riverGpuVectorAvailable(){return typeof webglVersion==='number'&&webglVersion>=2&&typeof gl!=='undefined'&&!!gl;}
 function riverGpuVectorUpload(){
   if(!riverGpuVectorAvailable()||!riverVecDirty||riverVecCount<1)return false;
-  if(!riverVecSegTex){riverVecSegTex=gl.createTexture();riverVecBinTex=gl.createTexture();riverVecListTex=gl.createTexture();}
-  riverVecUploadTexture(riverVecSegTex,RIVER_VEC_SEG_UNIT,gl.RGBA32F,gl.RGBA,4,riverVecSegments,riverVecCount*2);
+  if(!riverVecListTex){riverVecBinTex=gl.createTexture();riverVecListTex=gl.createTexture();}
   riverVecUploadTexture(riverVecBinTex,RIVER_VEC_BIN_UNIT,gl.RG32F,gl.RG,2,riverVecBins,riverVecBins.length/2);
-  riverVecUploadTexture(riverVecListTex,RIVER_VEC_LIST_UNIT,gl.R32F,gl.RED,1,riverVecList,Math.max(1,riverVecListCount));
+  riverVecUploadTexture(riverVecListTex,RIVER_VEC_LIST_UNIT,gl.RGBA32F,gl.RGBA,4,riverVecListChords,Math.max(1,riverVecListCount)*2);
   gl.activeTexture(gl.TEXTURE0);
   riverVecDirty=false;riverVecUploadedVersion=riverVecVersion;return true;
 }
 function riverGpuVectorBind(prog,U){
   if(!U)return;
   if(riverVecDirty)riverGpuVectorUpload();
-  if(!riverVecSegTex||!riverGpuVectorAvailable()){
+  if(!riverVecListTex||!riverGpuVectorAvailable()){
     if(U.uRiverVecOn!==null&&U.uRiverVecOn!==undefined)gl.uniform1f(U.uRiverVecOn,0.0);return;
   }
-  gl.activeTexture(gl.TEXTURE0+RIVER_VEC_SEG_UNIT);gl.bindTexture(gl.TEXTURE_2D,riverVecSegTex);
   gl.activeTexture(gl.TEXTURE0+RIVER_VEC_BIN_UNIT);gl.bindTexture(gl.TEXTURE_2D,riverVecBinTex);
   gl.activeTexture(gl.TEXTURE0+RIVER_VEC_LIST_UNIT);gl.bindTexture(gl.TEXTURE_2D,riverVecListTex);
   gl.activeTexture(gl.TEXTURE0);
-  if(U.uRiverSegTex!==null&&U.uRiverSegTex!==undefined)gl.uniform1i(U.uRiverSegTex,RIVER_VEC_SEG_UNIT);
   if(U.uRiverBinTex!==null&&U.uRiverBinTex!==undefined)gl.uniform1i(U.uRiverBinTex,RIVER_VEC_BIN_UNIT);
   if(U.uRiverListTex!==null&&U.uRiverListTex!==undefined)gl.uniform1i(U.uRiverListTex,RIVER_VEC_LIST_UNIT);
   if(U.uRiverVecOn!==null&&U.uRiverVecOn!==undefined)gl.uniform1f(U.uRiverVecOn,1.0);
