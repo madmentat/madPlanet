@@ -1,12 +1,8 @@
-VERSION 0.5.152
-Base: 0.5.151
-Changes: Physical geography matches the rendered planet again; rivers visible.
-  - js/h2o-advection.js: exact scalar port of the shader's simplex continents (classicSimplexFbm, the 0.14 detail term, uIsle islands, the near-coast ripple; float32 emulated in the lattice decode, verified against the GPU to 1e-6). Since 0.5.107 the renderer used simplex noise while the CPU mirror still evaluated the old cubic fbm, so the Weather Core's land/ocean mask, soil, rivers, coasts and land ice were computed for a planet that did not match the picture: whole continents were ocean to the physics, rivers ran through the sea
-  - shaders/surface.glsl: the drainage-graph trunk is drawn straight from the river cubemap as a 1..3 texel ridge (ss 0.14..0.40 of the painted map), bypassing climate thresholds and the sub-grid pixel-LOD fade; only a far-orbit fade remains. 0.5.146..0.5.151 required the sub-grid noise line to coincide with a one-texel corridor, which left scattered dashes instead of rivers; the 0.5.148 halo confinement of the procedural network is kept
-  - js/river-gpu.js: paint radii are in display texels (~13 km); ordinary stems stay a one-texel ridge, physically wide channels reach two or three texels, visual branches stay thinner; RIVER_GPU_MODEL 11
-  - js/river-routing-refinement.js (model 4): a stem needs half a synoptic cell of catchment and 0.6x the baseflow reference (about one 500 km cell, Rhine/Danube class) instead of 1.05x..6x; slope support rescaled to the resolved 1e-8..1.5e-6 macro slopes
-  - js/river-visual-tributaries.js (model 6): eligible headwaters accepted with 40..85% probability instead of 12..62%, feeders 35..88%, source threshold 0.06, slope gate rescaled; previously 304 eligible cells yielded 62 branches planet-wide
-  - js/soil-hydrology.js (model 2): climate baseline of the soil store at world creation (near field capacity where the near-surface air is humid, dry in deserts); only the excess above the baseline counts in the mobile H2O closure, exchanges below it are exchanges with the groundwater reservoir. Soil used to start empty and, capped by the ~20 kg/m2 mobile column, never exceeded a tenth of its 180 kg/m2 capacity, so every continent looked like a desert to the river model
-Regression: update river-physics, river-visual-tributaries, soil-hydrology, h2o-advection and biome-state tests for the thin trunk line, halo confinement and the radius formulas.
-Snapshot: 0.5.151 remains the rollback point before the thin-trunk river display.
+VERSION 0.5.153
+Base: 0.5.152
+Changes: River display without lattice staircases.
+  - js/river-gpu.js (model 13): channels are painted as whole chains (headwater to mouth, visual branches end to end); the 4-neighbour lattice polyline is corner-cut twice with Chaikin's algorithm before the Catmull-Rom trace, the two-octave meander is anchored at nodes so segments join without kinks and scales with segment length; a one-texel ridge that grows only with discharge (up to ~1.4 texels). 0.5.152 painted every graph edge separately, which kept the 500 km right angles of the synoptic grid and made every river the same blocky width
+  - shaders/surface.glsl: the drainage map is read through a two-octave noise warp (10 km wiggles inside 40 km meanders) and the trunk width band varies along the channel
+Regression: update river-physics and river-visual-tributaries tests for the chain painter.
+Snapshot: 0.5.152 remains the rollback point before the chain-smoothed river display.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

@@ -15,7 +15,17 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   /* 0.5.131: the CPU drainage graph owns river/lake existence. The denser
      cubemap carries connected rasterized channel corridors; FBM below is only
      sub-grid edge/morphology detail inside those physical corridors. */
-  vec4 riverHydroTex = texture(uRiverTex, normalize(sN));
+  /* 0.5.153: read the drainage map through a small noise warp. The map is a
+     texel raster (~13 km); without the warp a thin ridge is a staircase and
+     every river has the same width. Two octaves give 10 km wiggles inside
+     40 km meanders, the width band below varies along the channel. */
+  vec3 riverWarp = 0.0026*vec3(fbm(sN*41.0+uSeedS*2.9+vec3(5.0,61.0,17.0),2),
+                               fbm(sN*41.0+uSeedS*2.9+vec3(29.0,7.0,43.0),2),
+                               fbm(sN*41.0+uSeedS*2.9+vec3(53.0,23.0,71.0),2))
+                 + 0.0060*vec3(fbm(sN*9.5+uSeedS*1.3+vec3(3.0,37.0,11.0),2),
+                               fbm(sN*9.5+uSeedS*1.3+vec3(19.0,2.0,47.0),2),
+                               fbm(sN*9.5+uSeedS*1.3+vec3(31.0,13.0,5.0),2));
+  vec4 riverHydroTex = texture(uRiverTex, normalize(sN + riverWarp));
   float riverPhys = clamp(mix(riverHydroTex.r, riverHydroTex.b, uRiverBlend),0.0,1.0);
   float lakePhys = clamp(mix(riverHydroTex.g, riverHydroTex.a, uRiverBlend),0.0,1.0);
   float physRiverCore = ss(0.08,0.42,riverPhys);
@@ -124,7 +134,8 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
      ridge, see trunkLine below and the riv = max(...) line. */
   float riverGeomPhys = riverGeomProc*physRiverHalo;
   float riverGeom = mix(riverGeomProc,riverGeomPhys,uRiverPhysicsOn);
-  float trunkLine = ss(0.14, 0.40, riverPhys) * (1.0 - ss(2.4, 3.2, uCamDist));
+  float trunkWidthN = 0.5+0.5*fbm(sN*23.0+uSeedS*1.7+vec3(77.0,5.0,41.0),2);
+  float trunkLine = ss(0.10+0.10*trunkWidthN, 0.32+0.14*trunkWidthN, riverPhys) * (1.0 - ss(2.4, 3.2, uCamDist));
   float floodplainProc = 1.0-ss(wReal*1.7,wReal*6.2,abs(rn));
   floodplainProc *= 1.0-ss(0.14,0.32,h);
   float floodplainPhys = floodplainProc*(0.55+0.45*physRiverHalo);
