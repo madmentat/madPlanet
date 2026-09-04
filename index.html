@@ -21124,7 +21124,14 @@ window.__madPlanetFramePacingPolish={
      erase its centre. A stronger one-texel-ish core survives that gate without
      broadening the river corridor. Two deterministic harmonics prevent nearby
      feeders from looking like parallel ruler strokes. */
+  /* The only caller (riverGpuPaintVisualBranch in river-gpu.js) invokes this
+     with 4 arguments and never supplies a/b node scratch vectors, so this
+     patch owns and reuses its own - relying on caller-supplied a/b crashed
+     weatherCoreCreate() with "Cannot set properties of undefined" as soon as
+     any visual branch existed. */
+  const visualEdgeA={x:0,y:0,z:0},visualEdgeB={x:0,y:0,z:0};
   riverGpuPaintVisualEdge=function(core,branch,p,tmp,a,b){
+    a=a||visualEdgeA;b=b||visualEdgeB;
     riverGpuVisualNode(core,branch,p,a);riverGpuVisualNode(core,branch,p+1,b);
     const dot=riverGpuClamp(a.x*b.x+a.y*b.y+a.z*b.z,-1,1),ang=Math.acos(dot);
     let nx=a.y*b.z-a.z*b.y,ny=a.z*b.x-a.x*b.z,nz=a.x*b.y-a.y*b.x;
