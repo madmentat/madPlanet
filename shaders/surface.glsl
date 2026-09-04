@@ -256,7 +256,14 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float hydroReveal = 1.0-ss(0.18,0.62,landCryoPhys);
   if(h > 0.0 && hydroReveal > 0.01){
     float riv = riverGeom;
-    riv *= clamp(wReal/wPix*0.8, 0.0, 1.0);
+    /* Preserve the old area-correct fade for procedural rivers, but do not let
+       a diagnosed physical channel fade to zero at orbit distance. The w value
+       still caps the visible morphology at one pixel; this floor changes
+       coverage/opacity, never the world-space corridor width. */
+    float riverCoverage = clamp(wReal/max(wPix,1.0e-6)*0.8, 0.0, 1.0);
+    float riverLodFloor = mix(0.34,0.52,physRiverCore);
+    riverCoverage = mix(riverCoverage,max(riverCoverage,riverLodFloor),uRiverPhysicsOn);
+    riv *= riverCoverage;
     float riverClimateGate = mix(ss(0.24,0.44,moist),ss(0.12,0.40,max(soilMoistPhys,physRiverHalo)),uRiverPhysicsOn);
     float riverHighlandGate = mix(1.0-ss(0.16,0.30,h),1.0-0.45*ss(0.20,0.42,h),uRiverPhysicsOn);
     riv *= riverClimateGate*riverHighlandGate;

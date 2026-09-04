@@ -17,7 +17,7 @@
    visible wiggles belong to the sub-grid channel.
 */
 
-const RIVER_GPU_MODEL=15;
+const RIVER_GPU_MODEL=16;
 const RIVER_TEX_UNIT=2;
 const RIVER_GPU_UPSCALE=16;
 const RIVER_BLEND_DEFAULT_MS=900;
@@ -38,6 +38,7 @@ function riverGpuClamp(x,a,b){return Math.max(a,Math.min(b,Number(x)||0));}
 function riverGpuByte(x){return Math.max(0,Math.min(255,Math.round(riverGpuClamp(x,0,1)*255)));}
 function riverGpuFaceTarget(f){return gl.TEXTURE_CUBE_MAP_POSITIVE_X+f;}
 function riverGpuDisplayN(coreN){return Math.max(8,Math.round((Number(coreN)||32)*RIVER_GPU_UPSCALE));}
+function riverGpuUseMipmaps(){return typeof webglVersion!=='undefined'&&webglVersion>=2;}
 function riverGpuBlendAt(now){
   if(!riverGpuHasFrame)return 1;const t=riverGpuClamp((Number(now)-riverGpuBlendStartMs)/Math.max(1,riverGpuBlendDurationMs),0,1);return t*t*(3-2*t);
 }
@@ -50,10 +51,15 @@ function riverGpuEnsure(N){
   riverGpuCurrRiver=Array.from({length:6},()=>new Float32Array(N*N));
   riverGpuCurrLake=Array.from({length:6},()=>new Float32Array(N*N));
   riverGpuTex=gl.createTexture();gl.activeTexture(gl.TEXTURE0+RIVER_TEX_UNIT);gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverGpuTex);
-  gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  /* 0.5.156: orbit views minify many corridor texels into one framebuffer
+     pixel. Sampling only level zero aliases a one-texel river into a dotted or
+     missing line. WebGL2 mipmaps preserve its fractional coverage without
+     widening the level-zero corridor used by close views. */
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_MIN_FILTER,riverGpuUseMipmaps()?gl.LINEAR_MIPMAP_LINEAR:gl.LINEAR);gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
   if(webglVersion>=2)gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_R,gl.CLAMP_TO_EDGE);
   for(let f=0;f<6;f++)gl.texImage2D(riverGpuFaceTarget(f),0,gl.RGBA,N,N,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+  if(riverGpuUseMipmaps())gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);riverGpuHasFrame=false;riverGpuLastSeed=NaN;
 }
 
@@ -250,6 +256,7 @@ function riverGpuPackUpload(){
     for(let i=0;i<pr.length;i++){const p=i*4;pix[p]=riverGpuByte(pr[i]);pix[p+1]=riverGpuByte(pl[i]);pix[p+2]=riverGpuByte(cr[i]);pix[p+3]=riverGpuByte(cl[i]);}
     gl.texSubImage2D(riverGpuFaceTarget(f),0,0,0,N,N,gl.RGBA,gl.UNSIGNED_BYTE,pix);
   }
+  if(riverGpuUseMipmaps())gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
   gl.activeTexture(gl.TEXTURE0);
 }
 function riverGpuUpload(core){

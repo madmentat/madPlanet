@@ -1,9 +1,8 @@
-VERSION 0.5.155
-Base: 0.5.154, with the visible-river contract recovered from 0.5.148.
-Changes: narrow, curved, coast-safe rivers.
-  - The cubemap is a one-texel permission corridor again; it is never painted directly as water and is never dilated by max footprint taps.
-  - Whole-chain Chaikin/displacement is retired. Four-cell Catmull edges use deterministic C1 node-anchored meanders and the strongest upstream tangent.
-  - Conservative 0.5.148 source/discharge density is restored while keeping the exact CPU/GPU terrain match, coast-distance gate, basin lock, downhill routing and first-ocean stop.
-  - Dead, unbundled RiverValidation/RiverSourceFilter stubs are removed.
-Regression: numeric guards cover maximum corridor brush width and zero meander displacement at graph nodes.
+VERSION 0.5.156
+Base: 0.5.155, retaining the narrow coast-safe river geometry recovered from 0.5.148.
+Changes: stable river visibility across camera distance without widening channels.
+  - WebGL2 uses mipmapped minification for the river corridor cubemap, preserving sub-pixel coverage instead of producing dotted or missing lines at orbit scale.
+  - Physical rivers receive a bounded opacity floor after the existing one-pixel morphology calculation; procedural rivers keep their legacy area-correct fade.
+  - No direct corridor painting, footprint max-dilation, Chaikin chain painter or trunkLine water path is reintroduced.
+Regression: guards require mipmapped minification, a bounded physical LOD floor and the existing one-texel corridor limits.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

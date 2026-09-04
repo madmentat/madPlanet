@@ -60,6 +60,10 @@ assert.match(shader,/float trunkGain = mix\(1\.0, 1\.55, physRiverCore\);/,'disc
 assert.doesNotMatch(shader,/\btrunkLine\b/,'the cubemap ridge must never be painted directly as water');
 assert.doesNotMatch(shader,/\btapA\b|riverHydroTex\s*=\s*max/,'max footprint taps would dilate channels at distance');
 assert.doesNotMatch(shader,/\briverDir\b|\briverWarp\b/,'texture-coordinate warping must not detach the permission corridor from the graph');
+assert.match(shader,/float riverCoverage = clamp\(wReal\/max\(wPix,1\.0e-6\)\*0\.8, 0\.0, 1\.0\);/,'sub-pixel river coverage must remain numerically safe');
+assert.match(shader,/float riverLodFloor = mix\(0\.34,0\.52,physRiverCore\);/,'physical rivers need a bounded orbit-scale visibility floor');
+assert.match(shader,/riverCoverage = mix\(riverCoverage,max\(riverCoverage,riverLodFloor\),uRiverPhysicsOn\);/,'only diagnosed physical rivers may bypass the legacy distance fade');
+assert.doesNotMatch(shader,/riv \*= clamp\(wReal\/wPix/,'the old unbounded distance fade must not erase physical rivers');
 assert.doesNotMatch(header,/uRiverTexel/,'the retired footprint dilation uniform must be removed');
 assert.doesNotMatch(render,/uRiverTexel/,'the renderer must not upload the retired footprint dilation uniform');
 assert.doesNotMatch(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,/,'the coarse river texel must never be painted as a fat brush');
@@ -70,8 +74,10 @@ assert.match(shader,/float lthPhys = lth - 0\.22\*ss\(0\.15,0\.75,lakePhys\)/,'p
 assert.ok(gpu.includes('riverDownstream'),'GPU river map must rasterize the diagnosed drainage graph');
 assert.ok(gpu.includes('riverGpuPaintEdge')&&gpu.includes('ds[j]|0'),'GPU river map must paint diagnosed graph edges with downstream context');
 assert.ok(gpu.includes('riverGpuEdgeHash')&&gpu.includes('function riverGpuEdgeBend('),'coarse graph edges need deterministic node-anchored meanders');
-assert.match(gpu,/RIVER_GPU_MODEL=15/,'river display bridge must use the recovered narrow-corridor model');
+assert.match(gpu,/RIVER_GPU_MODEL=16/,'river display bridge must use coverage-preserving minification');
 assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'river cubemap must resolve well below the Weather Core cell size');
+assert.match(gpu,/gl\.LINEAR_MIPMAP_LINEAR/,'WebGL2 must minify the corridor from mip levels instead of undersampling level zero');
+assert.match(gpu,/if\(riverGpuUseMipmaps\(\)\)gl\.generateMipmap\(gl\.TEXTURE_CUBE_MAP\);/,'river uploads must rebuild the coverage mip chain');
 assert.match(gpu,/Math\.min\(96,Math\.ceil\(Math\.max\(ang,cellAng\)\*riverGpuN\*3\.2\)\)/,'Catmull edges need dense spherical samples rather than chunky segments');
 assert.match(gpu,/const envelope=Math\.sin\(Math\.PI\*t\);/,'meander offsets must be zero at graph nodes to avoid angular joins');
 assert.match(gpu,/const wave=envelope\*envelope\*/,'the meander tangent must also vanish at graph nodes');
@@ -89,6 +95,21 @@ assert.ok(render.includes('uRiverPhysicsOn')&&render.includes('uRiverTex'));
 const gpuCtx={console,Math,Number,Date,Array,Map,Set,Float32Array,Float64Array,Int32Array,Int16Array,Uint8Array,
   UNIFORM_NAMES:[],weatherCoreCreate:()=>({count:1}),weatherCoreStep:c=>c};
 vm.createContext(gpuCtx);vm.runInContext(gpu,gpuCtx,{filename:'river-gpu.js'});
+const gpuCalls=[];
+gpuCtx.webglVersion=2;
+gpuCtx.gl={TEXTURE_CUBE_MAP:1,TEXTURE_CUBE_MAP_POSITIVE_X:10,TEXTURE0:20,RGBA:30,UNSIGNED_BYTE:40,
+  TEXTURE_MIN_FILTER:50,TEXTURE_MAG_FILTER:51,TEXTURE_WRAP_S:52,TEXTURE_WRAP_T:53,TEXTURE_WRAP_R:54,
+  LINEAR:60,LINEAR_MIPMAP_LINEAR:61,CLAMP_TO_EDGE:62,
+  createTexture:()=>({}),deleteTexture:()=>{},activeTexture:()=>{},bindTexture:()=>{},
+  texParameteri:(...a)=>gpuCalls.push(['param',...a]),texImage2D:()=>{},texSubImage2D:()=>{},
+  generateMipmap:(...a)=>gpuCalls.push(['mipmap',...a])};
+gpuCtx.riverGpuEnsure(24);
+assert.ok(gpuCalls.some(c=>c[0]==='param'&&c[2]===gpuCtx.gl.TEXTURE_MIN_FILTER&&c[3]===gpuCtx.gl.LINEAR_MIPMAP_LINEAR),
+  'WebGL2 river texture must select trilinear minification');
+const mipAfterEnsure=gpuCalls.filter(c=>c[0]==='mipmap').length;
+gpuCtx.riverGpuPackUpload();
+assert.equal(gpuCalls.filter(c=>c[0]==='mipmap').length,mipAfterEnsure+1,
+  'publishing new river coverage must regenerate exactly one mip chain');
 const bendCore={seed:7345730};
 assert.ok(Math.abs(gpuCtx.riverGpuEdgeBend(bendCore,7,11,0,0.05))<1e-12,'meander must start on its graph node');
 assert.ok(Math.abs(gpuCtx.riverGpuEdgeBend(bendCore,7,11,1,0.05))<1e-12,'meander must end on its graph node');
