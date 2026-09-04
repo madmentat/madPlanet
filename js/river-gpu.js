@@ -31,6 +31,8 @@ if(typeof UNIFORM_NAMES!=='undefined'){
 let riverGpuTex=null,riverGpuN=0,riverGpuFaces=[];
 let riverGpuPrevRiver=[],riverGpuPrevLake=[],riverGpuCurrRiver=[],riverGpuCurrLake=[];
 let riverGpuHasFrame=false,riverGpuLastSeed=NaN,riverGpuBlendStartMs=0,riverGpuBlendDurationMs=1,riverGpuLastUploadMs=NaN;
+let riverGpuCoastMask=null,riverGpuCoastMaskN=0,riverGpuCoastMaskSig='';
+const riverGpuCoastTmp={face:0,u:0,v:0};
 function riverGpuNowMs(){return (typeof performance!=='undefined'&&performance&&typeof performance.now==='function')?performance.now():Date.now();}
 function riverGpuClamp(x,a,b){return Math.max(a,Math.min(b,Number(x)||0));}
 function riverGpuByte(x){return Math.max(0,Math.min(255,Math.round(riverGpuClamp(x,0,1)*255)));}
@@ -85,6 +87,34 @@ function riverGpuPaintDir(field,dx,dy,dz,radius,value,tmp){
   const cy=riverGpuClamp((N-1)-Math.round((tmp.v+1)*0.5*(N-1)),0,N-1);
   riverGpuPaint(field,tmp.face,cx,cy,radius,value);
 }
+function riverGpuEnsureCoastMask(core){
+  const N=Math.max(32,Math.min(256,Math.round((Number(core?.N)||32)*4)));
+  const sea=(typeof h2oSeaLevelProxy==='function')?h2oSeaLevelProxy():0;
+  const sig=String(core?.h2oSurfaceSignature||core?.seed||'')+'|N='+N+'|sea='+Number(sea).toFixed(6);
+  if(!riverGpuCoastMask||riverGpuCoastMaskN!==N||riverGpuCoastMaskSig!==sig){
+    riverGpuCoastMask=new Uint8Array(6*N*N);riverGpuCoastMaskN=N;riverGpuCoastMaskSig=sig;
+  }
+  return sea;
+}
+/* Sample the continuous continent field at the actual spline point, not only
+   at a coarse Weather Core cell centre. Results are memoized on a 4x coast
+   mask so five-octave terrain noise is evaluated at most once per queried
+   sub-cell. Once a channel hits ocean, its segment may not reappear ashore. */
+function riverGpuDetailedLandAt(core,dx,dy,dz){
+  if(typeof h2oMacroTerrainHeight==='function'&&typeof h2oSeaLevelProxy==='function'){
+    const sea=riverGpuEnsureCoastMask(core),N=riverGpuCoastMaskN;
+    riverGpuDirToFaceUV(dx,dy,dz,riverGpuCoastTmp);
+    const x=riverGpuClamp(Math.floor((riverGpuCoastTmp.u+1)*0.5*N),0,N-1);
+    const y=riverGpuClamp(Math.floor((1-(riverGpuCoastTmp.v+1)*0.5)*N),0,N-1);
+    const k=(riverGpuCoastTmp.face*N+y)*N+x,cached=riverGpuCoastMask[k];
+    if(cached)return cached===1;
+    const land=h2oMacroTerrainHeight(dx,dy,dz)>sea;riverGpuCoastMask[k]=land?1:2;return land;
+  }
+  if(typeof windDirToIndex==='function'){
+    const i=windDirToIndex(core,dx,dy,dz);return i>=0&&i<core.count&&!riverIsOcean(core,i);
+  }
+  return true;
+}
 function riverGpuEdgeHash(seed,i,j,salt){
   let x=(seed|0)^Math.imul((i+1)|0,0x45d9f3b)^Math.imul((j+1)|0,0x119de1f3)^salt;
   x^=x>>>16;x=Math.imul(x,0x7feb352d);x^=x>>>15;x=Math.imul(x,0x846ca68b);x^=x>>>16;
@@ -138,11 +168,13 @@ function riverGpuPaintSplineSegment(core,i0,i1,i2,i3,s0,s1,w0,w1,tmp){
     const bend=amp*wave;
     let dx=d.x+nx*bend,dy=d.y+ny*bend,dz=d.z+nz*bend;
     const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
+    if(!riverGpuDetailedLandAt(core,dx,dy,dz))return false;
     const strength=s0+(s1-s0)*t,width=w0+(w1-w0)*t;
     const widthScale=riverGpuClamp(Math.log2(1+width/18)/7.0,0,1);
     const radius=0.045+0.10*Math.pow(strength,0.9)+0.22*widthScale*widthScale;
     riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.22+0.78*strength,tmp);
   }
+  return true;
 }
 
 function riverGpuPaintEdge(core,i,j,up,tmp){
@@ -161,41 +193,37 @@ function riverGpuVisualNode(core,branch,p,out){
   return riverGpuCellDir(core,i,out);
 }
 
-function riverGpuPaintVisualBranch(core,branch,tmp){
+function riverGpuPaintVisualEdge(core,branch,p,tmp){
   const cells=branch.cells;if(!Array.isArray(cells)||cells.length<2)return;
   const n=cells.length;
   const base=riverGpuClamp(branch.strength||0.10,0.02,0.28);
-  for(let p=0;p<n-1;p++){
-    const i0=cells[Math.max(0,p-1)]|0;
-    const i1=cells[p]|0;
-    const i2=cells[p+1]|0;
-    const i3=cells[Math.min(n-1,p+2)]|0;
-    const t0=p/Math.max(1,n-1),t1=(p+1)/Math.max(1,n-1);
-    const s0=base*(0.35+0.65*t0),s1=base*(0.35+0.65*t1);
-    const p0={x:0,y:0,z:0},p1={x:0,y:0,z:0},p2={x:0,y:0,z:0},p3={x:0,y:0,z:0},d={x:0,y:0,z:0};
-    riverGpuCellDir(core,i0,p0);riverGpuCellDir(core,i1,p1);
-    riverGpuCellDir(core,i2,p2);riverGpuCellDir(core,i3,p3);
-    const dot=riverGpuClamp(p1.x*p2.x+p1.y*p2.y+p1.z*p2.z,-1,1);
-    const ang=Math.acos(dot);
-    let nx=p1.y*p2.z-p1.z*p2.y,ny=p1.z*p2.x-p1.x*p2.z,nz=p1.x*p2.y-p1.y*p2.x;
-    const nq=Math.hypot(nx,ny,nz);if(nq>1e-9){nx/=nq;ny/=nq;nz/=nq;}else{nx=ny=nz=0;}
-    const cellAng=2/Math.max(8,core.N||32);
-    const h=riverGpuEdgeHash(core.seed|0,branch.source|0,i1,0x7811+p*53);
-    const h2=riverGpuEdgeHash(core.seed|0,branch.source|0,i1,0x3c6ef372);
-    const phase0=h*Math.PI;
-    const steps=Math.max(12,Math.min(64,Math.ceil(Math.max(ang,cellAng)*riverGpuN*3.0)));
-    for(let s=0;s<=steps;s++){
-      const t=s/steps;
-      riverGpuCatmullDir(p0,p1,p2,p3,t,d);
-      const wave=0.80*h*Math.sin(Math.PI*t+phase0)+0.20*h2*Math.sin(2.0*Math.PI*t+phase0*1.1);
-      const amp=cellAng*(0.10+0.05*Math.abs(branch.phase||0))*(0.70+0.30*Math.sin(Math.PI*t));
-      let dx=d.x+nx*amp*wave,dy=d.y+ny*amp*wave,dz=d.z+nz*amp*wave;
-      const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
-      const strength=s0+(s1-s0)*t;
-      const radius=0.035+0.055*Math.sqrt(strength);
-      riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.16+0.50*strength,tmp);
-    }
+  const i0=cells[Math.max(0,p-1)]|0,i1=cells[p]|0,i2=cells[p+1]|0,i3=cells[Math.min(n-1,p+2)]|0;
+  const t0=p/Math.max(1,n-1),t1=(p+1)/Math.max(1,n-1);
+  const s0=base*(0.35+0.65*t0),s1=base*(0.35+0.65*t1);
+  const p0={x:0,y:0,z:0},p1={x:0,y:0,z:0},p2={x:0,y:0,z:0},p3={x:0,y:0,z:0},d={x:0,y:0,z:0};
+  riverGpuCellDir(core,i0,p0);riverGpuCellDir(core,i1,p1);riverGpuCellDir(core,i2,p2);riverGpuCellDir(core,i3,p3);
+  const dot=riverGpuClamp(p1.x*p2.x+p1.y*p2.y+p1.z*p2.z,-1,1),ang=Math.acos(dot);
+  let nx=p1.y*p2.z-p1.z*p2.y,ny=p1.z*p2.x-p1.x*p2.z,nz=p1.x*p2.y-p1.y*p2.x;
+  const nq=Math.hypot(nx,ny,nz);if(nq>1e-9){nx/=nq;ny/=nq;nz/=nq;}else{nx=ny=nz=0;}
+  const cellAng=2/Math.max(8,core.N||32),h=riverGpuEdgeHash(core.seed|0,branch.source|0,i1,0x7811+p*53);
+  const h2=riverGpuEdgeHash(core.seed|0,branch.source|0,i1,0x3c6ef372),phase0=h*Math.PI;
+  const steps=Math.max(12,Math.min(64,Math.ceil(Math.max(ang,cellAng)*riverGpuN*3.0)));
+  for(let s=0;s<=steps;s++){
+    const t=s/steps;riverGpuCatmullDir(p0,p1,p2,p3,t,d);
+    const wave=0.80*h*Math.sin(Math.PI*t+phase0)+0.20*h2*Math.sin(2.0*Math.PI*t+phase0*1.1);
+    const amp=cellAng*(0.10+0.05*Math.abs(branch.phase||0))*(0.70+0.30*Math.sin(Math.PI*t));
+    let dx=d.x+nx*amp*wave,dy=d.y+ny*amp*wave,dz=d.z+nz*amp*wave;
+    const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
+    if(!riverGpuDetailedLandAt(core,dx,dy,dz))return false;
+    const strength=s0+(s1-s0)*t,radius=0.035+0.055*Math.sqrt(strength);
+    riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.16+0.50*strength,tmp);
   }
+  return true;
+}
+
+function riverGpuPaintVisualBranch(core,branch,tmp){
+  const cells=branch.cells;if(!Array.isArray(cells)||cells.length<2)return;
+  for(let p=0;p<cells.length-1;p++)if(riverGpuPaintVisualEdge(core,branch,p,tmp)===false)break;
 }
 
 function riverGpuPaintVisualBranches(core,tmp){

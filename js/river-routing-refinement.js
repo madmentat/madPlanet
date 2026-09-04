@@ -20,7 +20,7 @@
    cell falls just below a display threshold.
 */
 
-const RIVER_ROUTING_REFINEMENT_MODEL=2;
+const RIVER_ROUTING_REFINEMENT_MODEL=3;
 const RIVER_AREA_START_CELLS=0.72;
 const RIVER_AREA_FULL_CELLS=4.80;
 const RIVER_Q_START_LOCAL_MULT=1.05;
@@ -35,7 +35,25 @@ function riverRoutingEnsureFields(core){
     core.riverContributingArea=new Float64Array(core.count);
   if(!core.riverRawChannelStrength||core.riverRawChannelStrength.length!==core.count)
     core.riverRawChannelStrength=new Float32Array(core.count);
+  if(!core.riverCoastDistance||core.riverCoastDistance.length!==core.count)
+    core.riverCoastDistance=new Int16Array(core.count);
   core.riverRoutingRefinementModel=RIVER_ROUTING_REFINEMENT_MODEL;
+  return core;
+}
+
+/* Number of coarse catchment steps to the nearest ocean cell. This is not a
+   substitute for the later high-resolution hydrology grid; it is an immediate
+   topological guard against treating a one-cell-wide island as a complete
+   source-to-mouth river basin. */
+function riverRoutingBuildCoastDistance(core){
+  riverRoutingEnsureFields(core);
+  const dist=core.riverCoastDistance,q=new Int32Array(core.count);dist.fill(32767);
+  let qh=0,qt=0;
+  for(let i=0;i<core.count;i++)if(riverIsOcean(core,i)){dist[i]=0;q[qt++]=i;}
+  while(qh<qt){
+    const i=q[qh++],next=Math.min(32767,(dist[i]|0)+1);
+    riverForEachNeighbor(core,i,j=>{if(next<dist[j]){dist[j]=next;q[qt++]=j;}});
+  }
   return core;
 }
 
@@ -91,7 +109,9 @@ const riverRebuildTopologyBeforeRefinement=riverRebuildTopology;
 riverRebuildTopology=function(core,climate){
   riverRoutingEnsureFields(core);
   riverRoutingBuildNeighbor8(core);
-  return riverRebuildTopologyBeforeRefinement(core,climate);
+  const out=riverRebuildTopologyBeforeRefinement(core,climate);
+  riverRoutingBuildCoastDistance(core);
+  return out;
 };
 
 function riverRoutingReferenceQ(cellArea){
@@ -146,7 +166,14 @@ riverAccumulateDischarge=function(core,dtSec,climate){
     const qStrength=riverSmooth(RIVER_Q_START_LOCAL_MULT*localReferenceQ,
                                 RIVER_Q_FULL_LOCAL_MULT*localReferenceQ,Q);
     const slopeSupport=0.66+0.34*riverSmooth(6e-8,1.6e-5,core.riverSlope[i]);
-    core.riverChannelStrength[i]=riverClamp(areaStrength*qStrength*slopeSupport,0,1);
+    /* A coastal mixed cell is allowed to carry an accumulated trunk to its
+       mouth, but may not invent a river from its own cell-local runoff. At the
+       current synoptic resolution that mistake reads as a canal connecting
+       opposite shores of a small island. */
+    const catchmentCells=accA[i]/cellArea;
+    const coastSourceGate=(core.riverCoastDistance[i]|0)<=1
+      ?riverSmooth(1.25,2.50,catchmentCells):1;
+    core.riverChannelStrength[i]=riverClamp(areaStrength*qStrength*slopeSupport*coastSourceGate,0,1);
 
     /* A lake may occupy one resolved depression, but it still needs enough
        water to support standing surface water. Do not require a multi-cell
@@ -162,7 +189,7 @@ riverAccumulateDischarge=function(core,dtSec,climate){
 const weatherCoreFiniteBeforeRiverRoutingRefinement=weatherCoreFinite;
 weatherCoreFinite=function(core){
   if(!weatherCoreFiniteBeforeRiverRoutingRefinement(core))return false;
-  for(const key of ['riverContributingArea','riverRawChannelStrength']){
+  for(const key of ['riverContributingArea','riverRawChannelStrength','riverCoastDistance']){
     const a=core?.[key];if(!a||a.length!==core.count)return false;
     for(let i=0;i<a.length;i++)if(!Number.isFinite(a[i])||a[i]<0)return false;
   }
@@ -172,5 +199,6 @@ weatherCoreFinite=function(core){
 if(typeof window!=='undefined')window.__madPlanetRiverRoutingRefinement={
   model:RIVER_ROUTING_REFINEMENT_MODEL,
   rebuildNeighbors:riverRoutingBuildNeighbor8,
+  rebuildCoastDistance:riverRoutingBuildCoastDistance,
   carryDownstream:riverRoutingCarryChannelsDownstream
 };

@@ -34,7 +34,9 @@ assert.match(refine,/RIVER_AREA_START_CELLS=0\.72/,'coarse Weather Core must all
 assert.match(refine,/RIVER_Q_START_LOCAL_MULT=1\.05/,'headwaters must still require more than the climate baseflow reference');
 assert.match(refine,/riverRoutingCarryChannelsDownstream/,'real channel support must be carried along its diagnosed downstream graph');
 assert.match(refine,/RIVER_CONTINUITY_DECAY=0\.90/,'downstream visual continuity needs a bounded decay');
-assert.match(refine,/RIVER_ROUTING_REFINEMENT_MODEL=2/,'river routing refinement model must be bumped');
+assert.match(refine,/RIVER_ROUTING_REFINEMENT_MODEL=3/,'coast-aware river routing refinement model must be active');
+assert.match(refine,/function riverRoutingBuildCoastDistance\(core\)/,'routing must diagnose distance from every land cell to the coast');
+assert.match(refine,/coastSourceGate=\(core\.riverCoastDistance\[i\]\|0\)<=1/,'single-cell coastal runoff must not become a headwater');
 assert.match(visual,/riverVisualBasin/,'fine tributaries must be basin constrained');
 assert.match(visual,/riverVisualDistToTrunk/,'fine tributaries must converge toward a physical receiver');
 
@@ -48,9 +50,11 @@ for(const file of [buildSh,buildPs]){
 assert.match(header,/uniform samplerCube uRiverTex;/);
 assert.match(header,/uniform float uRiverBlend;/);
 assert.match(shader,/riverHydroTex\s*=\s*texture\(uRiverTex/);
-/* 0.5.146: the coarse corridor map is never shown as water; thin sub-grid
-   channels stay, the trunk corridor only keeps one main channel continuous. */
-assert.match(shader,/riverGeomPhys\s*=\s*max\(riverGeomProc,\s*trunkChannel\*physRiverCore\)/,'physical corridor must gate sub-grid channels, not replace them');
+/* 0.5.148: the coarse corridor map is never shown as water, but it must own
+   river existence. Ungated FBM zero contours are closed level sets and were
+   visible as impossible looped rivers in 0.5.146/0.5.147. */
+assert.match(shader,/riverGeomPhys\s*=\s*max\(riverGeomProc\*physRiverHalo,\s*trunkChannel\*physRiverCore\)/,'physical halo must confine procedural sub-grid channels');
+assert.doesNotMatch(shader,/riverGeomPhys\s*=\s*max\(riverGeomProc,\s*trunkChannel/,'procedural FBM must not own river existence outside diagnosed corridors');
 assert.doesNotMatch(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,/,'the coarse river texel must never be painted as water directly');
 assert.match(shader,/float trunkChannel = 1\.0 - ss\(w\*1\.05, w\*1\.65, riverSignal\)/,'trunk corridor needs a wider acceptance band for a continuous main channel');
 assert.match(shader,/riverClimateGate = mix\(ss\(0\.24,0\.44,moist\),ss\(0\.12,0\.40,max\(soilMoistPhys,physRiverHalo\)\),uRiverPhysicsOn\)/,'river density must follow resolved soil water');
@@ -62,12 +66,16 @@ assert.match(gpu,/RIVER_GPU_MODEL=10/,'river display bridge must be the corridor
 assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'river cubemap must resolve well below the Weather Core cell size');
 assert.match(gpu,/Math\.min\(96,Math\.ceil\(Math\.max\(ang,cellAng\)\*riverGpuN\*3\.2\)\)/,'long physical graph links need dense spherical samples rather than chunky segments');
 assert.match(gpu,/const amp=cellAng\*\(0\.12\+0\.06\*Math\.abs\(h2\)\)/,'corridor meander must stay small: visible wiggles belong to the sub-grid channel');
+assert.match(gpu,/function riverGpuDetailedLandAt\(core,dx,dy,dz\)/,'spline rasterization must sample the continuous coastline');
+assert.match(gpu,/new Uint8Array\(6\*N\*N\)/,'continuous coast samples must be memoized instead of rerunning terrain noise for every spline sample');
+assert.match(gpu,/\*4\)\)\)/,'coast guard must resolve below the synoptic Weather Core grid');
+assert.match(gpu,/if\(!riverGpuDetailedLandAt\(core,dx,dy,dz\)\)return false/,'a raster path must terminate at its first ocean sample');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches'),'GPU bridge must paint the fine tributary overlay');
 assert.ok(!gpu.includes('requestAnimationFrame'),'river texture must not upload from render FPS');
 assert.ok(render.includes('uRiverPhysicsOn')&&render.includes('uRiverTex'));
 
 const ctx={
-  console,Math,Number,Float32Array,Float64Array,Int32Array,Uint8Array,
+  console,Math,Number,Float32Array,Float64Array,Int32Array,Int16Array,Uint8Array,
   WEATHER_CORE_FIXED_DT_SEC:300,
   weatherCoreCreate:()=>({count:1}),
   weatherCoreStep:(c)=>c,
@@ -141,6 +149,31 @@ function chainCore(terrain){
   assert.ok(c.riverFillDepth[1]>3.5,'Priority-Flood must hydro-condition an interior depression');
   let i=0,guard=0;while(i>=0&&i<c.count-1&&guard++<10)i=c.riverDownstream[i];
   assert.equal(i,c.count-1,'conditioned drainage must reach the ocean instead of terminating in the pit');
+}
+
+// Opposing coasts on an island must remain separated by a watershed divide.
+{
+  const c=chainCore([0,2,5,2,0]);c.surfaceWaterFraction[0]=1;
+  ctx.riverEnsureFields(c);ctx.riverRebuildTopology(c,{radiusM:6371000});
+  assert.equal(c.riverCoastDistance[0],0);assert.equal(c.riverCoastDistance[4],0);
+  assert.equal(c.riverCoastDistance[2],2,'island interior must be farther from the sea than both coastal rings');
+  assert.equal(c.riverDownstream[1],0,'west slope must drain only to the west coast');
+  assert.equal(c.riverDownstream[3],4,'east slope must drain only to the east coast');
+  const path=[];let i=2;
+  for(let guard=0;i>=0&&guard++<8;i=c.riverDownstream[i])path.push(i);
+  assert.ok(path.includes(0)!==path.includes(4),'one river path may terminate at only one of the opposing coasts');
+}
+
+// A malformed downstream cycle must be cut instead of reaching the display.
+{
+  const c=chainCore([5,4,3,2,0]);ctx.riverEnsureFields(c);
+  c.riverDownstream.set([1,2,0,4,-1]);
+  ctx.riverBuildTopo(c);
+  assert.equal(c.riverDownstream[0],-1);
+  assert.equal(c.riverDownstream[1],-1);
+  assert.equal(c.riverDownstream[2],-1);
+  assert.equal(c.riverDownstream[3],4,'valid acyclic drainage must survive the defensive cycle cut');
+  assert.equal(c.riverTopoCount,4,'topology must contain every remaining land cell exactly once');
 }
 
 // Hydraulic geometry and stream power respond monotonically to Q and slope.

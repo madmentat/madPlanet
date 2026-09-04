@@ -1,9 +1,11 @@
-VERSION 0.5.147
-Base: 0.5.146
-Changes: Weather Core runs in a Web Worker - no more once-per-tick main-thread freezes.
-  - js/weather-worker.js: the fixed step, the dense cryosphere reconstruction and the river cubemap painting run in a worker built at runtime from the page's own bundle text plus a DOM/WebGL stub; the cooperative scheduler stays the cadence driver and weatherCoreTick() only posts a request; a zero-copy mirror of the core feeds GPU bridges, diagnostics, telemetry and export; uploads are spread over consecutive frames; automatic fallback to the synchronous path
-  - js/cryosphere-edge-display.js: tabulated reconstruction (indices + weights per texel, edge noise cached), ~20 ms instead of ~800 ms with identical output
-  - measured in Chromium: 0.5.145 idle produced 14 long tasks of 80..235 ms in 20 s plus 2.3 s on a new world; with the worker the main thread produces none
-Regression: add tests/weather-worker.test.js (bridge invariants, worker realm overrides, mirror transfer, quantised faces, fallback without Worker).
-Snapshot: 0.5.146 remains the rollback point before the worker.
+VERSION 0.5.150
+Base: 0.5.149
+Changes: river validation layer.
+  - added non-invasive river graph diagnostics
+  - downhill monotonicity checks for downstream paths
+  - ocean re-entry detection after river mouth
+  - basin consistency checks
+  - network statistics collection for future Horton-Strahler filtering
+  - validation does not modify hydrology output; it only reports invalid paths
+Snapshot: 0.5.149 remains the rollback point before validation diagnostics.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

@@ -227,12 +227,14 @@
       const wave=0.105*h1*Math.sin(Math.PI*t)+0.040*h2*Math.sin(2*Math.PI*t);
       const bend=Math.sin(ang)*wave*(feeder?1.18:1.0);
       dx+=nx*bend;dy+=ny*bend;dz+=nz*bend;q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
+      if(!riverGpuDetailedLandAt(core,dx,dy,dz))return false;
       const progress=(p+t)/last;
       const strength=riverGpuClamp((Number(branch.strength)||0.12)*(0.60+0.40*progress),0.04,0.42);
       const radius=feeder?(0.105+0.115*Math.sqrt(strength)):(0.120+0.145*Math.sqrt(strength));
       const value=feeder?(0.46+0.36*strength):(0.50+0.40*strength);
       riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,value,tmp);
     }
+    return true;
   };
 
   /* If Weather Core was initialized unusually early, rebuild only the display

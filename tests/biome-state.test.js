@@ -97,7 +97,8 @@ assert.match(surface,/oc=mix\(dryBed,oc,hotLiquidGate\)/,'hot ocean geometry mus
    longer own river/lake placement when the physical bridge is enabled. */
 assert.equal((surface.match(/float rn = fbm\(/g)||[]).length,1,'river sub-grid geometry should be evaluated once');
 assert.equal((surface.match(/float lakeN = fbm\(/g)||[]).length,1,'lake sub-grid geometry should be evaluated once');
-assert.match(surface,/riverGeomPhys = max\(riverGeomProc, trunkChannel\*physRiverCore\)/,'physical trunk corridor must keep a continuous sub-grid main channel');
+assert.match(surface,/riverGeomPhys = max\(riverGeomProc\*physRiverHalo, trunkChannel\*physRiverCore\)/,'physical halo must confine procedural channels while the core keeps the trunk continuous');
+assert.doesNotMatch(surface,/riverGeomPhys = max\(riverGeomProc, trunkChannel/,'FBM zero contours must not create rivers outside physical drainage corridors');
 const hydro=surface.indexOf('float riverWarpX');
 const drought=surface.indexOf('float drought =');
 const biome=surface.indexOf('vec3 SAND=');

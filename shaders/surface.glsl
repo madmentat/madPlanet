@@ -114,10 +114,13 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float w = max(wReal, wPix);
   float riverSignal = abs(rn) + 0.0016*fbm(sN*260.0+uSeedS,2);
   float riverGeomProc = 1.0 - ss(w*0.82, w*1.06, riverSignal);
-  /* Inside the diagnosed trunk corridor a wider acceptance band keeps one
-     main channel continuous; outside it the fine network is unchanged. */
+  /* 0.5.148: FBM zero contours are morphology, not drainage. Left ungated,
+     they form closed level-set rings and show up as impossible looped rivers.
+     The physical halo now owns river existence; the procedural field only
+     cuts a thin irregular channel inside it. A wider acceptance band inside
+     the stronger core keeps the diagnosed trunk continuous. */
   float trunkChannel = 1.0 - ss(w*1.05, w*1.65, riverSignal);
-  float riverGeomPhys = max(riverGeomProc, trunkChannel*physRiverCore);
+  float riverGeomPhys = max(riverGeomProc*physRiverHalo, trunkChannel*physRiverCore);
   float riverGeom = mix(riverGeomProc,riverGeomPhys,uRiverPhysicsOn);
   float floodplainProc = 1.0-ss(wReal*1.7,wReal*6.2,abs(rn));
   floodplainProc *= 1.0-ss(0.14,0.32,h);
