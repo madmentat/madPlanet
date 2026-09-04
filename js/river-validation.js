@@ -1,4 +1,4 @@
-/* madPlanet 0.5.150 - river validation layer
+/* madPlanet 0.5.151 - river validation layer
    Diagnostics only. This module never edits the generated river graph.
 */
 (function(global){
@@ -8,7 +8,7 @@ function RiverValidation(options){
  this.ocean=options?.ocean||null;
  this.downstream=options?.downstream||null;
  this.basin=options?.basin||null;
- this.result={checked:0, errors:[], stats:{}};
+ this.result={checked:0, errors:[], stats:{sourcesRejected:0}};
 }
 RiverValidation.prototype.validatePath=function(start){
  let seen=new Set(), cur=start, path=[];

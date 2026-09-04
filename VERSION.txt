@@ -1,11 +1,10 @@
-VERSION 0.5.150
-Base: 0.5.149
-Changes: river validation layer.
-  - added non-invasive river graph diagnostics
-  - downhill monotonicity checks for downstream paths
-  - ocean re-entry detection after river mouth
-  - basin consistency checks
-  - network statistics collection for future Horton-Strahler filtering
-  - validation does not modify hydrology output; it only reports invalid paths
-Snapshot: 0.5.149 remains the rollback point before validation diagnostics.
+VERSION 0.5.151
+Base: 0.5.150
+Changes: river source & discharge filtering stage.
+  - js/river-sources.js: RiverSourceFilter rejects headwaters that are ocean cells,
+    below a minimum flow accumulation, too close to the coast, or below a minimum
+    slope; standalone module, not yet wired into the build or river pipeline
+  - js/river-validation.js: extended result.stats with sourcesRejected counter
+  - preparation for river hierarchy / Horton-Strahler classification in 0.5.152
+Snapshot: 0.5.150 remains the rollback point before source filtering.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
