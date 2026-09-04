@@ -1,8 +1,9 @@
-VERSION 0.5.158
-Base: 0.5.157 analytic vector rivers.
-Changes: mobile-correct chord sampling and a cheaper channel loop.
-  - The chord data samplers are declared highp: a default-precision sampler2D returns fp16 texels on mobile GPUs, which snapped unit-sphere endpoints to ~0.001 rad and collapsed every chord index above 2048 onto its even neighbour, so trunks rendered as dashed sausages while early-indexed feeders stayed intact.
-  - The bin lists are de-indexed on the CPU (each entry carries its chord record), so the shader loop does two direct fetches per chord instead of a dependent index read plus two; the loop cap is 32 with 48 bins per face, and a fragment already inside a channel stops early.
-  - The sub-grid meander warp uses two tangent-plane FBM samples instead of six volumetric ones; the riparian halo around a vector channel is narrowed to about 2.6 half-widths.
-Regression: guards require highp chord samplers, direct chord reads from the de-indexed list, four transferable buffers and the retired index texture absent.
+VERSION 0.5.159
+Base: 0.5.158 vector rivers with highp chord samplers.
+Changes: continuous channels and natural junctions on the synoptic grid.
+  - Interior drainage-graph nodes are relaxed toward the midpoint of their main upstream and downstream nodes (two bounded passes); sources, ocean receivers and coastal nodes stay put, and every painter reads node positions through one accessor, so the D8 staircase of right angles becomes a gently curved trunk that tributaries meet exactly.
+  - The last edge of a visual tributary takes the receiver's downstream cell as its far spline handle, so mouths curve into the trunk's flow direction instead of meeting it at a right angle.
+  - Bins are 64 per cubemap face with a 0.010 rad margin, which keeps crowded bins under the 32-chord shader cap that previously dropped weaker chords and left gaps.
+  - Orbit views skip the sub-pixel meander warp; ",rivvec=0" in the URL hash keeps the raster corridor path for on-device frame-cost comparison.
+Regression: guards require node relaxation before painting, the acute-mouth handle, the diagnostic hash switch and bounded node displacement on a synthetic staircase.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

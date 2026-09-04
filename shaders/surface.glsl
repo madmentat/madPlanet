@@ -89,11 +89,15 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
          without breaking the network. It fades toward the coast so a mouth
          still meets the detailed shoreline. */
       float warpAmp = 0.0034*ss(0.003, 0.028, h);
-      vec3 wq = sN*62.0 + uSeedS*2.3;
-      vec3 wt1 = normalize(cross(sN, (abs(sN.y) < 0.9) ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0)));
-      vec3 wt2 = cross(sN, wt1);
-      vec3 meander = wt1*fbm(wq, 2) + wt2*fbm(wq + vec3(9.1, 3.7, 1.3), 2);
-      vec3 wp = normalize(sN + warpAmp*meander);
+      vec3 wp = sN;
+      /* the warp is sub-pixel beyond ~0.0025 rad/px, so orbit views skip it */
+      if(pixAng < 0.0025){
+        vec3 wq = sN*62.0 + uSeedS*2.3;
+        vec3 wt1 = normalize(cross(sN, (abs(sN.y) < 0.9) ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0)));
+        vec3 wt2 = cross(sN, wt1);
+        vec3 meander = wt1*fbm(wq, 2) + wt2*fbm(wq + vec3(9.1, 3.7, 1.3), 2);
+        wp = normalize(sN + warpAmp*meander);
+      }
       float pixAA = max(0.70*pixAng, 3.0e-5);
       vec3 nr = riverVectorNearest(wp, pixAA);
       float hw = nr.y;

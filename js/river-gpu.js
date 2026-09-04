@@ -31,11 +31,12 @@
 */
 const RIVER_GPU_MODEL=17;
 const RIVER_TEX_UNIT=2;
-const RIVER_VEC_BIN_N=48;             /* bins per cubemap face edge */
+const RIVER_VEC_BIN_N=64;             /* bins per cubemap face edge */
 const RIVER_VEC_TEX_W=2048;           /* data texture width in texels */
 const RIVER_VEC_MAX_SEGMENTS=180000;
 const RIVER_VEC_PIECES_PER_EDGE=6;    /* chords per coarse graph edge */
-const RIVER_VEC_BIN_MARGIN_RAD=0.016; /* widest channel + shader warp + AA reach */
+const RIVER_VEC_BIN_MARGIN_RAD=0.010; /* widest channel + shader warp + AA reach */
+const RIVER_NODE_RELAX_MAX_CELL=0.35; /* max node displacement, cell angles */
 const RIVER_VEC_BIN_UNIT=13,RIVER_VEC_LIST_UNIT=14;
 const RIVER_GPU_UPSCALE=16;
 const RIVER_BLEND_DEFAULT_MS=900;
@@ -53,7 +54,7 @@ let riverVecBins=new Float32Array(0),riverVecList=new Float32Array(0),riverVecLi
    of riverVecList[k], so the shader loop needs two fetches per chord and no
    dependent index read. */
 let riverVecListChords=new Float32Array(0);
-let riverVecDirty=false,riverVecVersion=0,riverVecCollectOn=false;
+let riverVecDirty=false,riverVecVersion=0,riverVecCollectOn=false,riverVecMaxPerBin=0;
 function riverVecReset(){
   if(riverVecSegCap<RIVER_VEC_MAX_SEGMENTS){riverVecSegCap=RIVER_VEC_MAX_SEGMENTS;riverVecSegments=new Float32Array(riverVecSegCap*8);}
   riverVecCount=0;riverVecCollectOn=true;
@@ -104,7 +105,8 @@ function riverVecBuildIndex(){
     }
     const arr=Array.from(seen);perSeg[i]=arr;for(const b of arr)counts[b]++;
   }
-  const starts=new Int32Array(nb);let acc=0;for(let b=0;b<nb;b++){starts[b]=acc;acc+=counts[b];}
+  const starts=new Int32Array(nb);let acc=0,mx=0;for(let b=0;b<nb;b++){starts[b]=acc;acc+=counts[b];if(counts[b]>mx)mx=counts[b];}
+  riverVecMaxPerBin=mx;
   const list=new Float32Array(Math.max(1,acc)),fill=new Int32Array(nb);
   for(let i=0;i<riverVecCount;i++)for(const b of perSeg[i]){list[starts[b]+fill[b]]=i;fill[b]++;}
   for(let b=0;b<nb;b++){
@@ -156,10 +158,10 @@ function riverGpuVectorUpload(){
   gl.activeTexture(gl.TEXTURE0);
   riverVecDirty=false;riverVecUploadedVersion=riverVecVersion;return true;
 }
-function riverGpuVectorBind(prog,U){
+function riverGpuVectorBind(prog,U,enabled=true){
   if(!U)return;
   if(riverVecDirty)riverGpuVectorUpload();
-  if(!riverVecListTex||!riverGpuVectorAvailable()){
+  if(!enabled||!riverVecListTex||!riverGpuVectorAvailable()){
     if(U.uRiverVecOn!==null&&U.uRiverVecOn!==undefined)gl.uniform1f(U.uRiverVecOn,0.0);return;
   }
   gl.activeTexture(gl.TEXTURE0+RIVER_VEC_BIN_UNIT);gl.bindTexture(gl.TEXTURE_2D,riverVecBinTex);
@@ -293,8 +295,46 @@ function riverGpuCatmullDir(p0,p1,p2,p3,t,out){
   const q=Math.hypot(x,y,z)||1;out.x=x/q;out.y=y/q;out.z=z/q;return out;
 }
 
+/* 0.5.159: the D8 graph walks through ~500 km cell centres, so at synoptic
+   scale a trunk is a staircase of right angles. Interior graph nodes are
+   relaxed toward the midpoint of their main upstream and downstream nodes
+   (two passes, bounded displacement). Sources, ocean receivers and coastal
+   nodes stay put, and every painter reads positions through riverGpuCellDir,
+   so a tributary meets the relaxed trunk exactly. The node-anchored edge bend
+   and the shader warp keep the result from becoming a ruler-straight canal. */
+let riverGpuNodePos=null;
+function riverGpuRelaxNodes(core,up){
+  const n=core.count,pos=new Float32Array(n*3),ds=core.riverDownstream,strength=core.riverChannelStrength,cd=core.riverCoastDistance;
+  for(let i=0;i<n;i++){pos[i*3]=core.dirX[i];pos[i*3+1]=core.dirY[i];pos[i*3+2]=core.dirZ[i];}
+  if(!ds||!up)return pos;
+  const movable=new Uint8Array(n);
+  for(let i=0;i<n;i++){
+    const j=ds[i]|0,u=up[i];
+    if(j<0||j>=n||u<0||u>=n)continue;
+    if((Number(strength?.[i])||0)<0.008||riverIsOcean(core,i)||riverIsOcean(core,j))continue;
+    if(cd&&(cd[i]|0)<2)continue;
+    movable[i]=1;
+  }
+  const maxMove=RIVER_NODE_RELAX_MAX_CELL*2/Math.max(8,core.N||32),src=new Float32Array(n*3);
+  for(let pass=0;pass<2;pass++){
+    src.set(pos);
+    for(let i=0;i<n;i++){
+      if(!movable[i])continue;
+      const a=up[i]*3,b=(ds[i]|0)*3,o=i*3;
+      let x=0.5*src[o]+0.25*(src[a]+src[b]),y=0.5*src[o+1]+0.25*(src[a+1]+src[b+1]),z=0.5*src[o+2]+0.25*(src[a+2]+src[b+2]);
+      let q=Math.hypot(x,y,z)||1;x/=q;y/=q;z/=q;
+      const ox=core.dirX[i],oy=core.dirY[i],oz=core.dirZ[i];
+      const dist=Math.hypot(x-ox,y-oy,z-oz);
+      if(dist>maxMove){const k=maxMove/dist;x=ox+(x-ox)*k;y=oy+(y-oy)*k;z=oz+(z-oz)*k;q=Math.hypot(x,y,z)||1;x/=q;y/=q;z/=q;}
+      pos[o]=x;pos[o+1]=y;pos[o+2]=z;
+    }
+  }
+  return pos;
+}
 function riverGpuCellDir(core,i,out){
-  out.x=core.dirX[i];out.y=core.dirY[i];out.z=core.dirZ[i];
+  const P=riverGpuNodePos;
+  if(P&&P.length===core.count*3){out.x=P[i*3];out.y=P[i*3+1];out.z=P[i*3+2];}
+  else{out.x=core.dirX[i];out.y=core.dirY[i];out.z=core.dirZ[i];}
   const q=Math.hypot(out.x,out.y,out.z)||1;out.x/=q;out.y/=q;out.z/=q;return out;
 }
 
@@ -363,7 +403,12 @@ function riverGpuPaintEdge(core,i,j,up,tmp){
 }
 function riverGpuPaintVisualEdge(core,branch,p,tmp){
   const cells=branch.cells,n=cells.length;
-  const i0=cells[Math.max(0,p-1)]|0,i1=cells[p]|0,i2=cells[p+1]|0,i3=cells[Math.min(n-1,p+2)]|0;
+  const i0=cells[Math.max(0,p-1)]|0,i1=cells[p]|0,i2=cells[p+1]|0;
+  let i3=cells[Math.min(n-1,p+2)]|0;
+  /* Acute mouth: the last edge of a tributary takes the receiver's own
+     downstream cell as its far handle, so it curves into the trunk's flow
+     direction instead of meeting it at a right angle (comb teeth). */
+  if(p+2>n-1){const last=cells[n-1]|0,dsl=(core.riverDownstream?.[last]|0);if(dsl>=0&&dsl<core.count&&dsl!==last)i3=dsl;}
   const base=riverGpuClamp(branch.strength||0.10,0.02,0.28);
   const s0=base*(0.35+0.65*p/Math.max(1,n-1));
   const s1=base*(0.35+0.65*(p+1)/Math.max(1,n-1));
@@ -382,6 +427,7 @@ function riverGpuReadCurrent(core){
   for(let f=0;f<6;f++){riverGpuCurrRiver[f].fill(0);riverGpuCurrLake[f].fill(0);}
   const tmp={face:0,u:0,v:0};
   const up=riverGpuBuildUpstream(core);
+  riverGpuNodePos=riverGpuRelaxNodes(core,up);
   riverVecReset();
   riverGpuPaintVisualBranches(core,tmp);
   for(let i=0;i<core.count;i++){
@@ -399,6 +445,7 @@ function riverGpuReadCurrent(core){
     }
     riverGpuPaintEdge(core,i,j,up,tmp);
   }
+  riverGpuNodePos=null;
   riverVecFinish();
 }
 function riverGpuCollapseVisible(blend){

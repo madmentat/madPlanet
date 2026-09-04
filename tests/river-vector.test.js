@@ -17,13 +17,16 @@ const header=read('shaders/header.glsl');
 
 assert.match(gpu,/RIVER_GPU_MODEL=17/,'vector river display model must be active');
 assert.match(gpu,/riverVecReset\(\);\s*riverGpuPaintVisualBranches/,'chord collection must start before any painter runs');
-assert.match(gpu,/riverGpuPaintEdge\(core,i,j,up,tmp\);\s*\}\s*riverVecFinish\(\);/,'chord index must be built after the last edge');
+assert.match(gpu,/riverGpuPaintEdge\(core,i,j,up,tmp\);\s*\}\s*riverGpuNodePos=null;\s*riverVecFinish\(\);/,'chord index must be built after the last edge');
 assert.match(gpu,/if\(riverVecCollectOn&&vHave\)riverVecPush\(vx,vy,vz,dx,dy,dz/,'a mouth chord must reach the first ocean sample');
 assert.match(gpu,/sub\.sort\(\(p,r\)=>g\[r\*8\+3\]-g\[p\*8\+3\]\)/,'bin lists must be strength-sorted so a capped loop keeps trunks');
 assert.match(gpu,/riverGpuPackUpload\(\);riverGpuVectorUpload\(\);/,'chord textures must publish with the corridor');
+assert.match(gpu,/riverGpuNodePos=riverGpuRelaxNodes\(core,up\);/,'graph nodes must be relaxed before any painter runs');
+assert.match(gpu,/if\(p\+2>n-1\)\{const last=cells\[n-1\]\|0,dsl=/,'tributary mouths must take the receiver downstream handle');
+assert.match(render,/rivvec=0/,'the diagnostic hash switch must exist');
 assert.match(gpu,/webglVersion>=2/,'chord textures are WebGL2-only');
 assert.ok(!gpu.includes('requestAnimationFrame'),'chord table must not be rebuilt from render FPS');
-assert.match(render,/riverGpuVectorBind\(prog,U\)/,'renderer must bind the chord tables every frame');
+assert.match(render,/riverGpuVectorBind\(prog,U,!riverVectorHashOff\)/,'renderer must bind the chord tables every frame');
 assert.match(worker,/riverGpuVectorData\(\)/,'worker must snapshot the chord table');
 assert.match(worker,/seg:vec\.seg,bins:vec\.bins,list:vec\.list,chords:vec\.chords/,'worker must transfer chord table buffers');
 assert.match(worker,/riverGpuVectorSet\(m\.river\.vec\)/,'main thread must adopt the transferred chord table');
@@ -115,4 +118,23 @@ const U={uRiverVecOn:{}};const calls=[];ctx.gl.uniform1f=(loc,v)=>calls.push([lo
 ctx.riverGpuVectorBind({},U);
 assert.ok(calls.some(c=>c[0]===U.uRiverVecOn&&c[1]===0),'WebGL1 must switch the shader to the raster fallback');
 
+/* A right-angled D8 staircase must be relaxed toward its diagonal while the
+   source and the ocean receiver stay in place. */
+{
+  const n=4,c={count:n,N:8,seed:3,dirX:new Float32Array(n),dirY:new Float32Array(n),dirZ:new Float32Array(n),
+    surfaceWaterFraction:new Float32Array(n),riverDownstream:Int32Array.from([1,2,3,-1]),riverChannelStrength:Float32Array.from([0.3,0.4,0.5,0]),
+    riverCoastDistance:Int32Array.from([5,5,5,0])};
+  const pts=[[0,0],[0.08,0],[0.08,0.08],[0.16,0.08]];
+  for(let i=0;i<n;i++){const [a,b]=pts[i];const v=[Math.cos(a)*Math.cos(b),Math.sin(b),Math.sin(a)*Math.cos(b)];c.dirX[i]=v[0];c.dirY[i]=v[1];c.dirZ[i]=v[2];}
+  c.surfaceWaterFraction[3]=1;
+  const up=ctx.riverGpuBuildUpstream(c),pos=ctx.riverGpuRelaxNodes(c,up);
+  const same=i=>Math.abs(pos[i*3]-c.dirX[i])<1e-7&&Math.abs(pos[i*3+1]-c.dirY[i])<1e-7&&Math.abs(pos[i*3+2]-c.dirZ[i])<1e-7;
+  assert.ok(same(0),'a source must stay in its cell');assert.ok(same(3),'an ocean receiver must stay in its cell');
+  const moved=Math.hypot(pos[3]-c.dirX[1],pos[4]-c.dirY[1],pos[5]-c.dirZ[1]);
+  assert.ok(moved>0.01,'a staircase corner must move toward the diagonal, moved='+moved);
+  assert.ok(moved<=0.35*2/8+1e-6,'node displacement must stay bounded');
+  const mid=[0.5*(c.dirX[0]+c.dirX[2]),0.5*(c.dirY[0]+c.dirY[2]),0.5*(c.dirZ[0]+c.dirZ[2])];
+  const before=Math.hypot(c.dirX[1]-mid[0],c.dirY[1]-mid[1],c.dirZ[1]-mid[2]),after=Math.hypot(pos[3]-mid[0],pos[4]-mid[1],pos[5]-mid[2]);
+  assert.ok(after<before*0.8,'relaxation must pull the corner toward the neighbours midpoint');
+}
 console.log('river-vector.test.js: OK');
