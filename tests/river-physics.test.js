@@ -71,7 +71,7 @@ assert.match(shader,/riverClimateGate = mix\(ss\(0\.24,0\.44,moist\),ss\(0\.12,0
 assert.match(shader,/float lthPhys = lth - 0\.22\*ss\(0\.15,0\.75,lakePhys\)/,'physical lakes must keep noise-shaped shorelines');
 assert.ok(gpu.includes('riverDownstream'),'GPU river map must rasterize the diagnosed drainage graph');
 assert.ok(gpu.includes('riverGpuPaintTrunkChains')&&gpu.includes('ds[j]|0'),'GPU river map must paint drainage-graph chains rather than hydrology cells');
-assert.ok(gpu.includes('riverGpuEdgeHash')&&gpu.includes('Math.sin(Math.PI*t)'),'coarse graph edges need deterministic sub-cell bending to hide lattice directions');
+assert.ok(gpu.includes('riverGpuEdgeHash')&&gpu.includes('function riverGpuDisplace('),'coarse graph edges need deterministic sub-cell displacement to hide lattice directions');
 assert.match(gpu,/RIVER_GPU_MODEL=14/,'river display bridge must be the fractal chain model');
 assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'river cubemap must resolve well below the Weather Core cell size');
 assert.match(gpu,/Math\.min\(48,Math\.ceil\(ang\*riverGpuN\*2\.4\)\)/,'displaced pieces need dense spherical samples rather than chunky segments');
