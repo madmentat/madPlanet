@@ -85,7 +85,7 @@ assert.match(gpu,/function riverGpuPaintTrunkChains\(/,'trunks must be painted a
 assert.match(gpu,/function riverGpuDetailedLandAt\(core,dx,dy,dz\)/,'spline rasterization must sample the continuous coastline');
 assert.match(gpu,/new Uint8Array\(6\*N\*N\)/,'continuous coast samples must be memoized instead of rerunning terrain noise for every spline sample');
 assert.match(gpu,/\*4\)\)\)/,'coast guard must resolve below the synoptic Weather Core grid');
-assert.match(gpu,/if\(!riverGpuDetailedLandAt\(core,dx,dy,dz\)\)return;/,'a raster path must terminate at its first ocean sample');
+assert.match(gpu,/if\(!riverGpuDetailedLandAt\(core,d\.x,d\.y,d\.z\)\)return;/,'a raster path must terminate at its first ocean sample');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches'),'GPU bridge must paint the fine tributary overlay');
 assert.ok(!gpu.includes('requestAnimationFrame'),'river texture must not upload from render FPS');
 assert.ok(render.includes('uRiverPhysicsOn')&&render.includes('uRiverTex'));

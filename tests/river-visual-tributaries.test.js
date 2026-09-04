@@ -34,7 +34,7 @@ assert.match(gpu,/RIVER_GPU_MODEL=14/);
 assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'desktop authoritative river reconstruction is 16x');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches')&&gpu.includes('riverVisualBranches'),'GPU bridge must rasterize fine tributaries');
 assert.match(gpu,/function riverGpuDetailedLandAt\(core,dx,dy,dz\)/,'river rasterizer must sample the detailed coastline');
-assert.match(gpu,/if\(!riverGpuDetailedLandAt\(core,dx,dy,dz\)\)return;/,'base spline rasterizer must stop at first ocean crossing');
+assert.match(gpu,/if\(!riverGpuDetailedLandAt\(core,d\.x,d\.y,d\.z\)\)return;/,'base spline rasterizer must stop at first ocean crossing');
 assert.doesNotMatch(pacing,/riverGpuPaintVisualEdge=function/,'per-edge polished raster must stay retired in favour of the chain painter');
 
 /* 0.5.142: the second shadeSurface wrapper was expensive on mobile because it
