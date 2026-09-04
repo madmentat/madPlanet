@@ -95,6 +95,12 @@ assert.ok(live.evaporationRate.some(v=>v>0),'Earth-like warm water should create
 
 assert.ok(h2oSrc.includes('windStateU')&&h2oSrc.includes('h2oAdvectConservative'),
   'H2O transport must consume the real 0.5.42 wind field');
+/* 0.5.152: the CPU continent mirror must evaluate the same simplex recipe as
+   shaders/terrain.glsl, not the pre-0.5.107 cubic fbm. */
+assert.match(h2oSrc,/function h2oSimplex3\(/,'CPU terrain mirror needs the simplex port');
+assert.match(h2oSrc,/let c=h2oClassicSimplexFbm\(qx,qy,qz,5\);\s*c\+=0\.14\*h2oClassicSimplexFbm\(qx\*3\.1\+7,qy\*3\.1\+7,qz\*3\.1\+7,3\);/,'continent noise must match continentNoise() in terrain.glsl');
+assert.match(h2oSrc,/isle\*0\.6\*Math\.max\(isl-0\.22,0\)/,'island term must match terrain()');
+assert.match(h2oSrc,/const fr=Math\.fround/,'lattice decode must emulate GPU float32');
 assert.ok(h2oSrc.includes('world.seedS')&&h2oSrc.includes('h2oMacroTerrainHeight'),
   'evaporation geography must derive from the terrain macro field, not random cloud noise');
 assert.ok(h2oSrc.includes('h2oNormalizeGlobalVapor'),

@@ -26,7 +26,7 @@ const axis=[0,1,0];
 const climate={T:288.15,pressureBar:1.01325,h2oBar:0.0042,cloudCov:.45,iceArea:.02,waterAvail:1,S:1,regime:'temperate',A:.30,tau:.76,globalASR:239,globalOLR:239,sea:.58,iceAlbedo:.62,meanMolarMassKg:.02897,gravityMS2:9.80665,radiusM:6371000,rotationPeriodSec:86400};
 const core=ctx.weatherCoreCreate(12345,12,climate,axis);
 
-assert.equal(core.soilHydrologyModel,1);
+assert.equal(core.soilHydrologyModel,2);
 for(const k of ['soilMoisture','soilCapacity','infiltrationRate','soilDrainageRate','soilEvaporationRate',
   'runoffGenerationRate','runoffWater','runoffRoutedRate','runoffOceanReturnRate','runoffDrop']){
   assert.ok(core[k] instanceof Float32Array,k);assert.equal(core[k].length,core.count,k+' length');
@@ -124,3 +124,26 @@ assert.ok(src['soil-hydrology.js'].includes('macroTerrain')&&src['soil-hydrology
 assert.ok(!src['soil-hydrology.js'].includes('Math.random'),'soil/runoff physics must not use random drainage morphology');
 assert.ok(!src['soil-hydrology.js'].includes('requestAnimationFrame'),'soil hydrology must stay on the fixed Weather Core clock');
 console.log('soil-hydrology.test.js: OK');
+
+/* 0.5.152: the soil store has a climate baseline. Humid warm land starts
+   near field capacity, a desert starts dry, and only the excess above the
+   baseline belongs to the mobile H2O closure. */
+{
+  const c=ctx.weatherCoreCreate(777,12,climate,axis);
+  for(let n=0;n<c.count;n++){c.surfaceWaterFraction[n]=0;c.surfaceTemp[n]=292;c.macroTerrain[n]=0.1;c.soilMoisture[n]=0;c.orographicRoughness[n]=0;}
+  c.relativeHumidity[0]=0.95;c.relativeHumidity[1]=0.08;
+  c.soilHydrologySignature='';
+  ctx.soilRefreshCapacity(c);
+  assert.ok(c.soilBaseline[0]>0.5*c.soilCapacity[0],'humid warm soil must bootstrap near field capacity; got '+c.soilBaseline[0]+' of '+c.soilCapacity[0]);
+  assert.ok(c.soilBaseline[1]<0.08*c.soilCapacity[1],'desert soil must bootstrap dry; got '+c.soilBaseline[1]);
+  assert.equal(c.soilMoisture[0],c.soilBaseline[0],'soil is filled to its baseline at creation');
+  assert.ok(c.soilBaseline.every((v,n)=>v<=c.soilCapacity[n]+1e-6));
+  const before=ctx.soilAreaMeanStores(c);
+  assert.ok(before<1e-6,'baseline soil water must not count in the mobile closure; got '+before);
+  c.soilMoisture[0]=c.soilBaseline[0]+3;
+  assert.ok(Math.abs(ctx.soilAreaMeanStores(c)-3*c.areaWeight[0]/c.areaWeight.reduce((a,b)=>a+b,0))<1e-6,'only the excess above the baseline is mobile');
+  ctx.soilScaleStores(c,0.5);
+  assert.ok(Math.abs(c.soilMoisture[0]-(c.soilBaseline[0]+1.5))<1e-6,'closure scaling must not drain the baseline');
+}
+console.log('soil-hydrology.test.js: 0.5.152 baseline OK');
+

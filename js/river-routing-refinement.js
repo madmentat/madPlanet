@@ -20,11 +20,11 @@
    cell falls just below a display threshold.
 */
 
-const RIVER_ROUTING_REFINEMENT_MODEL=3;
-const RIVER_AREA_START_CELLS=0.72;
+const RIVER_ROUTING_REFINEMENT_MODEL=4;
+const RIVER_AREA_START_CELLS=0.50;
 const RIVER_AREA_FULL_CELLS=4.80;
-const RIVER_Q_START_LOCAL_MULT=1.05;
-const RIVER_Q_FULL_LOCAL_MULT=6.00;
+const RIVER_Q_START_LOCAL_MULT=0.60;
+const RIVER_Q_FULL_LOCAL_MULT=4.00;
 const RIVER_CONTINUITY_START=0.025;
 const RIVER_CONTINUITY_DECAY=0.90;
 const RIVER_CONTINUITY_Q_FLOOR=0.58;
@@ -165,7 +165,9 @@ riverAccumulateDischarge=function(core,dtSec,climate){
                                    RIVER_AREA_FULL_CELLS*cellArea,accA[i]);
     const qStrength=riverSmooth(RIVER_Q_START_LOCAL_MULT*localReferenceQ,
                                 RIVER_Q_FULL_LOCAL_MULT*localReferenceQ,Q);
-    const slopeSupport=0.66+0.34*riverSmooth(6e-8,1.6e-5,core.riverSlope[i]);
+    /* 0.5.152: resolved macro slopes span ~1e-8..2e-6 on the synoptic grid;
+       the earlier 1.6e-5 ceiling made relief irrelevant. */
+    const slopeSupport=0.66+0.34*riverSmooth(1e-8,1.5e-6,core.riverSlope[i]);
     /* A coastal mixed cell is allowed to carry an accumulated trunk to its
        mouth, but may not invent a river from its own cell-local runoff. At the
        current synoptic resolution that mistake reads as a canal connecting

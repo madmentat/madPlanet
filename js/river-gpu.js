@@ -17,7 +17,7 @@
    visible wiggles belong to the sub-grid channel.
 */
 
-const RIVER_GPU_MODEL=10;
+const RIVER_GPU_MODEL=11;
 const RIVER_TEX_UNIT=2;
 const RIVER_GPU_UPSCALE=16;
 const RIVER_BLEND_DEFAULT_MS=900;
@@ -171,7 +171,10 @@ function riverGpuPaintSplineSegment(core,i0,i1,i2,i3,s0,s1,w0,w1,tmp){
     if(!riverGpuDetailedLandAt(core,dx,dy,dz))return false;
     const strength=s0+(s1-s0)*t,width=w0+(w1-w0)*t;
     const widthScale=riverGpuClamp(Math.log2(1+width/18)/7.0,0,1);
-    const radius=0.045+0.10*Math.pow(strength,0.9)+0.22*widthScale*widthScale;
+    /* 0.5.148: radius in display texels (~13 km each). Ordinary stems stay a
+       one-texel ridge; only physically wide channels (Amazon-class) reach
+       two or three texels. */
+    const radius=0.30+0.45*Math.pow(strength,0.9)+0.90*widthScale*widthScale;
     riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.22+0.78*strength,tmp);
   }
   return true;
@@ -215,7 +218,7 @@ function riverGpuPaintVisualEdge(core,branch,p,tmp){
     let dx=d.x+nx*amp*wave,dy=d.y+ny*amp*wave,dz=d.z+nz*amp*wave;
     const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
     if(!riverGpuDetailedLandAt(core,dx,dy,dz))return false;
-    const strength=s0+(s1-s0)*t,radius=0.035+0.055*Math.sqrt(strength);
+    const strength=s0+(s1-s0)*t,radius=0.25+0.35*Math.sqrt(strength);
     riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.16+0.50*strength,tmp);
   }
   return true;
@@ -249,7 +252,7 @@ function riverGpuReadCurrent(core){
     const j=core.riverDownstream?.[i]|0;
     if(j<0||j>=core.count){
       const width=Math.max(0,Number(core.riverWidthM?.[i])||0),ws=riverGpuClamp(Math.log2(1+width/18)/7.0,0,1);
-      riverGpuPaintDir(riverGpuCurrRiver,ix,iy,iz,0.045+0.10*Math.pow(strength,0.9)+0.22*ws*ws,0.22+0.78*strength,tmp);
+      riverGpuPaintDir(riverGpuCurrRiver,ix,iy,iz,0.30+0.45*Math.pow(strength,0.9)+0.90*ws*ws,0.22+0.78*strength,tmp);
       continue;
     }
     riverGpuPaintEdge(core,i,j,up,tmp);

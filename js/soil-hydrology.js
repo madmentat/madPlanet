@@ -17,7 +17,7 @@
    evaporation provides the reverse transfer back to atmospheric vapor.
 */
 
-const SOIL_HYDROLOGY_MODEL = 1;
+const SOIL_HYDROLOGY_MODEL = 2;
 const SOIL_CAPACITY_FLAT_KG_M2 = 180.0;
 const SOIL_CAPACITY_RUGGED_KG_M2 = 35.0;
 const SOIL_FIELD_CAPACITY_FRACTION = 0.72;
@@ -47,6 +47,7 @@ function soilEnsureFields(core){
   const f32=k=>{if(!core[k]||core[k].length!==n)core[k]=new Float32Array(n);};
   f32('soilMoisture');
   f32('soilCapacity');
+  f32('soilBaseline');
   f32('infiltrationRate');
   f32('soilDrainageRate');
   f32('soilEvaporationRate');
@@ -96,6 +97,33 @@ function soilRefreshCapacity(core){
     }
   }
   core.soilHydrologySignature=sig;
+  soilRefreshBaseline(core);
+  return core;
+}
+
+/* 0.5.152: climate baseline of the soil store. Earth's root-zone soil holds
+   about 100 kg m^-2 of water, several times the whole atmosphere, and it is
+   in balance with the local climate rather than filled from an empty start.
+   Until now soilMoisture began at zero and, being part of the mobile column
+   closure (~20 kg m^-2 area mean), could never exceed a tenth of its
+   capacity: every continent looked like a desert to the river model.
+   The baseline is treated like the ocean: exchanges below it are exchanges
+   with the large condensed/groundwater reservoir; only the EXCESS above it
+   counts in the weather-scale mobile closure. */
+function soilBaselineFraction(core,i){
+  const rh=soilClamp(core?.relativeHumidity?.[i]??core?.humidity?.[i]??0,0,1.5);
+  const T=Number(core?.surfaceTemp?.[i]);
+  const liquid=Number.isFinite(T)?soilSmooth(266,278,T)*(1-soilSmooth(368,395,T)):1;
+  return SOIL_FIELD_CAPACITY_FRACTION*(0.06+0.94*soilSmooth(0.30,0.88,rh))*liquid;
+}
+function soilRefreshBaseline(core){
+  if(!core?.soilBaseline||!core?.soilCapacity) return core;
+  for(let i=0;i<core.count;i++){
+    const cap=Math.max(0,core.soilCapacity[i]);
+    const base=soilClamp(cap*soilBaselineFraction(core,i),0,cap);
+    core.soilBaseline[i]=base;
+    if(core.soilMoisture[i]<base) core.soilMoisture[i]=base;
+  }
   return core;
 }
 
@@ -137,7 +165,7 @@ function soilAreaMeanStores(core){
     sw+=w;
     sum+=w*(Math.max(0,core.surfaceLiquidWater?.[i]||0)+
             Math.max(0,core.surfaceSnowWater?.[i]||0)+
-            Math.max(0,core.soilMoisture[i])+
+            Math.max(0,core.soilMoisture[i]-(core.soilBaseline?.[i]||0))+
             Math.max(0,core.runoffWater[i]));
   }
   return sum/Math.max(1e-12,sw);
@@ -148,7 +176,8 @@ function soilScaleStores(core,scale){
   for(let i=0;i<core.count;i++){
     if(core.surfaceLiquidWater) core.surfaceLiquidWater[i]=Math.max(0,core.surfaceLiquidWater[i]*scale);
     if(core.surfaceSnowWater) core.surfaceSnowWater[i]=Math.max(0,core.surfaceSnowWater[i]*scale);
-    core.soilMoisture[i]=Math.max(0,core.soilMoisture[i]*scale);
+    const base=core.soilBaseline?.[i]||0;
+    core.soilMoisture[i]=Math.max(0,base+Math.max(0,core.soilMoisture[i]-base)*scale);
     core.runoffWater[i]=Math.max(0,core.runoffWater[i]*scale);
   }
 }

@@ -102,26 +102,29 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float rn = fbm(sN*5.2 + uSeedS*1.9 + 0.5*vec3(riverWarpX,riverWarpY,0.0), 4);
   float wVar = 0.45 + 1.15*(0.5+0.5*fbm(sN*19.0 + uSeedS + vec3(71.0), 3));
   float wReal = mix(0.013, 0.0030, ss(0.02,0.22,h)) * wVar;
-  /* 0.5.146: the physical river cubemap is a CORRIDOR, never a brush. One
-     display texel spans ~50 km on the desktop grid, so painting physRiverCore
-     directly as water produced rivers 50..400 km wide with round 300 km
-     lakes. Thin channel geometry comes from the sub-grid function; physics
-     decides where channels exist (resolved soil water), how dense they are,
-     and which corridor carries the dominant trunk. */
-  float trunkGain = mix(1.0, 1.55, physRiverCore);
-  wReal *= mix(1.0,trunkGain,uRiverPhysicsOn);
+  /* 0.5.146: the physical river cubemap is a CORRIDOR, never a wide brush.
+     One display texel spans ~13 km, so painting a fat physRiverCore as water
+     produced rivers 50..400 km wide. 0.5.152: the drainage graph owns the main
+     stems, so the trunk is drawn straight from the map as a THIN line (the
+     painted ridge is 1..3 texels, width set by the physical channel width in
+     river-gpu.js), with no climate or pixel-LOD gating: physics already
+     decided that the river exists. The sub-grid noise network stays the fine
+     detail that appears on approach; earlier it had to coincide with the
+     corridor for a trunk to show at all, which left only scattered dashes. */
   float wPix = tHit*uPixA*1.6;
   float w = max(wReal, wPix);
   float riverSignal = abs(rn) + 0.0016*fbm(sN*260.0+uSeedS,2);
   float riverGeomProc = 1.0 - ss(w*0.82, w*1.06, riverSignal);
   /* 0.5.148: FBM zero contours are morphology, not drainage. Left ungated,
      they form closed level-set rings and show up as impossible looped rivers.
-     The physical halo now owns river existence; the procedural field only
-     cuts a thin irregular channel inside it. A wider acceptance band inside
-     the stronger core keeps the diagnosed trunk continuous. */
-  float trunkChannel = 1.0 - ss(w*1.05, w*1.65, riverSignal);
-  float riverGeomPhys = max(riverGeomProc*physRiverHalo, trunkChannel*physRiverCore);
+     The physical halo owns river existence; the procedural field only cuts a
+     thin irregular channel inside it.
+     0.5.152: the diagnosed trunk is no longer a noise-gated corridor (that
+     left scattered dashes): it is drawn straight from the map as a thin
+     ridge, see trunkLine below and the riv = max(...) line. */
+  float riverGeomPhys = riverGeomProc*physRiverHalo;
   float riverGeom = mix(riverGeomProc,riverGeomPhys,uRiverPhysicsOn);
+  float trunkLine = ss(0.14, 0.40, riverPhys) * (1.0 - ss(2.4, 3.2, uCamDist));
   float floodplainProc = 1.0-ss(wReal*1.7,wReal*6.2,abs(rn));
   floodplainProc *= 1.0-ss(0.14,0.32,h);
   float floodplainPhys = floodplainProc*(0.55+0.45*physRiverHalo);
@@ -263,6 +266,8 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     float riverClimateGate = mix(ss(0.24,0.44,moist),ss(0.12,0.40,max(soilMoistPhys,physRiverHalo)),uRiverPhysicsOn);
     float riverHighlandGate = mix(1.0-ss(0.16,0.30,h),1.0-0.45*ss(0.20,0.42,h),uRiverPhysicsOn);
     riv *= riverClimateGate*riverHighlandGate;
+    /* Physics-owned trunk: visible at every zoom the map resolves. */
+    riv = max(riv, trunkLine*uRiverPhysicsOn*riverHighlandGate);
     float lakeClimateGate = mix(ss(0.20,0.38,moist),0.72+0.28*physLakeCore,uRiverPhysicsOn);
     float lake = lakeGeom*lakeClimateGate;
     float waterScale = hydroReveal*(1.0-ss(0.18,0.72,snowM));

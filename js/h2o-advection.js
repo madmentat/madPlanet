@@ -79,15 +79,89 @@ function h2oFbm(x,y,z,oct){
   }
   return sum;
 }
+/* 0.5.152: exact scalar port of shaders/noise.glsl simplex3/fbmSimplex.
+   Since 0.5.107 the rendered continents come from classicSimplexFbm; this
+   CPU mirror still evaluated the old cubic-lattice fbm, so every physical
+   field (land/ocean mask, soil, rivers, coasts, land ice) was computed for a
+   planet that did not match the picture. */
+function h2oMod289(x){return x-289*Math.floor(x/289);}
+function h2oPerm(x){return h2oMod289(((x*34)+1)*x);}
+function h2oTisqrt(r){return 1.79284291400159-0.85373472095314*r;}
+function h2oSimplex3(vx,vy,vz){
+  const C1=1/6,C2=1/3;
+  const s=(vx+vy+vz)*C2;
+  const ix=Math.floor(vx+s),iy=Math.floor(vy+s),iz=Math.floor(vz+s);
+  const t=(ix+iy+iz)*C1;
+  const x0x=vx-ix+t,x0y=vy-iy+t,x0z=vz-iz+t;
+  const gx=x0x>=x0y?1:0,gy=x0y>=x0z?1:0,gz=x0z>=x0x?1:0;
+  const lx=1-gx,ly=1-gy,lz=1-gz;
+  const i1x=Math.min(gx,lz),i1y=Math.min(gy,lx),i1z=Math.min(gz,ly);
+  const i2x=Math.max(gx,lz),i2y=Math.max(gy,lx),i2z=Math.max(gz,ly);
+  const x1x=x0x-i1x+C1,x1y=x0y-i1y+C1,x1z=x0z-i1z+C1;
+  const x2x=x0x-i2x+C2,x2y=x0y-i2y+C2,x2z=x0z-i2z+C2;
+  const x3x=x0x-0.5,x3y=x0y-0.5,x3z=x0z-0.5;
+  const mx=h2oMod289(ix),my=h2oMod289(iy),mz=h2oMod289(iz);
+  const p0=h2oPerm(h2oPerm(h2oPerm(mz)+my)+mx);
+  const p1=h2oPerm(h2oPerm(h2oPerm(mz+i1z)+my+i1y)+mx+i1x);
+  const p2=h2oPerm(h2oPerm(h2oPerm(mz+i2z)+my+i2y)+mx+i2x);
+  const p3=h2oPerm(h2oPerm(h2oPerm(mz+1)+my+1)+mx+1);
+  /* ns = n_*D.wyz - D.xzx. The gradient lattice decode uses floor() on
+     products such as 49*(1/7)*(1/7): in the GPU's IEEE single precision that
+     rounds to 1.0000005 and floors to 1, in double it is 0.99999999 and
+     floors to 0. Emulate float32 exactly here so the CPU planet is the GPU's. */
+  const fr=Math.fround,nsx=fr(fr(1/7)*2),nsy=fr(fr(fr(1/7)*0.5)-1),nsz=fr(1/7);
+  const grad=(p,out)=>{
+    const j=fr(p-49*Math.floor(fr(fr(p*nsz)*nsz)));
+    const x_=Math.floor(fr(j*nsz)),y_=Math.floor(fr(j-7*x_));
+    const x=fr(fr(x_*nsx)+nsy),y=fr(fr(y_*nsx)+nsy);
+    const h=fr(fr(1-Math.abs(x))-Math.abs(y));
+    const s0x=Math.floor(x)*2+1,s0y=Math.floor(y)*2+1;
+    const sh=(0>=h)?-1:0;  /* -step(h,0) */
+    out.x=x+s0x*sh;out.y=y+s0y*sh;out.z=h;return out;
+  };
+  const g0={x:0,y:0,z:0},g1={x:0,y:0,z:0},g2={x:0,y:0,z:0},g3={x:0,y:0,z:0};
+  grad(p0,g0);grad(p1,g1);grad(p2,g2);grad(p3,g3);
+  const n0=h2oTisqrt(g0.x*g0.x+g0.y*g0.y+g0.z*g0.z),n1=h2oTisqrt(g1.x*g1.x+g1.y*g1.y+g1.z*g1.z);
+  const n2=h2oTisqrt(g2.x*g2.x+g2.y*g2.y+g2.z*g2.z),n3=h2oTisqrt(g3.x*g3.x+g3.y*g3.y+g3.z*g3.z);
+  let m0=Math.max(0.6-(x0x*x0x+x0y*x0y+x0z*x0z),0),m1=Math.max(0.6-(x1x*x1x+x1y*x1y+x1z*x1z),0);
+  let m2=Math.max(0.6-(x2x*x2x+x2y*x2y+x2z*x2z),0),m3=Math.max(0.6-(x3x*x3x+x3y*x3y+x3z*x3z),0);
+  m0*=m0;m1*=m1;m2*=m2;m3*=m3;
+  return 42*(m0*m0*n0*(g0.x*x0x+g0.y*x0y+g0.z*x0z)+m1*m1*n1*(g1.x*x1x+g1.y*x1y+g1.z*x1z)
+            +m2*m2*n2*(g2.x*x2x+g2.y*x2y+g2.z*x2z)+m3*m3*n3*(g3.x*x3x+g3.y*x3y+g3.z*x3z));
+}
+function h2oFbmSimplex(x,y,z,oct){
+  let amp=0.5,sum=0;
+  for(let i=0;i<oct;i++){
+    sum+=amp*h2oSimplex3(x,y,z);
+    const nx=(-0.80*y-0.60*z)*2.03+3.1;
+    const ny=( 0.80*x+0.36*y-0.48*z)*2.03+3.1;
+    const nz=( 0.60*x-0.48*y+0.64*z)*2.03+3.1;
+    x=nx;y=ny;z=nz;amp*=0.5;
+  }
+  return sum;
+}
+/* classicSimplexFbm = 0.50*fbmSimplex */
+function h2oClassicSimplexFbm(x,y,z,oct){return 0.5*h2oFbmSimplex(x,y,z,oct);}
+/* Height above the shader's zero (sea level is subtracted by callers through
+   h2oSeaLevelProxy). Mirrors terrain(): continentNoise*0.95 + islands + the
+   near-coast 0.02 cubic ripple. Tectonic mountain uplift is not mirrored. */
 function h2oMacroTerrainHeight(dx,dy,dz){
   const cont=typeof state!=='undefined'?h2oClamp(state.cont,0,1):0.45;
+  const isle=(typeof state!=='undefined'&&Number.isFinite(state.isle))?h2oClamp(state.isle,0,1):0.45;
   const f=0.7+(2.6-0.7)*cont;
   const seed=(typeof world!=='undefined'&&world&&world.seedS)?world.seedS:[0,0,0];
   const px=dx*f+seed[0],py=dy*f+seed[1],pz=dz*f+seed[2];
-  const wx=h2oFbm(px+1.7,py+9.2,pz+3.1,2);
-  const wy=h2oFbm(px+8.3,py+2.8,pz+5.9,2);
-  const wz=h2oFbm(px+4.6,py+7.1,pz+0.7,2);
-  return 0.95*h2oFbm(px+0.9*wx,py+0.9*wy,pz+0.9*wz,5);
+  const wx=h2oClassicSimplexFbm(px+1.7,py+9.2,pz+3.1,2);
+  const wy=h2oClassicSimplexFbm(px+8.3,py+2.8,pz+5.9,2);
+  const wz=h2oClassicSimplexFbm(px+4.6,py+7.1,pz+0.7,2);
+  const qx=px+0.9*wx,qy=py+0.9*wy,qz=pz+0.9*wz;
+  let c=h2oClassicSimplexFbm(qx,qy,qz,5);
+  c+=0.14*h2oClassicSimplexFbm(qx*3.1+7,qy*3.1+7,qz*3.1+7,3);
+  const isl=h2oClassicSimplexFbm(dx*5.5+seed[0]*1.7+23.1,dy*5.5+seed[1]*1.7+23.1,dz*5.5+seed[2]*1.7+23.1,4);
+  let h=c*0.95+isle*0.6*Math.max(isl-0.22,0);
+  const sea=h2oSeaLevelProxy();
+  if(h-sea>-0.06)h+=0.02*h2oFbm(dx*12+seed[0],dy*12+seed[1],dz*12+seed[2],2);
+  return h;
 }
 function h2oSurfaceSignature(){
   const seed=(typeof state!=='undefined')?(state.seed|0):0;
