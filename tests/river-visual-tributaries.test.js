@@ -18,8 +18,8 @@ const executableVisual=visual.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|\s)\/\
 assert.ok(!/Math\.random|requestAnimationFrame/.test(executableVisual),'visual tributaries must be deterministic and off render FPS');
 for(const token of ['riverVisualBasin','riverVisualDistToTrunk','riverVisualWetness','riverVisualTraceBranch','riverVisualChooseNext','riverVisualTraceFeeder','riverVisualChooseUpstream'])
   assert.ok(visual.includes(token),'missing tributary constraint '+token);
-assert.match(visual,/RIVER_VISUAL_TRIBUTARY_MODEL=6/);
-assert.match(visual,/probability=riverClamp\(\(score-RIVER_VISUAL_SOURCE_MIN\)\*1\.60\+0\.40,0\.40,0\.85\)/,'most eligible headwaters must be accepted at synoptic resolution');
+assert.match(visual,/RIVER_VISUAL_TRIBUTARY_MODEL=7/);
+assert.match(visual,/probability=riverClamp\(\(score-RIVER_VISUAL_SOURCE_MIN\)\*1\.05\+0\.12,0\.12,0\.62\)/,'decorative headwaters must remain sparse instead of filling every eligible coarse cell');
 assert.match(visual,/RIVER_VISUAL_MAX_TRUNK_DISTANCE=22/);
 assert.match(visual,/RIVER_VISUAL_REBUILD_TICKS=12/,'fine display network must not churn every few x4 weather ticks');
 assert.match(visual,/hj>h0\+RIVER_PRIORITY_EPS\*6/,'downstream visual branches must reject uphill neighbours');
@@ -30,12 +30,12 @@ assert.match(visual,/dj>d0/,'reverse feeder tracing must move away from the rece
 assert.match(visual,/kind:'feeder'/,'display graph needs explicit fine side feeders');
 assert.match(visual,/riverCoastDistance&&\(core\.riverCoastDistance\[i\]\|0\)<=1/,'visual tributaries must not originate in the coastal ring');
 assert.match(visual,/riverCoastDistance&&\(core\.riverCoastDistance\[j\]\|0\)<=1/,'reverse feeders must not recruit a coastal source');
-assert.match(gpu,/RIVER_GPU_MODEL=14/);
+assert.match(gpu,/RIVER_GPU_MODEL=15/);
 assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'desktop authoritative river reconstruction is 16x');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches')&&gpu.includes('riverVisualBranches'),'GPU bridge must rasterize fine tributaries');
 assert.match(gpu,/function riverGpuDetailedLandAt\(core,dx,dy,dz\)/,'river rasterizer must sample the detailed coastline');
-assert.match(gpu,/if\(!riverGpuDetailedLandAt\(core,d\.x,d\.y,d\.z\)\)return;/,'base spline rasterizer must stop at first ocean crossing');
-assert.doesNotMatch(pacing,/riverGpuPaintVisualEdge=function/,'per-edge polished raster must stay retired in favour of the chain painter');
+assert.match(gpu,/if\(!riverGpuDetailedLandAt\(core,dx,dy,dz\)\)return false;/,'base spline rasterizer must stop at first ocean crossing');
+assert.doesNotMatch(pacing,/riverGpuPaintVisualEdge=function/,'frame pacing must not replace the authoritative geometry painter');
 
 /* 0.5.142: the second shadeSurface wrapper was expensive on mobile because it
    duplicated river sampling and could call the 5-tap/two-texture fog sampler a
@@ -49,8 +49,8 @@ assert.match(pacing,/RIVER_VISUAL_POLISH_MODEL=1/,'late river visual polish miss
 assert.match(pacing,/return mobile\?Math\.max\(8,n\*6\):displayBefore\(coreN\)/,'mobile river display must use the cheaper 6x reconstruction');
 assert.match(pacing,/claimedReceiver/,'adjacent feeder receivers must be pruned to prevent comb patterns');
 assert.match(pacing,/cells\.length<3/,'one-cell feeder teeth must be rejected');
-assert.match(gpu,/st=>0\.26\+0\.45\*Math\.sqrt\(st\)/,'fine branch brush must stay narrow');
-assert.match(gpu,/st=>0\.16\+0\.50\*st/,'fine branch centre line must carry a weaker signal than trunks');
+assert.match(gpu,/0\.035\+0\.055\*Math\.sqrt\(strength\)/,'fine branch brush must stay narrow');
+assert.match(gpu,/0\.16\+0\.50\*strength/,'fine branch centre line must carry a weaker signal than trunks');
 for(const build of [sh,ps]){
   assert.ok(build.indexOf('js/river-routing-refinement.js')<build.indexOf('js/river-visual-tributaries.js'));
   assert.ok(build.indexOf('js/river-visual-tributaries.js')<build.indexOf('js/river-gpu.js'));

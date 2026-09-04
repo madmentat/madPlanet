@@ -21,14 +21,14 @@
    dendritic texture; still basin-locked and downhill-only, no invented water.
 */
 
-const RIVER_VISUAL_TRIBUTARY_MODEL=6;
+const RIVER_VISUAL_TRIBUTARY_MODEL=7;
 const RIVER_VISUAL_REBUILD_TICKS=12;
 const RIVER_VISUAL_MAX_BRANCH_STEPS=28;
 const RIVER_VISUAL_MIN_TRUNK_DISTANCE=1;
 const RIVER_VISUAL_MAX_TRUNK_DISTANCE=22;
 const RIVER_VISUAL_CHANNEL_RECEIVER=0.040;
 const RIVER_VISUAL_LAKE_RECEIVER=0.06;
-const RIVER_VISUAL_SOURCE_MIN=0.06;
+const RIVER_VISUAL_SOURCE_MIN=0.08;
 const RIVER_VISUAL_MAX_BRANCHES=2400;
 const RIVER_VISUAL_FEEDER_MAX=1400;
 const RIVER_VISUAL_FEEDER_STEPS=11;
@@ -221,9 +221,7 @@ function riverVisualBuildBranches(core){
     for(let i=pass;i<core.count&&branches.length<maxBranches;i+=3){
       if(claimed[i])continue;const score=scores[i];if(score<RIVER_VISUAL_SOURCE_MIN)continue;
       if(!riverVisualSourceProminent(core,i,score))continue;
-      /* 0.5.152: at 500 km per synoptic cell every eligible wet, sloping cell
-         hides many real rivers; accept most of them instead of one in five. */
-      const probability=riverClamp((score-RIVER_VISUAL_SOURCE_MIN)*1.60+0.40,0.40,0.85);
+      const probability=riverClamp((score-RIVER_VISUAL_SOURCE_MIN)*1.05+0.12,0.12,0.62);
       if(riverVisualHash01(core.seed|0,i,0x713+pass)>probability)continue;
       const cells=riverVisualTraceBranch(core,i,0x2911+i*17);if(!cells)continue;
       const end=cells[cells.length-1],endQ=riverClamp(core?.riverChannelStrength?.[end]||0,0,1);
@@ -238,7 +236,7 @@ function riverVisualBuildBranches(core){
     if(!riverVisualIsReceiver(core,i)||riverIsOcean(core,i))continue;
     const channel=riverClamp(core?.riverChannelStrength?.[i]||0,0,1);
     const wet=riverVisualWetness(core,i);
-    const chance=riverClamp(0.35+0.45*wet+0.20*Math.sqrt(channel),0.35,0.88);
+    const chance=riverClamp(0.18+0.48*wet+0.20*Math.sqrt(channel),0.16,0.78);
     if(riverVisualHash01(core.seed|0,i,0x9d31)>chance)continue;
     const cells=riverVisualTraceFeeder(core,i,0x4319+i*29);if(!cells)continue;
     const key=cells.slice(0,Math.min(3,cells.length)).join('>')+'>'+i;

@@ -247,7 +247,7 @@
   <h1>madPlanet</h1>
   <!-- Номер подставляет сборка из VERSION.txt: держать его здесь вторым
        экземпляром значит однажды поднять только один из двух. -->
-  <div class="ver">v0.5.151</div>
+  <div class="ver">v0.5.155</div>
   <div class="sub">МИР <b id="seedLabel">№ —</b></div>
 </div>
 
@@ -292,7 +292,7 @@
 <script>
 'use strict';
 
-const APP_VERSION = '0.5.151';
+const APP_VERSION = '0.5.155';
 
 const VERT = `#version 300 es
 layout(location=0) in vec2 aPos;
@@ -1697,6 +1697,9 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   /* 0.5.131: the CPU drainage graph owns river/lake existence. The denser
      cubemap carries connected rasterized channel corridors; FBM below is only
      sub-grid edge/morphology detail inside those physical corridors. */
+  /* 0.5.155: one unwarped sample preserves the cubemap as a permission
+     corridor. Multi-tap max filtering dilated a one-texel ridge into a sea at
+     distance; the visible sub-grid channel below already has pixel AA. */
   vec4 riverHydroTex = texture(uRiverTex, normalize(sN));
   float riverPhys = clamp(mix(riverHydroTex.r, riverHydroTex.b, uRiverBlend),0.0,1.0);
   float lakePhys = clamp(mix(riverHydroTex.g, riverHydroTex.a, uRiverBlend),0.0,1.0);
@@ -1784,23 +1787,17 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float rn = fbm(sN*5.2 + uSeedS*1.9 + 0.5*vec3(riverWarpX,riverWarpY,0.0), 4);
   float wVar = 0.45 + 1.15*(0.5+0.5*fbm(sN*19.0 + uSeedS + vec3(71.0), 3));
   float wReal = mix(0.013, 0.0030, ss(0.02,0.22,h)) * wVar;
-  /* 0.5.146: the physical river cubemap is a CORRIDOR, never a brush. One
-     display texel spans ~50 km on the desktop grid, so painting physRiverCore
-     directly as water produced rivers 50..400 km wide with round 300 km
-     lakes. Thin channel geometry comes from the sub-grid function; physics
-     decides where channels exist (resolved soil water), how dense they are,
-     and which corridor carries the dominant trunk. */
+  /* The physical cubemap is a CORRIDOR, never water. Its texels are far wider
+     than real channels even at 16x Weather Core resolution. */
   float trunkGain = mix(1.0, 1.55, physRiverCore);
   wReal *= mix(1.0,trunkGain,uRiverPhysicsOn);
   float wPix = tHit*uPixA*1.6;
   float w = max(wReal, wPix);
   float riverSignal = abs(rn) + 0.0016*fbm(sN*260.0+uSeedS,2);
   float riverGeomProc = 1.0 - ss(w*0.82, w*1.06, riverSignal);
-  /* 0.5.148: FBM zero contours are morphology, not drainage. Left ungated,
-     they form closed level-set rings and show up as impossible looped rivers.
-     The physical halo now owns river existence; the procedural field only
-     cuts a thin irregular channel inside it. A wider acceptance band inside
-     the stronger core keeps the diagnosed trunk continuous. */
+  /* FBM supplies only sub-grid morphology. The physical halo owns existence,
+     which removes closed noise loops, while the stronger core gets a slightly
+     wider morphology gate to keep a diagnosed stem continuous. */
   float trunkChannel = 1.0 - ss(w*1.05, w*1.65, riverSignal);
   float riverGeomPhys = max(riverGeomProc*physRiverHalo, trunkChannel*physRiverCore);
   float riverGeom = mix(riverGeomProc,riverGeomPhys,uRiverPhysicsOn);
@@ -1965,9 +1962,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     inlandFreeze = (rv>1.0e-4) ? clamp(frozenRv/rv,0.0,1.0) : 0.0;
 
     vec3 inlandWater=mix(vec3(0.022,0.062,0.090), vec3(0.045,0.135,0.155), ss(0.30,0.85,temp));
-    vec3 inlandIce=vec3(0.76,0.82,0.88)*(0.90+0.10*mo3);
+    vec3 inlandIce=vec3(0.80,0.87,0.94)*(0.92+0.08*mo3);
     alb = mix(alb, inlandWater, inlandLiquid*0.90);
-    alb = mix(alb, inlandIce, frozenRv*0.96);
+    /* frozen channels read as pale ice threads, not opaque roads */
+    alb = mix(alb, inlandIce, frozenRv*0.62);
   }
 
   alb = mix(alb, snowC, snowM);
@@ -10655,15 +10653,89 @@ function h2oFbm(x,y,z,oct){
   }
   return sum;
 }
+/* 0.5.152: exact scalar port of shaders/noise.glsl simplex3/fbmSimplex.
+   Since 0.5.107 the rendered continents come from classicSimplexFbm; this
+   CPU mirror still evaluated the old cubic-lattice fbm, so every physical
+   field (land/ocean mask, soil, rivers, coasts, land ice) was computed for a
+   planet that did not match the picture. */
+function h2oMod289(x){return x-289*Math.floor(x/289);}
+function h2oPerm(x){return h2oMod289(((x*34)+1)*x);}
+function h2oTisqrt(r){return 1.79284291400159-0.85373472095314*r;}
+function h2oSimplex3(vx,vy,vz){
+  const C1=1/6,C2=1/3;
+  const s=(vx+vy+vz)*C2;
+  const ix=Math.floor(vx+s),iy=Math.floor(vy+s),iz=Math.floor(vz+s);
+  const t=(ix+iy+iz)*C1;
+  const x0x=vx-ix+t,x0y=vy-iy+t,x0z=vz-iz+t;
+  const gx=x0x>=x0y?1:0,gy=x0y>=x0z?1:0,gz=x0z>=x0x?1:0;
+  const lx=1-gx,ly=1-gy,lz=1-gz;
+  const i1x=Math.min(gx,lz),i1y=Math.min(gy,lx),i1z=Math.min(gz,ly);
+  const i2x=Math.max(gx,lz),i2y=Math.max(gy,lx),i2z=Math.max(gz,ly);
+  const x1x=x0x-i1x+C1,x1y=x0y-i1y+C1,x1z=x0z-i1z+C1;
+  const x2x=x0x-i2x+C2,x2y=x0y-i2y+C2,x2z=x0z-i2z+C2;
+  const x3x=x0x-0.5,x3y=x0y-0.5,x3z=x0z-0.5;
+  const mx=h2oMod289(ix),my=h2oMod289(iy),mz=h2oMod289(iz);
+  const p0=h2oPerm(h2oPerm(h2oPerm(mz)+my)+mx);
+  const p1=h2oPerm(h2oPerm(h2oPerm(mz+i1z)+my+i1y)+mx+i1x);
+  const p2=h2oPerm(h2oPerm(h2oPerm(mz+i2z)+my+i2y)+mx+i2x);
+  const p3=h2oPerm(h2oPerm(h2oPerm(mz+1)+my+1)+mx+1);
+  /* ns = n_*D.wyz - D.xzx. The gradient lattice decode uses floor() on
+     products such as 49*(1/7)*(1/7): in the GPU's IEEE single precision that
+     rounds to 1.0000005 and floors to 1, in double it is 0.99999999 and
+     floors to 0. Emulate float32 exactly here so the CPU planet is the GPU's. */
+  const fr=Math.fround,nsx=fr(fr(1/7)*2),nsy=fr(fr(fr(1/7)*0.5)-1),nsz=fr(1/7);
+  const grad=(p,out)=>{
+    const j=fr(p-49*Math.floor(fr(fr(p*nsz)*nsz)));
+    const x_=Math.floor(fr(j*nsz)),y_=Math.floor(fr(j-7*x_));
+    const x=fr(fr(x_*nsx)+nsy),y=fr(fr(y_*nsx)+nsy);
+    const h=fr(fr(1-Math.abs(x))-Math.abs(y));
+    const s0x=Math.floor(x)*2+1,s0y=Math.floor(y)*2+1;
+    const sh=(0>=h)?-1:0;  /* -step(h,0) */
+    out.x=x+s0x*sh;out.y=y+s0y*sh;out.z=h;return out;
+  };
+  const g0={x:0,y:0,z:0},g1={x:0,y:0,z:0},g2={x:0,y:0,z:0},g3={x:0,y:0,z:0};
+  grad(p0,g0);grad(p1,g1);grad(p2,g2);grad(p3,g3);
+  const n0=h2oTisqrt(g0.x*g0.x+g0.y*g0.y+g0.z*g0.z),n1=h2oTisqrt(g1.x*g1.x+g1.y*g1.y+g1.z*g1.z);
+  const n2=h2oTisqrt(g2.x*g2.x+g2.y*g2.y+g2.z*g2.z),n3=h2oTisqrt(g3.x*g3.x+g3.y*g3.y+g3.z*g3.z);
+  let m0=Math.max(0.6-(x0x*x0x+x0y*x0y+x0z*x0z),0),m1=Math.max(0.6-(x1x*x1x+x1y*x1y+x1z*x1z),0);
+  let m2=Math.max(0.6-(x2x*x2x+x2y*x2y+x2z*x2z),0),m3=Math.max(0.6-(x3x*x3x+x3y*x3y+x3z*x3z),0);
+  m0*=m0;m1*=m1;m2*=m2;m3*=m3;
+  return 42*(m0*m0*n0*(g0.x*x0x+g0.y*x0y+g0.z*x0z)+m1*m1*n1*(g1.x*x1x+g1.y*x1y+g1.z*x1z)
+            +m2*m2*n2*(g2.x*x2x+g2.y*x2y+g2.z*x2z)+m3*m3*n3*(g3.x*x3x+g3.y*x3y+g3.z*x3z));
+}
+function h2oFbmSimplex(x,y,z,oct){
+  let amp=0.5,sum=0;
+  for(let i=0;i<oct;i++){
+    sum+=amp*h2oSimplex3(x,y,z);
+    const nx=(-0.80*y-0.60*z)*2.03+3.1;
+    const ny=( 0.80*x+0.36*y-0.48*z)*2.03+3.1;
+    const nz=( 0.60*x-0.48*y+0.64*z)*2.03+3.1;
+    x=nx;y=ny;z=nz;amp*=0.5;
+  }
+  return sum;
+}
+/* classicSimplexFbm = 0.50*fbmSimplex */
+function h2oClassicSimplexFbm(x,y,z,oct){return 0.5*h2oFbmSimplex(x,y,z,oct);}
+/* Height above the shader's zero (sea level is subtracted by callers through
+   h2oSeaLevelProxy). Mirrors terrain(): continentNoise*0.95 + islands + the
+   near-coast 0.02 cubic ripple. Tectonic mountain uplift is not mirrored. */
 function h2oMacroTerrainHeight(dx,dy,dz){
   const cont=typeof state!=='undefined'?h2oClamp(state.cont,0,1):0.45;
+  const isle=(typeof state!=='undefined'&&Number.isFinite(state.isle))?h2oClamp(state.isle,0,1):0.45;
   const f=0.7+(2.6-0.7)*cont;
   const seed=(typeof world!=='undefined'&&world&&world.seedS)?world.seedS:[0,0,0];
   const px=dx*f+seed[0],py=dy*f+seed[1],pz=dz*f+seed[2];
-  const wx=h2oFbm(px+1.7,py+9.2,pz+3.1,2);
-  const wy=h2oFbm(px+8.3,py+2.8,pz+5.9,2);
-  const wz=h2oFbm(px+4.6,py+7.1,pz+0.7,2);
-  return 0.95*h2oFbm(px+0.9*wx,py+0.9*wy,pz+0.9*wz,5);
+  const wx=h2oClassicSimplexFbm(px+1.7,py+9.2,pz+3.1,2);
+  const wy=h2oClassicSimplexFbm(px+8.3,py+2.8,pz+5.9,2);
+  const wz=h2oClassicSimplexFbm(px+4.6,py+7.1,pz+0.7,2);
+  const qx=px+0.9*wx,qy=py+0.9*wy,qz=pz+0.9*wz;
+  let c=h2oClassicSimplexFbm(qx,qy,qz,5);
+  c+=0.14*h2oClassicSimplexFbm(qx*3.1+7,qy*3.1+7,qz*3.1+7,3);
+  const isl=h2oClassicSimplexFbm(dx*5.5+seed[0]*1.7+23.1,dy*5.5+seed[1]*1.7+23.1,dz*5.5+seed[2]*1.7+23.1,4);
+  let h=c*0.95+isle*0.6*Math.max(isl-0.22,0);
+  const sea=h2oSeaLevelProxy();
+  if(h-sea>-0.06)h+=0.02*h2oFbm(dx*12+seed[0],dy*12+seed[1],dz*12+seed[2],2);
+  return h;
 }
 function h2oSurfaceSignature(){
   const seed=(typeof state!=='undefined')?(state.seed|0):0;
@@ -11610,7 +11682,7 @@ if(typeof refreshWeatherCoreDiagnostics==='function'){
    evaporation provides the reverse transfer back to atmospheric vapor.
 */
 
-const SOIL_HYDROLOGY_MODEL = 1;
+const SOIL_HYDROLOGY_MODEL = 2;
 const SOIL_CAPACITY_FLAT_KG_M2 = 180.0;
 const SOIL_CAPACITY_RUGGED_KG_M2 = 35.0;
 const SOIL_FIELD_CAPACITY_FRACTION = 0.72;
@@ -11640,6 +11712,7 @@ function soilEnsureFields(core){
   const f32=k=>{if(!core[k]||core[k].length!==n)core[k]=new Float32Array(n);};
   f32('soilMoisture');
   f32('soilCapacity');
+  f32('soilBaseline');
   f32('infiltrationRate');
   f32('soilDrainageRate');
   f32('soilEvaporationRate');
@@ -11689,6 +11762,33 @@ function soilRefreshCapacity(core){
     }
   }
   core.soilHydrologySignature=sig;
+  soilRefreshBaseline(core);
+  return core;
+}
+
+/* 0.5.152: climate baseline of the soil store. Earth's root-zone soil holds
+   about 100 kg m^-2 of water, several times the whole atmosphere, and it is
+   in balance with the local climate rather than filled from an empty start.
+   Until now soilMoisture began at zero and, being part of the mobile column
+   closure (~20 kg m^-2 area mean), could never exceed a tenth of its
+   capacity: every continent looked like a desert to the river model.
+   The baseline is treated like the ocean: exchanges below it are exchanges
+   with the large condensed/groundwater reservoir; only the EXCESS above it
+   counts in the weather-scale mobile closure. */
+function soilBaselineFraction(core,i){
+  const rh=soilClamp(core?.relativeHumidity?.[i]??core?.humidity?.[i]??0,0,1.5);
+  const T=Number(core?.surfaceTemp?.[i]);
+  const liquid=Number.isFinite(T)?soilSmooth(266,278,T)*(1-soilSmooth(368,395,T)):1;
+  return SOIL_FIELD_CAPACITY_FRACTION*(0.06+0.94*soilSmooth(0.30,0.88,rh))*liquid;
+}
+function soilRefreshBaseline(core){
+  if(!core?.soilBaseline||!core?.soilCapacity) return core;
+  for(let i=0;i<core.count;i++){
+    const cap=Math.max(0,core.soilCapacity[i]);
+    const base=soilClamp(cap*soilBaselineFraction(core,i),0,cap);
+    core.soilBaseline[i]=base;
+    if(core.soilMoisture[i]<base) core.soilMoisture[i]=base;
+  }
   return core;
 }
 
@@ -11730,7 +11830,7 @@ function soilAreaMeanStores(core){
     sw+=w;
     sum+=w*(Math.max(0,core.surfaceLiquidWater?.[i]||0)+
             Math.max(0,core.surfaceSnowWater?.[i]||0)+
-            Math.max(0,core.soilMoisture[i])+
+            Math.max(0,core.soilMoisture[i]-(core.soilBaseline?.[i]||0))+
             Math.max(0,core.runoffWater[i]));
   }
   return sum/Math.max(1e-12,sw);
@@ -11741,7 +11841,8 @@ function soilScaleStores(core,scale){
   for(let i=0;i<core.count;i++){
     if(core.surfaceLiquidWater) core.surfaceLiquidWater[i]=Math.max(0,core.surfaceLiquidWater[i]*scale);
     if(core.surfaceSnowWater) core.surfaceSnowWater[i]=Math.max(0,core.surfaceSnowWater[i]*scale);
-    core.soilMoisture[i]=Math.max(0,core.soilMoisture[i]*scale);
+    const base=core.soilBaseline?.[i]||0;
+    core.soilMoisture[i]=Math.max(0,base+Math.max(0,core.soilMoisture[i]-base)*scale);
     core.runoffWater[i]=Math.max(0,core.runoffWater[i]*scale);
   }
 }
@@ -15597,7 +15698,7 @@ if(typeof window!=='undefined')window.__madPlanetRiverPhysics={
    cell falls just below a display threshold.
 */
 
-const RIVER_ROUTING_REFINEMENT_MODEL=3;
+const RIVER_ROUTING_REFINEMENT_MODEL=5;
 const RIVER_AREA_START_CELLS=0.72;
 const RIVER_AREA_FULL_CELLS=4.80;
 const RIVER_Q_START_LOCAL_MULT=1.05;
@@ -15742,7 +15843,9 @@ riverAccumulateDischarge=function(core,dtSec,climate){
                                    RIVER_AREA_FULL_CELLS*cellArea,accA[i]);
     const qStrength=riverSmooth(RIVER_Q_START_LOCAL_MULT*localReferenceQ,
                                 RIVER_Q_FULL_LOCAL_MULT*localReferenceQ,Q);
-    const slopeSupport=0.66+0.34*riverSmooth(6e-8,1.6e-5,core.riverSlope[i]);
+    /* 0.5.152: resolved macro slopes span ~1e-8..2e-6 on the synoptic grid;
+       the earlier 1.6e-5 ceiling made relief irrelevant. */
+    const slopeSupport=0.66+0.34*riverSmooth(1e-8,1.5e-6,core.riverSlope[i]);
     /* A coastal mixed cell is allowed to carry an accumulated trunk to its
        mouth, but may not invent a river from its own cell-local runoff. At the
        current synoptic resolution that mistake reads as a canal connecting
@@ -15803,7 +15906,7 @@ if(typeof window!=='undefined')window.__madPlanetRiverRoutingRefinement={
    dendritic texture; still basin-locked and downhill-only, no invented water.
 */
 
-const RIVER_VISUAL_TRIBUTARY_MODEL=5;
+const RIVER_VISUAL_TRIBUTARY_MODEL=7;
 const RIVER_VISUAL_REBUILD_TICKS=12;
 const RIVER_VISUAL_MAX_BRANCH_STEPS=28;
 const RIVER_VISUAL_MIN_TRUNK_DISTANCE=1;
@@ -15877,7 +15980,7 @@ function riverVisualSourceStrength(core,i){
   const d=core.riverVisualDistToTrunk?.[i]|0;
   if(d<RIVER_VISUAL_MIN_TRUNK_DISTANCE||d>RIVER_VISUAL_MAX_TRUNK_DISTANCE)return 0;
   const wet=riverVisualWetness(core,i);
-  const slope=riverSmooth(8e-9,1.2e-5,core?.riverSlope?.[i]||0);
+  const slope=riverSmooth(1e-8,1.5e-6,core?.riverSlope?.[i]||0);
   const relief=riverSmooth(-0.015,0.18,riverTerrainAt(core,i));
   const distanceRoom=riverSmooth(RIVER_VISUAL_MIN_TRUNK_DISTANCE,7,d);
   return riverClamp(wet*(0.34+0.66*slope)*(0.90+0.10*relief)*(0.90+0.10*distanceRoom),0,1);
@@ -17086,7 +17189,7 @@ if(typeof window!=='undefined')window.__madPlanetResolvedLiftClouds={
    visible wiggles belong to the sub-grid channel.
 */
 
-const RIVER_GPU_MODEL=10;
+const RIVER_GPU_MODEL=15;
 const RIVER_TEX_UNIT=2;
 const RIVER_GPU_UPSCALE=16;
 const RIVER_BLEND_DEFAULT_MS=900;
@@ -17190,14 +17293,15 @@ function riverGpuEdgeHash(seed,i,j,salt){
   return (x>>>0)/4294967296*2-1;
 }
 
-/* Build a cheap reverse link: one upstream parent per cell (first writer wins).
-   Enough for Catmull-Rom context; full multi-parent fans are not needed. */
+/* Build one upstream handle per cell for Catmull-Rom context. Prefer the
+   strongest contributing channel so the main stem, rather than an arbitrary
+   side branch, controls the tangent through a confluence. */
 function riverGpuBuildUpstream(core){
   const n=core.count, up=new Int32Array(n);up.fill(-1);
-  const ds=core.riverDownstream;if(!ds)return up;
+  const ds=core.riverDownstream,strength=core.riverChannelStrength;if(!ds)return up;
   for(let i=0;i<n;i++){
     const j=ds[i]|0;if(j<0||j>=n)continue;
-    if(up[j]<0)up[j]=i;
+    if(up[j]<0||(Number(strength?.[i])||0)>(Number(strength?.[up[j]])||0))up[j]=i;
   }
   return up;
 }
@@ -17216,85 +17320,69 @@ function riverGpuCellDir(core,i,out){
   const q=Math.hypot(out.x,out.y,out.z)||1;out.x/=q;out.y/=q;out.z/=q;return out;
 }
 
-function riverGpuPaintSplineSegment(core,i0,i1,i2,i3,s0,s1,w0,w1,tmp){
+/* 0.5.155: the cubemap is a narrow permission corridor again. Whole-chain
+   Chaikin averaging made long D8 staircases into ruler-straight canals, while
+   drawing its ridge directly in surface.glsl exposed every coarse turn. Work
+   edge by edge with four-cell Catmull context, add a deterministic meander
+   whose offset is exactly zero at both graph nodes, and let the sub-grid
+   shader cut the visible channel inside this corridor. */
+function riverGpuEdgeBend(core,i,j,t,cellAng,salt=0){
+  const h1=riverGpuEdgeHash(core.seed|0,i,j,0x2c1b3c6d^salt);
+  const h2=riverGpuEdgeHash(core.seed|0,i,j,0x165667b1^salt);
+  const envelope=Math.sin(Math.PI*t);
+  /* Squared envelope anchors both position and tangent at the graph nodes.
+     The Catmull tangent can therefore carry a bend through a confluence
+     without an edge-specific lateral derivative creating a visible corner. */
+  const wave=envelope*envelope*(0.84*h1+0.16*h2*Math.sin(2*Math.PI*t));
+  return cellAng*(0.10+0.05*Math.abs(h2))*wave;
+}
+function riverGpuCorridorRadius(strength,widthM){
+  const widthScale=riverGpuClamp(Math.log2(1+Math.max(0,widthM)/18)/7.0,0,1);
+  return 0.045+0.10*Math.pow(riverGpuClamp(strength,0,1),0.9)+0.22*widthScale*widthScale;
+}
+function riverGpuPaintSplineSegment(core,i0,i1,i2,i3,s0,s1,w0,w1,tmp,salt=0,visual=false){
   const p0={x:0,y:0,z:0},p1={x:0,y:0,z:0},p2={x:0,y:0,z:0},p3={x:0,y:0,z:0},d={x:0,y:0,z:0};
   riverGpuCellDir(core,i0,p0);riverGpuCellDir(core,i1,p1);
   riverGpuCellDir(core,i2,p2);riverGpuCellDir(core,i3,p3);
-  const dot=riverGpuClamp(p1.x*p2.x+p1.y*p2.y+p1.z*p2.z,-1,1);
-  const ang=Math.acos(dot);
+  const dot=riverGpuClamp(p1.x*p2.x+p1.y*p2.y+p1.z*p2.z,-1,1),ang=Math.acos(dot);
   let nx=p1.y*p2.z-p1.z*p2.y,ny=p1.z*p2.x-p1.x*p2.z,nz=p1.x*p2.y-p1.y*p2.x;
   const nq=Math.hypot(nx,ny,nz);if(nq>1e-9){nx/=nq;ny/=nq;nz/=nq;}else{nx=ny=nz=0;}
   const cellAng=2/Math.max(8,core.N||32);
-  const h1=riverGpuEdgeHash(core.seed|0,i1,i2,0x2c1b3c6d);
-  const h2=riverGpuEdgeHash(core.seed|0,i1,i2,0x165667b1);
-  const phase0=riverGpuEdgeHash(core.seed|0,i1,i2,0x85ebca77)*Math.PI;
   const steps=Math.max(16,Math.min(96,Math.ceil(Math.max(ang,cellAng)*riverGpuN*3.2)));
-  for(let s=0;s<=steps;s++){
-    const t=s/steps;
-    riverGpuCatmullDir(p0,p1,p2,p3,t,d);
-    const wave=0.85*h1*Math.sin(Math.PI*t+phase0)+0.15*h2*Math.sin(2.1*Math.PI*t+phase0*1.3);
-    const amp=cellAng*(0.12+0.06*Math.abs(h2))*(0.65+0.35*Math.sin(Math.PI*t));
-    const bend=amp*wave;
+  for(let q=0;q<=steps;q++){
+    const t=q/steps;riverGpuCatmullDir(p0,p1,p2,p3,t,d);
+    const bend=riverGpuEdgeBend(core,i1,i2,t,cellAng,salt)*(visual?0.88:1.0);
     let dx=d.x+nx*bend,dy=d.y+ny*bend,dz=d.z+nz*bend;
-    const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
+    const len=Math.hypot(dx,dy,dz)||1;dx/=len;dy/=len;dz/=len;
     if(!riverGpuDetailedLandAt(core,dx,dy,dz))return false;
     const strength=s0+(s1-s0)*t,width=w0+(w1-w0)*t;
-    const widthScale=riverGpuClamp(Math.log2(1+width/18)/7.0,0,1);
-    const radius=0.045+0.10*Math.pow(strength,0.9)+0.22*widthScale*widthScale;
-    riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.22+0.78*strength,tmp);
+    const radius=visual?(0.035+0.055*Math.sqrt(strength)):riverGpuCorridorRadius(strength,width);
+    const value=visual?(0.16+0.50*strength):(0.22+0.78*strength);
+    riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,value,tmp);
   }
   return true;
 }
-
 function riverGpuPaintEdge(core,i,j,up,tmp){
-  const ds=core.riverDownstream;
-  const i0=(up[i]>=0)?up[i]:i;
+  const ds=core.riverDownstream,i0=(up[i]>=0)?up[i]:i;
   const i3=(j>=0&&j<core.count&&(ds[j]|0)>=0&&(ds[j]|0)<core.count)?(ds[j]|0):j;
   const s0=riverGpuClamp(core.riverChannelStrength?.[i]||0,0,1);
   const s1=riverIsOcean(core,j)?s0:riverGpuClamp(core.riverChannelStrength?.[j]||0,0,1);
   const w0=Math.max(0,Number(core.riverWidthM?.[i])||0);
   const w1=Math.max(0,Number(core.riverWidthM?.[j])||w0);
-  riverGpuPaintSplineSegment(core,i0,i,j,i3,s0,s1,w0,w1,tmp);
+  return riverGpuPaintSplineSegment(core,i0,i,j,i3,s0,s1,w0,w1,tmp,0,false);
 }
-
-function riverGpuVisualNode(core,branch,p,out){
-  const cells=branch.cells,i=cells[p]|0;
-  return riverGpuCellDir(core,i,out);
-}
-
 function riverGpuPaintVisualEdge(core,branch,p,tmp){
-  const cells=branch.cells;if(!Array.isArray(cells)||cells.length<2)return;
-  const n=cells.length;
-  const base=riverGpuClamp(branch.strength||0.10,0.02,0.28);
+  const cells=branch.cells,n=cells.length;
   const i0=cells[Math.max(0,p-1)]|0,i1=cells[p]|0,i2=cells[p+1]|0,i3=cells[Math.min(n-1,p+2)]|0;
-  const t0=p/Math.max(1,n-1),t1=(p+1)/Math.max(1,n-1);
-  const s0=base*(0.35+0.65*t0),s1=base*(0.35+0.65*t1);
-  const p0={x:0,y:0,z:0},p1={x:0,y:0,z:0},p2={x:0,y:0,z:0},p3={x:0,y:0,z:0},d={x:0,y:0,z:0};
-  riverGpuCellDir(core,i0,p0);riverGpuCellDir(core,i1,p1);riverGpuCellDir(core,i2,p2);riverGpuCellDir(core,i3,p3);
-  const dot=riverGpuClamp(p1.x*p2.x+p1.y*p2.y+p1.z*p2.z,-1,1),ang=Math.acos(dot);
-  let nx=p1.y*p2.z-p1.z*p2.y,ny=p1.z*p2.x-p1.x*p2.z,nz=p1.x*p2.y-p1.y*p2.x;
-  const nq=Math.hypot(nx,ny,nz);if(nq>1e-9){nx/=nq;ny/=nq;nz/=nq;}else{nx=ny=nz=0;}
-  const cellAng=2/Math.max(8,core.N||32),h=riverGpuEdgeHash(core.seed|0,branch.source|0,i1,0x7811+p*53);
-  const h2=riverGpuEdgeHash(core.seed|0,branch.source|0,i1,0x3c6ef372),phase0=h*Math.PI;
-  const steps=Math.max(12,Math.min(64,Math.ceil(Math.max(ang,cellAng)*riverGpuN*3.0)));
-  for(let s=0;s<=steps;s++){
-    const t=s/steps;riverGpuCatmullDir(p0,p1,p2,p3,t,d);
-    const wave=0.80*h*Math.sin(Math.PI*t+phase0)+0.20*h2*Math.sin(2.0*Math.PI*t+phase0*1.1);
-    const amp=cellAng*(0.10+0.05*Math.abs(branch.phase||0))*(0.70+0.30*Math.sin(Math.PI*t));
-    let dx=d.x+nx*amp*wave,dy=d.y+ny*amp*wave,dz=d.z+nz*amp*wave;
-    const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
-    if(!riverGpuDetailedLandAt(core,dx,dy,dz))return false;
-    const strength=s0+(s1-s0)*t,radius=0.035+0.055*Math.sqrt(strength);
-    riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.16+0.50*strength,tmp);
-  }
-  return true;
+  const base=riverGpuClamp(branch.strength||0.10,0.02,0.28);
+  const s0=base*(0.35+0.65*p/Math.max(1,n-1));
+  const s1=base*(0.35+0.65*(p+1)/Math.max(1,n-1));
+  return riverGpuPaintSplineSegment(core,i0,i1,i2,i3,s0,s1,0,0,tmp,(branch.source|0)^((p+1)*0x7811),true);
 }
-
 function riverGpuPaintVisualBranch(core,branch,tmp){
   const cells=branch.cells;if(!Array.isArray(cells)||cells.length<2)return;
-  for(let p=0;p<cells.length-1;p++)if(riverGpuPaintVisualEdge(core,branch,p,tmp)===false)break;
+  for(let p=0;p<cells.length-1;p++)if(!riverGpuPaintVisualEdge(core,branch,p,tmp))break;
 }
-
 function riverGpuPaintVisualBranches(core,tmp){
   const branches=core?.riverVisualBranches;if(!Array.isArray(branches)||!branches.length)return;
   for(const branch of branches)riverGpuPaintVisualBranch(core,branch,tmp);
@@ -17304,9 +17392,7 @@ function riverGpuReadCurrent(core){
   for(let f=0;f<6;f++){riverGpuCurrRiver[f].fill(0);riverGpuCurrLake[f].fill(0);}
   const tmp={face:0,u:0,v:0};
   const up=riverGpuBuildUpstream(core);
-
   riverGpuPaintVisualBranches(core,tmp);
-
   for(let i=0;i<core.count;i++){
     const strength=riverGpuClamp(core.riverChannelStrength?.[i]||0,0,1);
     const lake=riverGpuClamp(core.riverLakeFraction?.[i]||0,0,1);
@@ -17317,8 +17403,7 @@ function riverGpuReadCurrent(core){
     if(strength<0.008)continue;
     const j=core.riverDownstream?.[i]|0;
     if(j<0||j>=core.count){
-      const width=Math.max(0,Number(core.riverWidthM?.[i])||0),ws=riverGpuClamp(Math.log2(1+width/18)/7.0,0,1);
-      riverGpuPaintDir(riverGpuCurrRiver,ix,iy,iz,0.045+0.10*Math.pow(strength,0.9)+0.22*ws*ws,0.22+0.78*strength,tmp);
+      riverGpuPaintDir(riverGpuCurrRiver,ix,iy,iz,riverGpuCorridorRadius(strength,core.riverWidthM?.[i]),0.22+0.78*strength,tmp);
       continue;
     }
     riverGpuPaintEdge(core,i,j,up,tmp);
@@ -21053,7 +21138,7 @@ window.__madPlanetFramePacingPolish={
    runoff/Q/basin topology and desktop 8x reconstruction are unchanged.
 */
 (function installRiverVisualPolish(){
-  if(typeof riverVisualBuildBranches!=='function'||typeof riverGpuPaintVisualEdge!=='function')return;
+  if(typeof riverVisualBuildBranches!=='function')return;
 
   const RIVER_VISUAL_POLISH_MODEL=1;
   const mobile=(typeof mobileDevice!=='undefined')?!!mobileDevice:
@@ -21118,45 +21203,8 @@ window.__madPlanetFramePacingPolish={
     return outCore;
   };
 
-  /* Fine display branches use a narrow high-confidence centre line. The old
-     0.5.139 raster used a broad low-amplitude brush; after LINEAR filtering it
-     became a fat blue groove, while the legacy surface width gate could still
-     erase its centre. A stronger one-texel-ish core survives that gate without
-     broadening the river corridor. Two deterministic harmonics prevent nearby
-     feeders from looking like parallel ruler strokes. */
-  /* The only caller (riverGpuPaintVisualBranch in river-gpu.js) invokes this
-     with 4 arguments and never supplies a/b node scratch vectors, so this
-     patch owns and reuses its own - relying on caller-supplied a/b crashed
-     weatherCoreCreate() with "Cannot set properties of undefined" as soon as
-     any visual branch existed. */
-  const visualEdgeA={x:0,y:0,z:0},visualEdgeB={x:0,y:0,z:0};
-  riverGpuPaintVisualEdge=function(core,branch,p,tmp,a,b){
-    a=a||visualEdgeA;b=b||visualEdgeB;
-    riverGpuVisualNode(core,branch,p,a);riverGpuVisualNode(core,branch,p+1,b);
-    const dot=riverGpuClamp(a.x*b.x+a.y*b.y+a.z*b.z,-1,1),ang=Math.acos(dot);
-    let nx=a.y*b.z-a.z*b.y,ny=a.z*b.x-a.x*b.z,nz=a.x*b.y-a.y*b.x;
-    const nq=Math.hypot(nx,ny,nz);if(nq>1e-9){nx/=nq;ny/=nq;nz/=nq;}else{nx=ny=nz=0;}
-    const cells=branch.cells,last=Math.max(1,cells.length-1);
-    const h1=riverGpuEdgeHash(core.seed|0,branch.source|0,cells[p]|0,0x7811+p*53);
-    const h2=riverGpuEdgeHash(core.seed|0,branch.source|0,cells[p+1]|0,0x31a7+p*79);
-    const steps=Math.max(5,Math.min(34,Math.ceil(ang*riverGpuN*1.85)));
-    const feeder=branch.kind==='feeder';
-    for(let s=0;s<=steps;s++){
-      const t=s/steps,omt=1-t;
-      let dx=a.x*omt+b.x*t,dy=a.y*omt+b.y*t,dz=a.z*omt+b.z*t;
-      let q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
-      const wave=0.105*h1*Math.sin(Math.PI*t)+0.040*h2*Math.sin(2*Math.PI*t);
-      const bend=Math.sin(ang)*wave*(feeder?1.18:1.0);
-      dx+=nx*bend;dy+=ny*bend;dz+=nz*bend;q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
-      if(!riverGpuDetailedLandAt(core,dx,dy,dz))return false;
-      const progress=(p+t)/last;
-      const strength=riverGpuClamp((Number(branch.strength)||0.12)*(0.60+0.40*progress),0.04,0.42);
-      const radius=feeder?(0.105+0.115*Math.sqrt(strength)):(0.120+0.145*Math.sqrt(strength));
-      const value=feeder?(0.46+0.36*strength):(0.50+0.40*strength);
-      riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,value,tmp);
-    }
-    return true;
-  };
+  /* 0.5.155: raster geometry is owned by river-gpu.js. This layer only prunes
+     the display graph and adjusts branch strengths; it never widens pixels. */
 
   /* If Weather Core was initialized unusually early, rebuild only the display
      graph once so the first subsequent river upload uses the polished network. */

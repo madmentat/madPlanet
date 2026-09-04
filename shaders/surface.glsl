@@ -15,35 +15,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   /* 0.5.131: the CPU drainage graph owns river/lake existence. The denser
      cubemap carries connected rasterized channel corridors; FBM below is only
      sub-grid edge/morphology detail inside those physical corridors. */
-  /* 0.5.153: read the drainage map through a small noise warp. The map is a
-     texel raster (~13 km); without the warp a thin ridge is a staircase and
-     every river has the same width. Two octaves give 10 km wiggles inside
-     40 km meanders, the width band below varies along the channel. */
-  vec3 riverWarp = 0.0026*vec3(fbm(sN*41.0+uSeedS*2.9+vec3(5.0,61.0,17.0),2),
-                               fbm(sN*41.0+uSeedS*2.9+vec3(29.0,7.0,43.0),2),
-                               fbm(sN*41.0+uSeedS*2.9+vec3(53.0,23.0,71.0),2))
-                 + 0.0060*vec3(fbm(sN*9.5+uSeedS*1.3+vec3(3.0,37.0,11.0),2),
-                               fbm(sN*9.5+uSeedS*1.3+vec3(19.0,2.0,47.0),2),
-                               fbm(sN*9.5+uSeedS*1.3+vec3(31.0,13.0,5.0),2));
-  vec3 riverDir = normalize(sN + riverWarp);
-  vec4 riverHydroTex = texture(uRiverTex, riverDir);
-  /* 0.5.154: a one-texel channel must not fall between the texture taps when
-     one screen pixel spans several texels (continent and orbit views). Take
-     the strongest of five taps spread over the pixel footprint, so a river
-     stays a continuous one-pixel line at any distance instead of vanishing. */
-  float riverPixAng = tHit*uPixA;
-  float riverTexPerPix = riverPixAng/max(1.0e-6, uRiverTexel);
-  if(riverTexPerPix > 0.9){
-    vec3 rAxis = (abs(riverDir.y) < 0.9) ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0);
-    vec3 rT = normalize(cross(riverDir, rAxis));
-    vec3 rB = cross(riverDir, rT);
-    float rOff = riverPixAng*0.36;
-    vec4 tapA = texture(uRiverTex, normalize(riverDir + rT*rOff));
-    vec4 tapB = texture(uRiverTex, normalize(riverDir - rT*rOff));
-    vec4 tapC = texture(uRiverTex, normalize(riverDir + rB*rOff));
-    vec4 tapD = texture(uRiverTex, normalize(riverDir - rB*rOff));
-    riverHydroTex = max(riverHydroTex, max(max(tapA,tapB), max(tapC,tapD)));
-  }
+  /* 0.5.155: one unwarped sample preserves the cubemap as a permission
+     corridor. Multi-tap max filtering dilated a one-texel ridge into a sea at
+     distance; the visible sub-grid channel below already has pixel AA. */
+  vec4 riverHydroTex = texture(uRiverTex, normalize(sN));
   float riverPhys = clamp(mix(riverHydroTex.r, riverHydroTex.b, uRiverBlend),0.0,1.0);
   float lakePhys = clamp(mix(riverHydroTex.g, riverHydroTex.a, uRiverBlend),0.0,1.0);
   float physRiverCore = ss(0.08,0.42,riverPhys);
@@ -130,30 +105,20 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float rn = fbm(sN*5.2 + uSeedS*1.9 + 0.5*vec3(riverWarpX,riverWarpY,0.0), 4);
   float wVar = 0.45 + 1.15*(0.5+0.5*fbm(sN*19.0 + uSeedS + vec3(71.0), 3));
   float wReal = mix(0.013, 0.0030, ss(0.02,0.22,h)) * wVar;
-  /* 0.5.146: the physical river cubemap is a CORRIDOR, never a wide brush.
-     One display texel spans ~13 km, so painting a fat physRiverCore as water
-     produced rivers 50..400 km wide. 0.5.152: the drainage graph owns the main
-     stems, so the trunk is drawn straight from the map as a THIN line (the
-     painted ridge is 1..3 texels, width set by the physical channel width in
-     river-gpu.js), with no climate or pixel-LOD gating: physics already
-     decided that the river exists. The sub-grid noise network stays the fine
-     detail that appears on approach; earlier it had to coincide with the
-     corridor for a trunk to show at all, which left only scattered dashes. */
+  /* The physical cubemap is a CORRIDOR, never water. Its texels are far wider
+     than real channels even at 16x Weather Core resolution. */
+  float trunkGain = mix(1.0, 1.55, physRiverCore);
+  wReal *= mix(1.0,trunkGain,uRiverPhysicsOn);
   float wPix = tHit*uPixA*1.6;
   float w = max(wReal, wPix);
   float riverSignal = abs(rn) + 0.0016*fbm(sN*260.0+uSeedS,2);
   float riverGeomProc = 1.0 - ss(w*0.82, w*1.06, riverSignal);
-  /* 0.5.148: FBM zero contours are morphology, not drainage. Left ungated,
-     they form closed level-set rings and show up as impossible looped rivers.
-     The physical halo owns river existence; the procedural field only cuts a
-     thin irregular channel inside it.
-     0.5.152: the diagnosed trunk is no longer a noise-gated corridor (that
-     left scattered dashes): it is drawn straight from the map as a thin
-     ridge, see trunkLine below and the riv = max(...) line. */
-  float riverGeomPhys = riverGeomProc*physRiverHalo;
+  /* FBM supplies only sub-grid morphology. The physical halo owns existence,
+     which removes closed noise loops, while the stronger core gets a slightly
+     wider morphology gate to keep a diagnosed stem continuous. */
+  float trunkChannel = 1.0 - ss(w*1.05, w*1.65, riverSignal);
+  float riverGeomPhys = max(riverGeomProc*physRiverHalo, trunkChannel*physRiverCore);
   float riverGeom = mix(riverGeomProc,riverGeomPhys,uRiverPhysicsOn);
-  float trunkWidthN = 0.5+0.5*fbm(sN*23.0+uSeedS*1.7+vec3(77.0,5.0,41.0),2);
-  float trunkLine = ss(0.10+0.10*trunkWidthN, 0.32+0.14*trunkWidthN, riverPhys);
   float floodplainProc = 1.0-ss(wReal*1.7,wReal*6.2,abs(rn));
   floodplainProc *= 1.0-ss(0.14,0.32,h);
   float floodplainPhys = floodplainProc*(0.55+0.45*physRiverHalo);
@@ -295,8 +260,6 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     float riverClimateGate = mix(ss(0.24,0.44,moist),ss(0.12,0.40,max(soilMoistPhys,physRiverHalo)),uRiverPhysicsOn);
     float riverHighlandGate = mix(1.0-ss(0.16,0.30,h),1.0-0.45*ss(0.20,0.42,h),uRiverPhysicsOn);
     riv *= riverClimateGate*riverHighlandGate;
-    /* Physics-owned trunk: visible at every zoom the map resolves. */
-    riv = max(riv, trunkLine*uRiverPhysicsOn*riverHighlandGate);
     float lakeClimateGate = mix(ss(0.20,0.38,moist),0.72+0.28*physLakeCore,uRiverPhysicsOn);
     float lake = lakeGeom*lakeClimateGate;
     float waterScale = hydroReveal*(1.0-ss(0.18,0.72,snowM));

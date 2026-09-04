@@ -17,7 +17,7 @@
    visible wiggles belong to the sub-grid channel.
 */
 
-const RIVER_GPU_MODEL=14;
+const RIVER_GPU_MODEL=15;
 const RIVER_TEX_UNIT=2;
 const RIVER_GPU_UPSCALE=16;
 const RIVER_BLEND_DEFAULT_MS=900;
@@ -25,7 +25,7 @@ const RIVER_BLEND_MIN_MS=250;
 const RIVER_BLEND_MAX_MS=1200;
 
 if(typeof UNIFORM_NAMES!=='undefined'){
-  for(const n of ['uRiverTex','uRiverBlend','uRiverPhysicsOn','uRiverTexel'])if(!UNIFORM_NAMES.includes(n))UNIFORM_NAMES.push(n);
+  for(const n of ['uRiverTex','uRiverBlend','uRiverPhysicsOn'])if(!UNIFORM_NAMES.includes(n))UNIFORM_NAMES.push(n);
 }
 
 let riverGpuTex=null,riverGpuN=0,riverGpuFaces=[];
@@ -121,14 +121,15 @@ function riverGpuEdgeHash(seed,i,j,salt){
   return (x>>>0)/4294967296*2-1;
 }
 
-/* Build a cheap reverse link: one upstream parent per cell (first writer wins).
-   Enough for Catmull-Rom context; full multi-parent fans are not needed. */
+/* Build one upstream handle per cell for Catmull-Rom context. Prefer the
+   strongest contributing channel so the main stem, rather than an arbitrary
+   side branch, controls the tangent through a confluence. */
 function riverGpuBuildUpstream(core){
   const n=core.count, up=new Int32Array(n);up.fill(-1);
-  const ds=core.riverDownstream;if(!ds)return up;
+  const ds=core.riverDownstream,strength=core.riverChannelStrength;if(!ds)return up;
   for(let i=0;i<n;i++){
     const j=ds[i]|0;if(j<0||j>=n)continue;
-    if(up[j]<0)up[j]=i;
+    if(up[j]<0||(Number(strength?.[i])||0)>(Number(strength?.[up[j]])||0))up[j]=i;
   }
   return up;
 }
@@ -147,158 +148,68 @@ function riverGpuCellDir(core,i,out){
   const q=Math.hypot(out.x,out.y,out.z)||1;out.x/=q;out.y/=q;out.z/=q;return out;
 }
 
-
-/* 0.5.154: display geometry.
-   Drainage paths live on the 4-neighbour synoptic lattice (one cell ~500 km).
-   0.5.153 corner-cut the staircase with Chaikin, which is exactly what made
-   long straight diagonal "canals": a staircase averaged twice is a line. A
-   real river meanders at every scale, so the smoothed polyline is now
-   refined by seeded midpoint displacement (amplitude proportional to the
-   segment length, three levels) before the Catmull-Rom trace. Junctions:
-   the position of every painted node is remembered, a later chain that
-   reaches an already painted cell snaps to that position and stops, and its
-   last node is nudged downstream along the receiver so tributaries enter at
-   an acute angle instead of as perpendicular comb teeth. Width is a
-   one-texel ridge that grows only with discharge and physical width. */
-const RIVER_GPU_CHAIKIN_ITERATIONS=2;
-const RIVER_GPU_DISPLACE_LEVELS=3;
-const RIVER_GPU_DISPLACE_AMP=0.19;
-const RIVER_GPU_MAX_CHAIN=600;
-let riverGpuNodePos=null,riverGpuNodePosN=0;
-function riverGpuNorm(p){const q=Math.hypot(p.x,p.y,p.z)||1;p.x/=q;p.y/=q;p.z/=q;return p;}
-function riverGpuLerpNode(a,b,t){
-  return riverGpuNorm({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:a.z+(b.z-a.z)*t,s:a.s+(b.s-a.s)*t,w:a.w+(b.w-a.w)*t,k:(t<0.5?a.k:b.k)});
+/* 0.5.155: the cubemap is a narrow permission corridor again. Whole-chain
+   Chaikin averaging made long D8 staircases into ruler-straight canals, while
+   drawing its ridge directly in surface.glsl exposed every coarse turn. Work
+   edge by edge with four-cell Catmull context, add a deterministic meander
+   whose offset is exactly zero at both graph nodes, and let the sub-grid
+   shader cut the visible channel inside this corridor. */
+function riverGpuEdgeBend(core,i,j,t,cellAng,salt=0){
+  const h1=riverGpuEdgeHash(core.seed|0,i,j,0x2c1b3c6d^salt);
+  const h2=riverGpuEdgeHash(core.seed|0,i,j,0x165667b1^salt);
+  const envelope=Math.sin(Math.PI*t);
+  /* Squared envelope anchors both position and tangent at the graph nodes.
+     The Catmull tangent can therefore carry a bend through a confluence
+     without an edge-specific lateral derivative creating a visible corner. */
+  const wave=envelope*envelope*(0.84*h1+0.16*h2*Math.sin(2*Math.PI*t));
+  return cellAng*(0.10+0.05*Math.abs(h2))*wave;
 }
-/* Chaikin corner cutting on the sphere; endpoints are kept. */
-function riverGpuChaikin(pts,iterations){
-  let cur=pts;
-  for(let it=0;it<iterations;it++){
-    if(cur.length<3)return cur;
-    const out=[cur[0]];
-    for(let k=0;k<cur.length-1;k++){out.push(riverGpuLerpNode(cur[k],cur[k+1],0.25));out.push(riverGpuLerpNode(cur[k],cur[k+1],0.75));}
-    out.push(cur[cur.length-1]);cur=out;
-  }
-  return cur;
-}
-/* Seeded midpoint displacement: every level halves the segments and moves
-   each new midpoint sideways by amp*length*hash. The hash is keyed by the
-   lattice cell the point belongs to and the level, so the same physical edge
-   always gets the same shape whichever chain paints it. */
-function riverGpuDisplace(core,pts,levels,amp){
-  let cur=pts;
-  for(let lv=0;lv<levels;lv++){
-    if(cur.length<2)return cur;
-    const out=[cur[0]];
-    for(let k=0;k<cur.length-1;k++){
-      const a=cur[k],b=cur[k+1];
-      const dot=riverGpuClamp(a.x*b.x+a.y*b.y+a.z*b.z,-1,1),len=Math.acos(dot);
-      const m=riverGpuLerpNode(a,b,0.5);
-      let nx=a.y*b.z-a.z*b.y,ny=a.z*b.x-a.x*b.z,nz=a.x*b.y-a.y*b.x;
-      const nq=Math.hypot(nx,ny,nz);
-      if(nq>1e-12&&len>1e-7){
-        nx/=nq;ny/=nq;nz/=nq;
-        const h=riverGpuEdgeHash(core.seed|0,(a.k|0)*7+lv,(b.k|0)*13+k,0x9e3779b1+lv*0x51f15e);
-        const d=amp*len*h*Math.pow(0.62,lv);
-        m.x+=nx*d;m.y+=ny*d;m.z+=nz*d;riverGpuNorm(m);
-      }
-      out.push(m);out.push(b);
-    }
-    cur=out;
-  }
-  return cur;
-}
-function riverGpuTrunkRadius(strength,widthM){
+function riverGpuCorridorRadius(strength,widthM){
   const widthScale=riverGpuClamp(Math.log2(1+Math.max(0,widthM)/18)/7.0,0,1);
-  /* radius in display texels (~13 km desktop, ~22 km phone) */
-  return 0.28+0.55*Math.pow(riverGpuClamp(strength,0,1),1.3)+0.50*widthScale*widthScale;
+  return 0.045+0.10*Math.pow(riverGpuClamp(strength,0,1),0.9)+0.22*widthScale*widthScale;
 }
-/* Paint a smoothed, displaced polyline. Painting stops at the first
-   fine-terrain ocean hit; node positions are recorded for junction snapping. */
-function riverGpuPaintPolyline(core,pts,seedA,seedB,valueFn,radiusFn,tmp,recordNodes){
-  if(pts.length<2)return;
-  const sm=riverGpuDisplace(core,riverGpuChaikin(pts,RIVER_GPU_CHAIKIN_ITERATIONS),RIVER_GPU_DISPLACE_LEVELS,RIVER_GPU_DISPLACE_AMP);
-  const d={x:0,y:0,z:0};
-  for(let k=0;k<sm.length-1;k++){
-    const p0=sm[Math.max(0,k-1)],p1=sm[k],p2=sm[k+1],p3=sm[Math.min(sm.length-1,k+2)];
-    const dot=riverGpuClamp(p1.x*p2.x+p1.y*p2.y+p1.z*p2.z,-1,1),ang=Math.acos(dot);
-    const steps=Math.max(3,Math.min(48,Math.ceil(ang*riverGpuN*2.4)));
-    for(let q=0;q<=steps;q++){
-      const t=q/steps;riverGpuCatmullDir(p0,p1,p2,p3,t,d);
-      if(!riverGpuDetailedLandAt(core,d.x,d.y,d.z))return;
-      const st=p1.s+(p2.s-p1.s)*t,w=p1.w+(p2.w-p1.w)*t;
-      riverGpuPaintDir(riverGpuCurrRiver,d.x,d.y,d.z,radiusFn(st,w),valueFn(st),tmp);
-    }
+function riverGpuPaintSplineSegment(core,i0,i1,i2,i3,s0,s1,w0,w1,tmp,salt=0,visual=false){
+  const p0={x:0,y:0,z:0},p1={x:0,y:0,z:0},p2={x:0,y:0,z:0},p3={x:0,y:0,z:0},d={x:0,y:0,z:0};
+  riverGpuCellDir(core,i0,p0);riverGpuCellDir(core,i1,p1);
+  riverGpuCellDir(core,i2,p2);riverGpuCellDir(core,i3,p3);
+  const dot=riverGpuClamp(p1.x*p2.x+p1.y*p2.y+p1.z*p2.z,-1,1),ang=Math.acos(dot);
+  let nx=p1.y*p2.z-p1.z*p2.y,ny=p1.z*p2.x-p1.x*p2.z,nz=p1.x*p2.y-p1.y*p2.x;
+  const nq=Math.hypot(nx,ny,nz);if(nq>1e-9){nx/=nq;ny/=nq;nz/=nq;}else{nx=ny=nz=0;}
+  const cellAng=2/Math.max(8,core.N||32);
+  const steps=Math.max(16,Math.min(96,Math.ceil(Math.max(ang,cellAng)*riverGpuN*3.2)));
+  for(let q=0;q<=steps;q++){
+    const t=q/steps;riverGpuCatmullDir(p0,p1,p2,p3,t,d);
+    const bend=riverGpuEdgeBend(core,i1,i2,t,cellAng,salt)*(visual?0.88:1.0);
+    let dx=d.x+nx*bend,dy=d.y+ny*bend,dz=d.z+nz*bend;
+    const len=Math.hypot(dx,dy,dz)||1;dx/=len;dy/=len;dz/=len;
+    if(!riverGpuDetailedLandAt(core,dx,dy,dz))return false;
+    const strength=s0+(s1-s0)*t,width=w0+(w1-w0)*t;
+    const radius=visual?(0.035+0.055*Math.sqrt(strength)):riverGpuCorridorRadius(strength,width);
+    const value=visual?(0.16+0.50*strength):(0.22+0.78*strength);
+    riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,value,tmp);
   }
-  if(recordNodes)for(const p of pts)if(p.k>=0&&riverGpuNodePos&&!riverGpuNodePos.has(p.k))riverGpuNodePos.set(p.k,{x:p.x,y:p.y,z:p.z});
+  return true;
 }
-function riverGpuTrunkNode(core,i,out){
-  riverGpuCellDir(core,i,out);
-  out.s=riverGpuClamp(core.riverChannelStrength?.[i]||0,0,1);
-  out.w=Math.max(0,Number(core.riverWidthM?.[i])||0);
-  out.k=i;
-  return out;
+function riverGpuPaintEdge(core,i,j,up,tmp){
+  const ds=core.riverDownstream,i0=(up[i]>=0)?up[i]:i;
+  const i3=(j>=0&&j<core.count&&(ds[j]|0)>=0&&(ds[j]|0)<core.count)?(ds[j]|0):j;
+  const s0=riverGpuClamp(core.riverChannelStrength?.[i]||0,0,1);
+  const s1=riverIsOcean(core,j)?s0:riverGpuClamp(core.riverChannelStrength?.[j]||0,0,1);
+  const w0=Math.max(0,Number(core.riverWidthM?.[i])||0);
+  const w1=Math.max(0,Number(core.riverWidthM?.[j])||w0);
+  return riverGpuPaintSplineSegment(core,i0,i,j,i3,s0,s1,w0,w1,tmp,0,false);
 }
-/* Tributary mouth: enter the receiver heading downstream. The last node is
-   pulled 40% of the way from the receiver toward its own downstream cell, so
-   the confluence is acute and reads as a river joining a river. */
-function riverGpuAcuteMouth(core,pts,receiver){
-  const ds=core.riverDownstream;if(!ds||pts.length<2)return;
-  const j=ds[receiver]|0;if(j<0||j>=core.count||riverIsOcean(core,j))return;
-  const last=pts[pts.length-1];
-  const target=riverGpuNodePos&&riverGpuNodePos.get(j);
-  const b={x:0,y:0,z:0};
-  if(target){b.x=target.x;b.y=target.y;b.z=target.z;}else riverGpuCellDir(core,j,b);
-  const m=riverGpuLerpNode({x:last.x,y:last.y,z:last.z,s:last.s,w:last.w,k:last.k},{x:b.x,y:b.y,z:b.z,s:last.s,w:last.w,k:last.k},0.40);
-  last.x=m.x;last.y=m.y;last.z=m.z;
-}
-function riverGpuPaintTrunkChains(core,up,tmp){
-  const n=core.count,strength=core.riverChannelStrength,ds=core.riverDownstream;
-  if(!strength||!ds)return;
-  const isChannel=i=>i>=0&&i<n&&riverGpuClamp(strength[i]||0,0,1)>=0.008&&!riverIsOcean(core,i);
-  const heads=[];
-  for(let i=0;i<n;i++){
-    if(!isChannel(i))continue;
-    const u=up[i];if(u>=0&&isChannel(u))continue;
-    let len=0,j=i;while(isChannel(j)&&len<RIVER_GPU_MAX_CHAIN){len++;j=ds[j]|0;}
-    heads.push([len,i]);
-  }
-  heads.sort((a,b)=>b[0]-a[0]);
-  const painted=new Uint8Array(n);
-  for(const [,head] of heads){
-    const pts=[];let j=head,receiver=-1;
-    while(j>=0&&j<n&&pts.length<RIVER_GPU_MAX_CHAIN){
-      const node=riverGpuTrunkNode(core,j,{x:0,y:0,z:0,s:0,w:0,k:j});
-      if(painted[j]){
-        /* join an already painted stem at its actual drawn position */
-        const pos=riverGpuNodePos.get(j);if(pos){node.x=pos.x;node.y=pos.y;node.z=pos.z;}
-        pts.push(node);receiver=j;break;
-      }
-      pts.push(node);painted[j]=1;
-      if(riverIsOcean(core,j))break;
-      const nx=ds[j]|0;if(nx<0||nx>=n||nx===j)break;
-      if(!isChannel(nx)){
-        if(riverIsOcean(core,nx))pts.push(riverGpuTrunkNode(core,nx,{x:0,y:0,z:0,s:0,w:0,k:-1}));
-        break;
-      }
-      j=nx;
-    }
-    if(receiver>=0)riverGpuAcuteMouth(core,pts,receiver);
-    if(pts.length>=2)riverGpuPaintPolyline(core,pts,head,0x71,st=>0.22+0.78*st,riverGpuTrunkRadius,tmp,true);
-    else if(pts.length===1)riverGpuPaintDir(riverGpuCurrRiver,pts[0].x,pts[0].y,pts[0].z,riverGpuTrunkRadius(pts[0].s,pts[0].w),0.22+0.78*pts[0].s,tmp);
-  }
+function riverGpuPaintVisualEdge(core,branch,p,tmp){
+  const cells=branch.cells,n=cells.length;
+  const i0=cells[Math.max(0,p-1)]|0,i1=cells[p]|0,i2=cells[p+1]|0,i3=cells[Math.min(n-1,p+2)]|0;
+  const base=riverGpuClamp(branch.strength||0.10,0.02,0.28);
+  const s0=base*(0.35+0.65*p/Math.max(1,n-1));
+  const s1=base*(0.35+0.65*(p+1)/Math.max(1,n-1));
+  return riverGpuPaintSplineSegment(core,i0,i1,i2,i3,s0,s1,0,0,tmp,(branch.source|0)^((p+1)*0x7811),true);
 }
 function riverGpuPaintVisualBranch(core,branch,tmp){
   const cells=branch.cells;if(!Array.isArray(cells)||cells.length<2)return;
-  const n=cells.length,base=riverGpuClamp(branch.strength||0.10,0.02,0.28),pts=[];
-  for(let p=0;p<n;p++){
-    const i=cells[p]|0,node={x:0,y:0,z:0,s:0,w:0,k:i};riverGpuCellDir(core,i,node);
-    node.s=base*(0.35+0.65*p/Math.max(1,n-1));
-    /* branch nodes that coincide with painted stems snap to the drawn stem */
-    const pos=riverGpuNodePos&&riverGpuNodePos.get(i);if(pos){node.x=pos.x;node.y=pos.y;node.z=pos.z;}
-    pts.push(node);
-  }
-  riverGpuAcuteMouth(core,pts,cells[n-1]|0);
-  riverGpuPaintPolyline(core,pts,branch.source|0,0x3c6e,st=>0.16+0.50*st,st=>0.26+0.45*Math.sqrt(st),tmp,false);
+  for(let p=0;p<cells.length-1;p++)if(!riverGpuPaintVisualEdge(core,branch,p,tmp))break;
 }
 function riverGpuPaintVisualBranches(core,tmp){
   const branches=core?.riverVisualBranches;if(!Array.isArray(branches)||!branches.length)return;
@@ -309,16 +220,22 @@ function riverGpuReadCurrent(core){
   for(let f=0;f<6;f++){riverGpuCurrRiver[f].fill(0);riverGpuCurrLake[f].fill(0);}
   const tmp={face:0,u:0,v:0};
   const up=riverGpuBuildUpstream(core);
-  riverGpuNodePos=new Map();riverGpuNodePosN=core.count;
-  for(let i=0;i<core.count;i++){
-    const lake=riverGpuClamp(core.riverLakeFraction?.[i]||0,0,1);
-    if(lake>0.02){
-      const lr=0.95+3.2*Math.sqrt(lake);riverGpuPaintDir(riverGpuCurrLake,core.dirX[i],core.dirY[i],core.dirZ[i],lr,0.24+0.76*lake,tmp);
-    }
-  }
-  /* stems first so tributaries and visual branches can snap to drawn nodes */
-  riverGpuPaintTrunkChains(core,up,tmp);
   riverGpuPaintVisualBranches(core,tmp);
+  for(let i=0;i<core.count;i++){
+    const strength=riverGpuClamp(core.riverChannelStrength?.[i]||0,0,1);
+    const lake=riverGpuClamp(core.riverLakeFraction?.[i]||0,0,1);
+    const ix=core.dirX[i],iy=core.dirY[i],iz=core.dirZ[i];
+    if(lake>0.02){
+      const lr=0.95+3.2*Math.sqrt(lake);riverGpuPaintDir(riverGpuCurrLake,ix,iy,iz,lr,0.24+0.76*lake,tmp);
+    }
+    if(strength<0.008)continue;
+    const j=core.riverDownstream?.[i]|0;
+    if(j<0||j>=core.count){
+      riverGpuPaintDir(riverGpuCurrRiver,ix,iy,iz,riverGpuCorridorRadius(strength,core.riverWidthM?.[i]),0.22+0.78*strength,tmp);
+      continue;
+    }
+    riverGpuPaintEdge(core,i,j,up,tmp);
+  }
 }
 function riverGpuCollapseVisible(blend){
   for(let f=0;f<6;f++){

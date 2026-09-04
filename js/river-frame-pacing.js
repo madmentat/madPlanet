@@ -204,9 +204,8 @@
     return outCore;
   };
 
-  /* 0.5.153: the per-edge polished raster was superseded by the chain painter
-     in river-gpu.js (riverGpuPaintPolyline): whole branches are corner-cut and
-     traced with node-anchored meanders, so no per-edge override remains. */
+  /* 0.5.155: raster geometry is owned by river-gpu.js. This layer only prunes
+     the display graph and adjusts branch strengths; it never widens pixels. */
 
   /* If Weather Core was initialized unusually early, rebuild only the display
      graph once so the first subsequent river upload uses the polished network. */
