@@ -72,6 +72,7 @@ uniform float uCryosphereBlend;
 uniform samplerCube uRiverTex;
 uniform float uRiverBlend;
 uniform float uRiverPhysicsOn;
+uniform float uRiverTexel;     /* angular size of one river-map texel, rad */
 uniform vec4  uCycA[5];   /* 0.5.52 bridge: xyz lightning centre, w stays 0 */
 uniform vec4  uCycB[5];   /* x radius, y flash rate, z electrical strength, w phase */
 uniform int   uPlateN;    /* число тектонических плит */

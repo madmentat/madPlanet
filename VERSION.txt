@@ -1,8 +1,9 @@
-VERSION 0.5.153
-Base: 0.5.152
-Changes: River display without lattice staircases.
-  - js/river-gpu.js (model 13): channels are painted as whole chains (headwater to mouth, visual branches end to end); the 4-neighbour lattice polyline is corner-cut twice with Chaikin's algorithm before the Catmull-Rom trace, the two-octave meander is anchored at nodes so segments join without kinks and scales with segment length; a one-texel ridge that grows only with discharge (up to ~1.4 texels). 0.5.152 painted every graph edge separately, which kept the 500 km right angles of the synoptic grid and made every river the same blocky width
-  - shaders/surface.glsl: the drainage map is read through a two-octave noise warp (10 km wiggles inside 40 km meanders) and the trunk width band varies along the channel
-Regression: update river-physics and river-visual-tributaries tests for the chain painter.
-Snapshot: 0.5.152 remains the rollback point before the chain-smoothed river display.
+VERSION 0.5.154
+Base: 0.5.153
+Changes: Natural river geometry at every scale; rivers no longer vanish at orbit.
+  - js/river-gpu.js (model 14): after Chaikin the polyline is refined by seeded three-level midpoint displacement (amplitude proportional to segment length), so a smoothed lattice staircase becomes a meandering river instead of a straight canal; painted node positions are remembered so a tributary snaps to the drawn stem and stops there; the last node of a tributary is pulled downstream along its receiver so confluences are acute, not perpendicular comb teeth; stems are painted before visual branches
+  - shaders/surface.glsl: the drainage map is read with five taps over the pixel footprint when a pixel spans more than one texel (max of taps), so a one-texel channel stays a continuous one-pixel line from continent to orbit; the far-distance fade is gone; frozen channels render as pale translucent ice threads
+  - uRiverTexel uniform (river-render.js) carries the texel size
+Regression: river-physics and river-visual-tributaries tests updated.
+Snapshot: 0.5.153 remains the rollback point before the fractal river geometry.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

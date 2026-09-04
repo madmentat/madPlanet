@@ -78,7 +78,7 @@ assert.match(surface,/float lakeFreeze = max\(deepColdIce,1\.0-ss\(lakeFreezeLo,
 assert.match(surface,/float riverFreeze = max\(deepColdIce,1\.0-ss\(268\.8,272\.2,ecologyK\)\)/,'deep cold must close moving rivers too');
 assert.match(surface,/float inlandLiquid = 0\.0/,'liquid inland-water fraction must be tracked separately from ice');
 assert.match(surface,/inlandLiquid = [^;]*\*hotLiquidGate/,'inland liquid water must disappear above the boiling/critical regime');
-assert.match(surface,/alb = mix\(alb, inlandIce, frozenRv\*0\.96\)/,'inland ice colour must use the spatial frozen fraction');
+assert.match(surface,/alb = mix\(alb, inlandIce, frozenRv\*0\.62\)/,'inland ice colour must use the spatial frozen fraction');
 assert.match(surface,/inlandLiquid\*land\*0\.40/,'only liquid inland water may retain liquid-water specular');
 
 /* Ocean bathymetry still exists for shallow/deep colour and dry-basin phase

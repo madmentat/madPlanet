@@ -11,6 +11,7 @@ function riverBindForFrame(){
   }
   if(U.uRiverBlend!==null&&U.uRiverBlend!==undefined)gl.uniform1f(U.uRiverBlend,riverGpuBlendAt(riverGpuNowMs()));
   if(U.uRiverPhysicsOn!==null&&U.uRiverPhysicsOn!==undefined)gl.uniform1f(U.uRiverPhysicsOn,1.0);
+  if(U.uRiverTexel!==null&&U.uRiverTexel!==undefined)gl.uniform1f(U.uRiverTexel,2.0/Math.max(8,riverGpuN||512));
 }
 const drawFrameBeforeRiverRender=drawFrame;
 drawFrame=function(now){riverBindForFrame();drawFrameBeforeRiverRender(now);};
