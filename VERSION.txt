@@ -1,9 +1,9 @@
-VERSION 0.5.159
-Base: 0.5.158 vector rivers with highp chord samplers.
-Changes: continuous channels and natural junctions on the synoptic grid.
-  - Interior drainage-graph nodes are relaxed toward the midpoint of their main upstream and downstream nodes (two bounded passes); sources, ocean receivers and coastal nodes stay put, and every painter reads node positions through one accessor, so the D8 staircase of right angles becomes a gently curved trunk that tributaries meet exactly.
-  - The last edge of a visual tributary takes the receiver's downstream cell as its far spline handle, so mouths curve into the trunk's flow direction instead of meeting it at a right angle.
-  - Bins are 64 per cubemap face with a 0.010 rad margin, which keeps crowded bins under the 32-chord shader cap that previously dropped weaker chords and left gaps.
-  - Orbit views skip the sub-pixel meander warp; ",rivvec=0" in the URL hash keeps the raster corridor path for on-device frame-cost comparison.
-Regression: guards require node relaxation before painting, the acute-mouth handle, the diagnostic hash switch and bounded node displacement on a synthetic staircase.
+VERSION 0.5.160
+Base: 0.5.159 analytic vector rivers.
+Changes: river courses come from the rendered terrain, not from the synoptic grid.
+  - terrain-bake.js links a terrain-only program (header + noise + terrain + terrain-bake.glsl) and reads six 256x256 (mobile 224x224) faces of sea-relative terrain height back as 24-bit fixed point, once per terrain signature (seed, sea, continents, tectonics, islands, plates).
+  - river-drainage-fine.js fills depressions with Priority-Flood plus epsilon, routes steepest-descent D8 on the filled surface, accumulates runoff-weighted contributing area from the Weather Core's basin runoff, starts channels above 40 wet face-centre cells and publishes source-to-mouth chains (relaxed against the staircase, mouths trimmed to the shoreline) as chords for the analytic renderer, plus the raster corridor and depression lakes.
+  - The Weather Core worker receives the height buffer with the tick request, builds the drainage off the main thread and forces a river refresh; the main thread builds locally only when no worker exists.
+  - The synoptic river graph stays as the fallback for contexts without a terrain bake; rivers can no longer cross mountain belts, join as combs or form coast-to-coast canals, and every basin drains to exactly one outlet.
+Regression: guards require the bake conventions, the transferred height buffer, fine ownership of the river bridge, monotonic drainage on a synthetic planet, lake filling of a closed pit, seam adjacency, chain consistency and a dry basin without channels.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

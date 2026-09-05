@@ -68,6 +68,7 @@ tests=(
   tests/river-physics.test.js
   tests/river-visual-tributaries.test.js
   tests/river-vector.test.js
+  tests/river-drainage-fine.test.js
   tests/weather-worker.test.js
   tests/weather-fronts.test.js
   tests/pressure-systems.test.js

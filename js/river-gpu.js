@@ -424,9 +424,21 @@ function riverGpuPaintVisualBranches(core,tmp){
   for(const branch of branches)riverGpuPaintVisualBranch(core,branch,tmp);
 }
 
+/* 0.5.160: when the fine terrain drainage is available (or is expected from
+   the worker shortly), it owns river/lake geometry; the synoptic graph below
+   is only the fallback for contexts without a terrain bake. */
+function riverFineExpected(){
+  if(typeof MP_IS_WEATHER_WORKER!=='undefined'&&MP_IS_WEATHER_WORKER)return false;
+  if(typeof weatherWorker!=='undefined'&&weatherWorker&&typeof weatherWorkerFailed!=='undefined'&&!weatherWorkerFailed)return true;
+  return typeof terrainBakeAvailable==='function'&&terrainBakeAvailable();
+}
 function riverGpuReadCurrent(core){
   for(let f=0;f<6;f++){riverGpuCurrRiver[f].fill(0);riverGpuCurrLake[f].fill(0);}
   const tmp={face:0,u:0,v:0};
+  if(typeof riverFineActive==='function'&&riverFineActive(core)){
+    riverVecReset();riverFineReadCurrent(core);riverVecFinish();return;
+  }
+  if(riverFineExpected()){riverVecReset();riverVecFinish();return;}
   const up=riverGpuBuildUpstream(core);
   riverGpuNodePos=riverGpuRelaxNodes(core,up);
   riverVecReset();
