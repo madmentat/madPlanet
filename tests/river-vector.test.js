@@ -29,7 +29,7 @@ assert.ok(!gpu.includes('requestAnimationFrame'),'chord table must not be rebuil
 assert.match(render,/riverGpuVectorBind\(prog,U,!riverVectorHashOff\)/,'renderer must bind the chord tables every frame');
 assert.match(worker,/riverGpuVectorData\(\)/,'worker must snapshot the chord table');
 assert.match(worker,/seg:vec\.seg,bins:vec\.bins,list:vec\.list,chords:vec\.chords/,'worker must transfer chord table buffers');
-assert.match(worker,/riverGpuVectorSet\(m\.river\.vec\)/,'main thread must adopt the transferred chord table');
+assert.match(worker,/if\(f\.vec&&typeof riverGpuVectorSet==='function'\)\{riverGpuVectorSet\(f\.vec\);f\.vec=null;\}/,'main thread must adopt the chord table inside the paced river publish');
 for(const u of ['uRiverBinTex','uRiverListTex'])
   assert.match(header,new RegExp('uniform highp sampler2D '+u+';'),'vector river data sampler '+u+' must be highp (fp16 samplers snap chords on mobile GPUs)');
 for(const u of ['uRiverVecOn','uRiverBinN','uRiverTexW'])assert.ok(header.includes(u),'missing vector river uniform '+u);

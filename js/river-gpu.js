@@ -428,7 +428,7 @@ function riverGpuPaintVisualBranches(core,tmp){
    the worker shortly), it owns river/lake geometry; the synoptic graph below
    is only the fallback for contexts without a terrain bake. */
 function riverFineExpected(){
-  if(typeof MP_IS_WEATHER_WORKER!=='undefined'&&MP_IS_WEATHER_WORKER)return false;
+  if(typeof MP_IS_WEATHER_WORKER!=='undefined'&&MP_IS_WEATHER_WORKER)return typeof riverFineExpectedRemote==='function'&&riverFineExpectedRemote();
   if(typeof weatherWorker!=='undefined'&&weatherWorker&&typeof weatherWorkerFailed!=='undefined'&&!weatherWorkerFailed)return true;
   return typeof terrainBakeAvailable==='function'&&terrainBakeAvailable();
 }

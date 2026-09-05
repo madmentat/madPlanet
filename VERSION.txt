@@ -1,9 +1,9 @@
-VERSION 0.5.160
-Base: 0.5.159 analytic vector rivers.
-Changes: river courses come from the rendered terrain, not from the synoptic grid.
-  - terrain-bake.js links a terrain-only program (header + noise + terrain + terrain-bake.glsl) and reads six 256x256 (mobile 224x224) faces of sea-relative terrain height back as 24-bit fixed point, once per terrain signature (seed, sea, continents, tectonics, islands, plates).
-  - river-drainage-fine.js fills depressions with Priority-Flood plus epsilon, routes steepest-descent D8 on the filled surface, accumulates runoff-weighted contributing area from the Weather Core's basin runoff, starts channels above 40 wet face-centre cells and publishes source-to-mouth chains (relaxed against the staircase, mouths trimmed to the shoreline) as chords for the analytic renderer, plus the raster corridor and depression lakes.
-  - The Weather Core worker receives the height buffer with the tick request, builds the drainage off the main thread and forces a river refresh; the main thread builds locally only when no worker exists.
-  - The synoptic river graph stays as the fallback for contexts without a terrain bake; rivers can no longer cross mountain belts, join as combs or form coast-to-coast canals, and every basin drains to exactly one outlet.
-Regression: guards require the bake conventions, the transferred height buffer, fine ownership of the river bridge, monotonic drainage on a synthetic planet, lake filling of a closed pit, seam adjacency, chain consistency and a dry basin without channels.
+VERSION 0.5.161
+Base: 0.5.160 terrain-driven river drainage.
+Changes: review fixes for the bake/drainage lifecycle.
+  - state.sea is a per-frame derived value, so the bake signature quantises it to 0.01 and any changed signature must hold for 1.5 s before a rebake; previously every water-budget transient triggered a GPU bake and a full Priority-Flood rebuild per tick.
+  - The terrain bake program links asynchronously (KHR_parallel_shader_compile, or a 2.5 s grace period) and is started right after GL init; an incomplete bake framebuffer disables the bake so the synoptic fallback owns the bridge.
+  - Fine land inside a coarse "ocean" Weather Core cell inherits its land neighbours' runoff instead of zero, so tectonic islands and coastal strips can carry rivers.
+  - A tributary's last edge keeps its own width at the junction; chords publish inside the same paced upload as the raster corridor; the worker publishes rivers only through its own message; drainage scratch arrays are reused.
+Regression: guards require the quantised sea signature, the settle delay, asynchronous link status, the framebuffer failure flip, the coarse-ocean wetness fallback, the junction width rule and the single worker publication.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

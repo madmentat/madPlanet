@@ -101,8 +101,8 @@ assert.ok(core.riverFineChords>0,'chords must be published: '+core.riverFineChor
 assert.equal(g('riverVecCount'),core.riverFineChords,'published chords must land in the vector table');
 const acc=g('rdfAccQ'),ch=ctx.rdfChains(d,acc);
 assert.ok(ch.chains.length>0,'a wet continent must have rivers');
-const interior=new Set();
-for(const c of ch.chains)for(let k=0;k<c.cells.length-1;k++)interior.add(c.cells[k]);
+const nodes=new Set();
+for(const c of ch.chains)for(const x of c.cells)nodes.add(x);
 for(const c of ch.chains){
   for(let k=0;k<c.cells.length-1;k++)assert.equal(d.ds[c.cells[k]],c.cells[k+1],'chain nodes must be consecutive downstream cells');
   for(let k=1;k<c.cells.length;k++)assert.ok(acc[c.cells[k]]>=acc[c.cells[k-1]],'accumulated wet area must not decrease downstream');
@@ -111,7 +111,8 @@ for(const c of ch.chains){
     assert.ok(!d.land[d.ds[last]],'a mouth chain must end at a sea cell');
     const hm=Math.hypot(c.mouth[0],c.mouth[1],c.mouth[2]);assert.ok(Math.abs(hm-1)<1e-6,'mouth point must be on the unit sphere');
   }else{
-    assert.ok(interior.has(last),'a tributary must end on a node of another chain');
+    assert.ok(nodes.has(last)&&c.cells.length>=2,'a tributary must end on a node of another chain');
+    assert.notEqual(ch.chains.find(o=>o!==c&&o.cells.indexOf(last)>=0),undefined,'the junction node must belong to another chain');
   }
 }
 const seg=g('riverVecSegments');
@@ -120,9 +121,25 @@ for(let i=0;i<g('riverVecCount');i++){
   assert.ok(seg[o+7]>0&&seg[o+7]<0.006,'chord half-width must stay a thin line');
   assert.ok(Math.abs(Math.hypot(seg[o+4],seg[o+5],seg[o+6])-1)<1e-5,'chord end must lie on the sphere');
 }
+/* Coarse ocean cells are no information, not drought: a fine land cell
+   mapped to one inherits its land neighbours' runoff. */
+{
+  const cc={count:3,riverRunoffMean:new Float32Array([0,2.1e-5,0]),windNeighbor:[Int32Array.from([1,0,1]),Int32Array.from([1,2,1]),Int32Array.from([1,0,1]),Int32Array.from([1,2,1])]};
+  ctx.riverIsOcean=(core,i)=>core.riverRunoffMean[i]===0;
+  const cw=ctx.rdfCoarseWetness(cc);
+  assert.ok(Math.abs(cw[1]-2)<1e-6,'land cell keeps its own runoff ratio');
+  assert.ok(Math.abs(cw[0]-2)<1e-6&&Math.abs(cw[2]-2)<1e-6,'coarse ocean cells take the neighbouring land runoff');
+  delete ctx.riverIsOcean;
+}
+assert.match(bake,/Number\(state\.sea\)\.toFixed\(2\)/,'the derived sea level must be quantised in the bake signature');
+assert.match(fine,/RDF_SIGNATURE_SETTLE_MS=1500/,'a changed signature must settle before a rebuild');
+assert.match(fine,/const junction=!ch\.mouth&&k===edges-1;/,'a tributary must not inherit the trunk width at its junction');
+assert.match(worker,/if\(typeof riverGpuUpload==='function'\)riverGpuUpload=function\(\)\{return false;\};/,'the worker must publish rivers only through wwRiverFaces');
+assert.match(bake,/COMPLETION_STATUS_KHR/,'the bake program must link asynchronously where the extension exists');
+assert.match(bake,/terrainBakeFailed=true;\n  \}\n  terrainBakeTexN=ok\?F:0;/,'an incomplete bake framebuffer must disable the bake');
 /* A dry basin (zero runoff everywhere) must have no rivers. */
 ctx.windDirToIndex=()=>0;
-const dry={N:8,count:1,riverChannelStrength:new Float32Array(1),riverRunoffMean:new Float32Array([0])};
+const dry={N:8,count:1,riverChannelStrength:new Float32Array(1),riverRunoffMean:new Float32Array([0]),surfaceWaterFraction:new Float32Array([0])};
 ctx.riverFineReadCurrent(dry);
 assert.equal(dry.riverFineChords,0,'without runoff there must be no channels');
 console.log('river-drainage-fine.test.js: OK');

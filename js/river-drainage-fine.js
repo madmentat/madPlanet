@@ -19,7 +19,8 @@
    Rivers therefore dry out or freeze with the climate, but their courses are
    carved once into the landscape.
 */
-const RDF_MODEL=1;
+const RDF_MODEL=2;
+const RDF_SIGNATURE_SETTLE_MS=1500; /* a moving slider or relaxing climate must settle before a rebuild */
 const RDF_FACE_N_DESKTOP=256;
 const RDF_FACE_N_MOBILE=224;
 const RDF_FLOOD_EPS=4e-6;
@@ -37,7 +38,9 @@ let rdfDrainage=null;            /* {F,n,sig,h,filled,ds,order,orderCount,land,a
 let rdfTerrainPending=null;      /* {F,h,sig} waiting to be built */
 let rdfCoarseCache=null;         /* {F,N,idx} */
 let rdfSentSig='';               /* main thread: signature last handed to the worker */
-let rdfWet=null,rdfAccQ=null,rdfPos=null;
+let rdfWet=null,rdfAccQ=null,rdfPos=null,rdfRelaxSrc=null,rdfIsChan=null,rdfMainChild=null,rdfBestQ=null,rdfCoarseWet=null;
+let rdfCandidateSig='',rdfCandidateSinceMs=0;
+function rdfNowMs(){return (typeof performance!=='undefined'&&performance&&typeof performance.now==='function')?performance.now():Date.now();}
 
 function rdfFaceN(){
   const mobile=(typeof mobileDevice!=='undefined')?!!mobileDevice:
@@ -151,14 +154,37 @@ function rdfEnsureCoarse(d,core){
 }
 /* Wetness per fine cell: the basin's runoff from the Weather Core, relative
    to the Earth-like land mean. Missing physics degrades to uniform 1. */
+/* Per coarse cell: runoff relative to the Earth-like land mean. The coarse
+   ocean mask comes from the macro field without tectonic belts, so baked
+   land often sits inside a coarse "ocean" cell; such cells take the mean of
+   their land neighbours (then the land mean) rather than zero. */
+function rdfCoarseWetness(core){
+  const n=core.count|0,run=core.riverRunoffMean;
+  if(!rdfCoarseWet||rdfCoarseWet.length!==n)rdfCoarseWet=new Float32Array(n);
+  const swf=core.surfaceWaterFraction;
+  const out=rdfCoarseWet,ocean=(typeof riverIsOcean==='function')?(c=>riverIsOcean(core,c)):(swf?(c=>swf[c]>=0.5):(()=>false));
+  let landSum=0,landCount=0;
+  for(let c=0;c<n;c++){
+    if(ocean(c)){out[c]=-1;continue;}
+    const w=rdfClamp((Number(run[c])||0)/RDF_RUNOFF_REF,0,3);out[c]=w;landSum+=w;landCount++;
+  }
+  const landMean=landCount?landSum/landCount:1,nb=core.windNeighbor;
+  for(let c=0;c<n;c++){
+    if(out[c]>=0)continue;
+    let sum=0,cnt=0;
+    if(nb)for(let k=0;k<nb.length;k++){const j=nb[k][c];if(j>=0&&j<n&&!ocean(j)){sum+=rdfClamp((Number(run[j])||0)/RDF_RUNOFF_REF,0,3);cnt++;}}
+    out[c]=cnt?sum/cnt:landMean;
+  }
+  return out;
+}
 function rdfWetness(d,core){
   if(!rdfWet||rdfWet.length!==d.n)rdfWet=new Float32Array(d.n);
   const idx=rdfEnsureCoarse(d,core),run=core?.riverRunoffMean;
-  if(!idx||!run){rdfWet.fill(1);return rdfWet;}
+  if(!idx||!run||!(core.count>0)){rdfWet.fill(1);return rdfWet;}
+  const cw=rdfCoarseWetness(core),n=core.count|0;
   for(let i=0;i<d.n;i++){
     if(!d.land[i]){rdfWet[i]=0;continue;}
-    const c=idx[i];const r=(c>=0&&c<run.length)?Number(run[c])||0:0;
-    rdfWet[i]=rdfClamp(r/RDF_RUNOFF_REF,0,3);
+    const c=idx[i];rdfWet[i]=(c>=0&&c<n)?cw[c]:1;
   }
   return rdfWet;
 }
@@ -183,7 +209,9 @@ function rdfWidthM(F,q){
    head node (its main-child lineage); tributaries end ON the junction cell
    of the chain they join, so node positions are shared exactly. */
 function rdfChains(d,acc){
-  const n=d.n,isChan=new Uint8Array(n),mainChild=new Int32Array(n).fill(-1),bestQ=new Float32Array(n);
+  const n=d.n;
+  if(!rdfIsChan||rdfIsChan.length!==n){rdfIsChan=new Uint8Array(n);rdfMainChild=new Int32Array(n);rdfBestQ=new Float32Array(n);}
+  const isChan=rdfIsChan,mainChild=rdfMainChild,bestQ=rdfBestQ;isChan.fill(0);mainChild.fill(-1);bestQ.fill(0);
   for(let i=0;i<n;i++)if(d.land[i]&&acc[i]>=RDF_Q_START_CELLS)isChan[i]=1;
   for(let i=0;i<n;i++){
     if(!isChan[i])continue;const j=d.ds[i];
@@ -217,7 +245,8 @@ function rdfRelax(d,chains){
   const n=d.n;if(!rdfPos||rdfPos.length!==n*3)rdfPos=new Float32Array(n*3);
   const pos=rdfPos,dir=[0,0,0],maxMove=RDF_RELAX_MAX_CELL*2/d.F;
   for(const ch of chains)for(let k=0;k<ch.cells.length;k++){const c=ch.cells[k];rdfCellDir(d.F,c,dir);pos[c*3]=dir[0];pos[c*3+1]=dir[1];pos[c*3+2]=dir[2];}
-  const src=new Float32Array(n*3);
+  if(!rdfRelaxSrc||rdfRelaxSrc.length!==n*3)rdfRelaxSrc=new Float32Array(n*3);
+  const src=rdfRelaxSrc;
   for(let pass=0;pass<2;pass++){
     for(const ch of chains)for(let k=0;k<ch.cells.length;k++){const c=ch.cells[k]*3;src[c]=pos[c];src[c+1]=pos[c+1];src[c+2]=pos[c+2];}
     for(const ch of chains){
@@ -279,9 +308,12 @@ function rdfPublish(d,acc,chains,pos,tmp){
     for(let k=0;k<edges;k++){
       at(ch,k-1,p0);at(ch,k,p1);at(ch,k+1,p2);at(ch,k+2,p3);
       const c0=ch.cells[k],c1=ch.cells[Math.min(m-1,k+1)];
-      let s0=rdfStrength(acc[c0]),s1=rdfStrength(acc[c1]);
+      /* the edge into a junction keeps the tributary's own size: only its
+         position is shared with the trunk, never the trunk's discharge */
+      const junction=!ch.mouth&&k===edges-1;
+      let s0=rdfStrength(acc[c0]),s1=junction?s0:rdfStrength(acc[c1]);
       if(k===0)s0*=RDF_HEAD_TAPER;
-      const w0=rdfWidthM(F,acc[c0]),w1=rdfWidthM(F,acc[c1]);
+      const w0=rdfWidthM(F,acc[c0]),w1=junction?w0:rdfWidthM(F,acc[c1]);
       riverGpuCatmullDir(p0,p1,p2,p3,0.5,mid);
       const sm=0.5*(s0+s1),wm=0.5*(w0+w1);
       riverVecPush(p1.x,p1.y,p1.z,mid.x,mid.y,mid.z,0.5*(s0+sm),riverVecHalfWidthRad(0.5*(s0+sm),0.5*(w0+wm),false));
@@ -312,19 +344,31 @@ function riverFineSetTerrain(F,h,sig){
 function riverFineSignature(){
   return (typeof terrainBakeSignature==='function')?terrainBakeSignature():'';
 }
+/* A signature counts only once it has held for RDF_SIGNATURE_SETTLE_MS, so a
+   moving slider or a relaxing water budget produces one rebuild, not one per
+   tick. Returns '' while unsettled. */
+function riverFineSettledSignature(){
+  const sig=riverFineSignature();if(!sig)return '';
+  const now=rdfNowMs();
+  if(sig!==rdfCandidateSig){rdfCandidateSig=sig;rdfCandidateSinceMs=now;return '';}
+  return (now-rdfCandidateSinceMs>=RDF_SIGNATURE_SETTLE_MS)?sig:'';
+}
 /* Main thread without a worker: bake and build locally (one hitch per world). */
 function riverFineEnsureLocal(){
   if(typeof terrainBakeHeights!=='function')return false;
-  const sig=riverFineSignature();
-  if(rdfDrainage&&rdfDrainage.sig===sig)return true;
-  if(rdfTerrainPending&&rdfTerrainPending.sig===sig)return true;
-  const F=rdfFaceN(),h=terrainBakeHeights(F);if(!h)return false;
-  return riverFineSetTerrain(F,h,sig);
+  const have=rdfDrainage?rdfDrainage.sig:(rdfTerrainPending?rdfTerrainPending.sig:'');
+  const sig=have?riverFineSettledSignature():riverFineSignature();
+  if(!sig)return !!have;
+  if(have===sig)return true;
+  const F=rdfFaceN(),h=terrainBakeHeights(F);if(!h)return !!have;
+  return riverFineSetTerrain(F,h,sig)||!!have;
 }
-/* Main thread with a worker: hand a fresh bake over exactly once per signature. */
+/* Main thread with a worker: hand a fresh bake over exactly once per settled
+   signature (the very first one goes immediately). */
 function riverFineTerrainForWorker(){
   if(typeof terrainBakeHeights!=='function')return null;
-  const sig=riverFineSignature();if(!sig||sig===rdfSentSig)return null;
+  const sig=rdfSentSig?riverFineSettledSignature():riverFineSignature();
+  if(!sig||sig===rdfSentSig)return null;
   const F=rdfFaceN(),h=terrainBakeHeights(F);if(!h)return null;
   rdfSentSig=sig;return {F,h,sig};
 }
@@ -365,6 +409,12 @@ function riverFineDiagnostics(){
   }
   return {model:RDF_MODEL,built:true,F:d.F,cells:d.n,land,lakeCells:lakes,channelCells:chan,wetMean:land?wetSum/land:0,wetFraction:land?wetPos/land:0,accMax,sig:d.sig};
 }
+/* The worker cannot see the main thread's GL: the tick request tells it
+   whether a bake is coming, so it publishes nothing (not the synoptic graph)
+   in the ticks before the first terrain arrives. */
+let rdfExpectedRemote=false;
+function riverFineSetExpected(flag){rdfExpectedRemote=!!flag;}
+function riverFineExpectedRemote(){return rdfExpectedRemote;}
 let rdfRemoteDiag=null;
 function riverFineSetRemoteDiagnostics(d){rdfRemoteDiag=d||null;}
 if(typeof window!=='undefined')window.__madPlanetRiverFine={get diagnostics(){return rdfDrainage?riverFineDiagnostics():(rdfRemoteDiag||riverFineDiagnostics());},get faceN(){return rdfFaceN();}};
