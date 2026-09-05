@@ -30,7 +30,9 @@ const RDF_LAKE_MIN_DEPTH=0.006;  /* filled - h, terrain units */
 const RDF_LAKE_MIN_CELLS=4;      /* smaller depressions are ponds below planet scale */
 const RDF_STRENGTH_FLOOR=0.12;   /* a threshold channel is still a visible thread */
 const RDF_RUNOFF_REF=1.05e-5;    /* kg/m^2/s, ~331 mm/yr land mean */
-const RDF_RELAX_MAX_CELL=0.45;
+const RDF_WET_FLOOR=0.30;        /* a dry basin still drains: it just needs ~3x the catchment */
+const RDF_RELAX_MAX_CELL=0.60;
+const RDF_RELAX_PASSES=3;
 const RDF_HEAD_TAPER=0.40;
 const RDF_PLANET_RADIUS_M=6371000;
 
@@ -164,15 +166,19 @@ function rdfCoarseWetness(core){
   const swf=core.surfaceWaterFraction;
   const out=rdfCoarseWet,ocean=(typeof riverIsOcean==='function')?(c=>riverIsOcean(core,c)):(swf?(c=>swf[c]>=0.5):(()=>false));
   let landSum=0,landCount=0;
+  const ratio=c=>RDF_WET_FLOOR+(1-RDF_WET_FLOOR)*rdfClamp((Number(run[c])||0)/RDF_RUNOFF_REF,0,3);
   for(let c=0;c<n;c++){
     if(ocean(c)){out[c]=-1;continue;}
-    const w=rdfClamp((Number(run[c])||0)/RDF_RUNOFF_REF,0,3);out[c]=w;landSum+=w;landCount++;
+    const w=ratio(c);out[c]=w;landSum+=w;landCount++;
   }
   const landMean=landCount?landSum/landCount:1,nb=core.windNeighbor;
+  /* Before the runoff memory has bootstrapped (a fresh core, or a frozen
+     start) every land cell reads zero; rivers then follow area alone. */
+  if(landCount&&landMean<=RDF_WET_FLOOR+1e-6){for(let c=0;c<n;c++)if(out[c]>=0)out[c]=1;}
   for(let c=0;c<n;c++){
     if(out[c]>=0)continue;
     let sum=0,cnt=0;
-    if(nb)for(let k=0;k<nb.length;k++){const j=nb[k][c];if(j>=0&&j<n&&!ocean(j)){sum+=rdfClamp((Number(run[j])||0)/RDF_RUNOFF_REF,0,3);cnt++;}}
+    if(nb)for(let k=0;k<nb.length;k++){const j=nb[k][c];if(j>=0&&j<n&&!ocean(j)){sum+=out[j]>=0?out[j]:ratio(j);cnt++;}}
     out[c]=cnt?sum/cnt:landMean;
   }
   return out;
@@ -200,6 +206,13 @@ function rdfAccumulate(d,wet){
 function rdfStrength(q){
   if(!(q>=RDF_Q_START_CELLS))return 0;
   return RDF_STRENGTH_FLOOR+(1-RDF_STRENGTH_FLOOR)*rdfClamp(Math.log(q/RDF_Q_START_CELLS)/Math.log(RDF_Q_FULL_CELLS/RDF_Q_START_CELLS),0,1);
+}
+/* Drawn half-width (rad) of a fine channel: a steeper curve than the
+   synoptic bridge so a threshold creek reads as a thread and an Amazon-class
+   trunk as a broad band, about 8:1 between them. */
+function rdfHalfWidthRad(strength,widthM){
+  const s=rdfClamp(strength,0,1),ws=rdfClamp(Math.log2(1+Math.max(0,widthM)/18)/7.0,0,1);
+  return 0.00035+0.00300*Math.pow(s,1.8)+0.00100*ws*ws;
 }
 function rdfWidthM(F,q){
   const cellM2=Math.pow(2/F*RDF_PLANET_RADIUS_M,2),Q=q*cellM2*RDF_RUNOFF_REF*1e-3; /* m^3/s */
@@ -247,7 +260,7 @@ function rdfRelax(d,chains){
   for(const ch of chains)for(let k=0;k<ch.cells.length;k++){const c=ch.cells[k];rdfCellDir(d.F,c,dir);pos[c*3]=dir[0];pos[c*3+1]=dir[1];pos[c*3+2]=dir[2];}
   if(!rdfRelaxSrc||rdfRelaxSrc.length!==n*3)rdfRelaxSrc=new Float32Array(n*3);
   const src=rdfRelaxSrc;
-  for(let pass=0;pass<2;pass++){
+  for(let pass=0;pass<RDF_RELAX_PASSES;pass++){
     for(const ch of chains)for(let k=0;k<ch.cells.length;k++){const c=ch.cells[k]*3;src[c]=pos[c];src[c+1]=pos[c+1];src[c+2]=pos[c+2];}
     for(const ch of chains){
       const cells=ch.cells,m=cells.length;
@@ -316,8 +329,8 @@ function rdfPublish(d,acc,chains,pos,tmp){
       const w0=rdfWidthM(F,acc[c0]),w1=junction?w0:rdfWidthM(F,acc[c1]);
       riverGpuCatmullDir(p0,p1,p2,p3,0.5,mid);
       const sm=0.5*(s0+s1),wm=0.5*(w0+w1);
-      riverVecPush(p1.x,p1.y,p1.z,mid.x,mid.y,mid.z,0.5*(s0+sm),riverVecHalfWidthRad(0.5*(s0+sm),0.5*(w0+wm),false));
-      riverVecPush(mid.x,mid.y,mid.z,p2.x,p2.y,p2.z,0.5*(sm+s1),riverVecHalfWidthRad(0.5*(sm+s1),0.5*(wm+w1),false));
+      riverVecPush(p1.x,p1.y,p1.z,mid.x,mid.y,mid.z,0.5*(s0+sm),rdfHalfWidthRad(0.5*(s0+sm),0.5*(w0+wm)));
+      riverVecPush(mid.x,mid.y,mid.z,p2.x,p2.y,p2.z,0.5*(sm+s1),rdfHalfWidthRad(0.5*(sm+s1),0.5*(wm+w1)));
       rdfPaintChord(p1.x,p1.y,p1.z,mid.x,mid.y,mid.z,0.5*(s0+sm),0.5*(w0+wm),tmp);
       rdfPaintChord(mid.x,mid.y,mid.z,p2.x,p2.y,p2.z,0.5*(sm+s1),0.5*(wm+w1),tmp);
       chords+=2;
@@ -337,9 +350,10 @@ function rdfPublish(d,acc,chains,pos,tmp){
 }
 
 /* ---------- lifecycle ---------- */
+let rdfTerrainReceived=0,rdfTerrainRejected=0;
 function riverFineSetTerrain(F,h,sig){
-  if(!(F>=8)||!h||h.length!==6*F*F)return false;
-  rdfTerrainPending={F,h,sig:String(sig||'')};return true;
+  if(!(F>=8)||!h||h.length!==6*F*F){rdfTerrainRejected++;return false;}
+  rdfTerrainReceived++;rdfTerrainPending={F,h,sig:String(sig||'')};return true;
 }
 function riverFineSignature(){
   return (typeof terrainBakeSignature==='function')?terrainBakeSignature():'';
@@ -399,7 +413,7 @@ function riverFineReadCurrent(core){
   return true;
 }
 function riverFineDiagnostics(){
-  const d=rdfDrainage;if(!d)return {model:RDF_MODEL,built:false};
+  const d=rdfDrainage;if(!d)return {model:RDF_MODEL,built:false,pending:!!rdfTerrainPending,received:rdfTerrainReceived,rejected:rdfTerrainRejected,expected:rdfExpectedRemote};
   let land=0,chan=0,wetSum=0,wetPos=0,accMax=0,lakes=0;
   for(let i=0;i<d.n;i++){
     if(!d.land[i])continue;land++;

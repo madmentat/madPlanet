@@ -102,7 +102,11 @@
 
   riverGpuUpload=function(core){
     if(!core?.N)return false;
-    if(riverPacingImmediateRequired(core))return riverPacingRecordPublish(core);
+    /* 0.5.162: a worker mirror carries faces and chords already reconstructed
+       off the main thread; publishing them is a texture upload, not the
+       synoptic reconstruction this pacing was written for. Idle-slot deferral
+       starved it entirely on a device that never reports an idle frame. */
+    if(core.__mirror||riverPacingImmediateRequired(core))return riverPacingRecordPublish(core);
     riverPublishPending=core; /* coalesce: newest mutable Weather Core wins */
     riverPacingSchedule(0);
     return true;

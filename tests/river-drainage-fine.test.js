@@ -15,6 +15,7 @@ const gpu=read('js/river-gpu.js');
 const bake=read('js/terrain-bake.js');
 const bakeGlsl=read('shaders/terrain-bake.glsl');
 const worker=read('js/weather-worker.js');
+const shader=read('shaders/surface.glsl');
 const buildSh=read('build.sh');
 const buildPs=read('build.ps1');
 
@@ -127,8 +128,12 @@ for(let i=0;i<g('riverVecCount');i++){
   const cc={count:3,riverRunoffMean:new Float32Array([0,2.1e-5,0]),windNeighbor:[Int32Array.from([1,0,1]),Int32Array.from([1,2,1]),Int32Array.from([1,0,1]),Int32Array.from([1,2,1])]};
   ctx.riverIsOcean=(core,i)=>core.riverRunoffMean[i]===0;
   const cw=ctx.rdfCoarseWetness(cc);
-  assert.ok(Math.abs(cw[1]-2)<1e-6,'land cell keeps its own runoff ratio');
-  assert.ok(Math.abs(cw[0]-2)<1e-6&&Math.abs(cw[2]-2)<1e-6,'coarse ocean cells take the neighbouring land runoff');
+  assert.ok(Math.abs(cw[1]-(0.3+0.7*2))<1e-6,'land cell keeps its own runoff ratio above the floor');
+  assert.ok(Math.abs(cw[0]-cw[1])<1e-6&&Math.abs(cw[2]-cw[1])<1e-6,'coarse ocean cells take the neighbouring land runoff');
+  const fresh={count:2,riverRunoffMean:new Float32Array([0,0]),surfaceWaterFraction:new Float32Array([0,0]),windNeighbor:[Int32Array.from([1,0]),Int32Array.from([1,0]),Int32Array.from([1,0]),Int32Array.from([1,0])]};
+  ctx.riverIsOcean=(core,i)=>core.surfaceWaterFraction[i]>=0.5;
+  const fw=ctx.rdfCoarseWetness(fresh);
+  assert.ok(fw[0]===1&&fw[1]===1,'an unbootstrapped runoff memory must not erase every river');
   delete ctx.riverIsOcean;
 }
 assert.match(bake,/Number\(state\.sea\)\.toFixed\(2\)/,'the derived sea level must be quantised in the bake signature');
@@ -136,10 +141,19 @@ assert.match(fine,/RDF_SIGNATURE_SETTLE_MS=1500/,'a changed signature must settl
 assert.match(fine,/const junction=!ch\.mouth&&k===edges-1;/,'a tributary must not inherit the trunk width at its junction');
 assert.match(worker,/if\(typeof riverGpuUpload==='function'\)riverGpuUpload=function\(\)\{return false;\};/,'the worker must publish rivers only through wwRiverFaces');
 assert.match(bake,/COMPLETION_STATUS_KHR/,'the bake program must link asynchronously where the extension exists');
+assert.match(gpu,/RIVER_VEC_BIN_N=128;/,'dense fine networks need 128 chord bins per face');
+assert.match(shader,/int count = int\(min\(bin\.y, 48\.0\) \+ 0\.5\);/,'the shader must visit up to 48 chords per bin');
+assert.match(fine,/function rdfHalfWidthRad\(strength,widthM\)/,'fine channels need their own width curve');
+assert.match(fine,/RDF_WET_FLOOR=0\.30/,'a dry basin must keep a wetness floor');
+assert.match(read('js/river-frame-pacing.js'),/if\(core\.__mirror\|\|riverPacingImmediateRequired\(core\)\)return riverPacingRecordPublish\(core\);/,'worker mirrors must publish immediately');
+assert.ok(ctx.rdfHalfWidthRad(1,2000)/ctx.rdfHalfWidthRad(0.12,50)>5,'trunks must draw several times wider than threshold creeks');
 assert.match(bake,/terrainBakeFailed=true;\n  \}\n  terrainBakeTexN=ok\?F:0;/,'an incomplete bake framebuffer must disable the bake');
 /* A dry basin (zero runoff everywhere) must have no rivers. */
 ctx.windDirToIndex=()=>0;
-const dry={N:8,count:1,riverChannelStrength:new Float32Array(1),riverRunoffMean:new Float32Array([0]),surfaceWaterFraction:new Float32Array([0])};
+ctx.riverIsOcean=(core,i)=>core.surfaceWaterFraction[i]>=0.5;
+const dry={N:8,count:2,riverChannelStrength:new Float32Array(2),riverRunoffMean:new Float32Array([0,3e-5]),surfaceWaterFraction:new Float32Array([0,0]),windNeighbor:[Int32Array.from([1,0]),Int32Array.from([1,0]),Int32Array.from([1,0]),Int32Array.from([1,0])]};
+ctx.windDirToIndex=()=>0;
 ctx.riverFineReadCurrent(dry);
-assert.equal(dry.riverFineChords,0,'without runoff there must be no channels');
+const wetChords=core.riverFineChords;
+assert.ok(dry.riverFineChords<wetChords,'a dry basin must carry fewer channels than a wet one: '+dry.riverFineChords+' vs '+wetChords);
 console.log('river-drainage-fine.test.js: OK');

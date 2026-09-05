@@ -31,11 +31,11 @@
 */
 const RIVER_GPU_MODEL=17;
 const RIVER_TEX_UNIT=2;
-const RIVER_VEC_BIN_N=64;             /* bins per cubemap face edge */
+const RIVER_VEC_BIN_N=128;            /* bins per cubemap face edge */
 const RIVER_VEC_TEX_W=2048;           /* data texture width in texels */
 const RIVER_VEC_MAX_SEGMENTS=180000;
 const RIVER_VEC_PIECES_PER_EDGE=6;    /* chords per coarse graph edge */
-const RIVER_VEC_BIN_MARGIN_RAD=0.010; /* widest channel + shader warp + AA reach */
+const RIVER_VEC_BIN_MARGIN_RAD=0.008; /* widest channel + shader warp + AA reach */
 const RIVER_NODE_RELAX_MAX_CELL=0.35; /* max node displacement, cell angles */
 const RIVER_VEC_BIN_UNIT=13,RIVER_VEC_LIST_UNIT=14;
 const RIVER_GPU_UPSCALE=16;

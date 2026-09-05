@@ -1,9 +1,10 @@
-VERSION 0.5.161
-Base: 0.5.160 terrain-driven river drainage.
-Changes: review fixes for the bake/drainage lifecycle.
-  - state.sea is a per-frame derived value, so the bake signature quantises it to 0.01 and any changed signature must hold for 1.5 s before a rebake; previously every water-budget transient triggered a GPU bake and a full Priority-Flood rebuild per tick.
-  - The terrain bake program links asynchronously (KHR_parallel_shader_compile, or a 2.5 s grace period) and is started right after GL init; an incomplete bake framebuffer disables the bake so the synoptic fallback owns the bridge.
-  - Fine land inside a coarse "ocean" Weather Core cell inherits its land neighbours' runoff instead of zero, so tectonic islands and coastal strips can carry rivers.
-  - A tributary's last edge keeps its own width at the junction; chords publish inside the same paced upload as the raster corridor; the worker publishes rivers only through its own message; drainage scratch arrays are reused.
-Regression: guards require the quantised sea signature, the settle delay, asynchronous link status, the framebuffer failure flip, the coarse-ocean wetness fallback, the junction width rule and the single worker publication.
+VERSION 0.5.162
+Base: 0.5.161 terrain-driven rivers with review fixes.
+Changes: continuous, curved and width-graded channels on dense networks.
+  - Chord bins are 128 per cubemap face with a 0.008 rad margin and the shader visits up to 48 chords per bin; on a land-heavy world the 64-bin index overflowed the 32-chord cap in hundreds of bins and dropped the weakest chords, which read as rivers breaking near confluences.
+  - Fine channels use their own width curve (0.00035 + 0.0030*s^1.8 + 0.001*ws^2 rad), about 8:1 between a threshold creek and an Amazon-class trunk instead of 2:1.
+  - Chain relaxation runs three passes with a 0.6-cell bound and the sub-grid meander warp uses three octaves at 0.0046 rad, so the 40 km D8 staircase reads as a curve instead of a crowbar.
+  - Basin wetness has a 0.30 floor (a dry basin needs ~3x the catchment, not infinite) and an unbootstrapped runoff memory counts as uniform wetness, so a fresh or loaded world grows rivers immediately instead of waiting 24 model days.
+  - Worker mirrors publish immediately: the idle-slot river pacing was written for main-thread reconstruction and starved a device that never reports an idle frame.
+Regression: guards require the finer bins, the fine width curve, the wetness floor and bootstrap fallback, and the immediate mirror publication.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

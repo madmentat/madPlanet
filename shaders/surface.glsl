@@ -31,10 +31,10 @@ float riverVecBin(vec3 p){
    fragment already deep inside a channel stops early. */
 vec3 riverVectorNearest(vec3 p, float stopInside){
   vec2 bin = riverVecFetch(uRiverBinTex, riverVecBin(p)).xy;
-  int count = int(min(bin.y, 32.0) + 0.5);
+  int count = int(min(bin.y, 48.0) + 0.5);
   float base = bin.x*2.0;
   float bestScore = 1.0e9, bestD = 1.0, bestHw = 0.0, bestS = 0.0;
-  for(int k = 0; k < 32; k++){
+  for(int k = 0; k < 48; k++){
     if(k >= count) break;
     vec4 A = riverVecFetch(uRiverListTex, base + float(2*k));
     vec4 B = riverVecFetch(uRiverListTex, base + float(2*k + 1));
@@ -88,14 +88,15 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
       /* Sub-grid meanders: one continuous domain warp bends every chord
          without breaking the network. It fades toward the coast so a mouth
          still meets the detailed shoreline. */
-      float warpAmp = 0.0034*ss(0.003, 0.028, h);
+      float warpAmp = 0.0046*ss(0.003, 0.028, h);
       vec3 wp = sN;
-      /* the warp is sub-pixel beyond ~0.0025 rad/px, so orbit views skip it */
+      /* the warp is sub-pixel beyond ~0.0025 rad/px, so orbit views skip it;
+         three octaves put bends at ~350, 170 and 85 km along a 40 km chain */
       if(pixAng < 0.0025){
-        vec3 wq = sN*62.0 + uSeedS*2.3;
+        vec3 wq = sN*70.0 + uSeedS*2.3;
         vec3 wt1 = normalize(cross(sN, (abs(sN.y) < 0.9) ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0)));
         vec3 wt2 = cross(sN, wt1);
-        vec3 meander = wt1*fbm(wq, 2) + wt2*fbm(wq + vec3(9.1, 3.7, 1.3), 2);
+        vec3 meander = wt1*fbm(wq, 3) + wt2*fbm(wq + vec3(9.1, 3.7, 1.3), 3);
         wp = normalize(sN + warpAmp*meander);
       }
       float pixAA = max(0.70*pixAng, 3.0e-5);
