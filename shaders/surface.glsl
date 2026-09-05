@@ -104,9 +104,9 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
       /* A channel narrower than a pixel keeps at least a hairline whose
          opacity follows its true coverage, floored by channel strength, so
          trunks never vanish from orbit while creeks stay faint. */
-      float hwEff = max(hw, 0.60*pixAng);
+      float hwEff = max(hw, 0.65*pixAng);
       float cov = 1.0 - ss(hwEff - pixAA, hwEff + pixAA, nr.x);
-      float opacity = clamp(max(hw/hwEff, 0.34 + 0.55*nr.z), 0.0, 1.0);
+      float opacity = clamp(max(hw/hwEff, 0.42 + 0.50*nr.z), 0.0, 1.0);
       vecCov = cov*opacity;
       vecFlood = (1.0 - ss(hw*1.3, hw*2.6 + 0.0012, nr.x))*(1.0 - ss(0.14, 0.32, h));
     }

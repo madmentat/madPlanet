@@ -41,7 +41,7 @@ assert.match(shader,/float score = d - B\.w;/,'nearest chord must be measured to
 assert.match(shader,/textureLod\(uRiverTex, normalize\(sN\), 2\.0\)/,'the corridor mip must gate the chord loop');
 assert.match(shader,/riverGeom = mix\(riverGeom, vecCov, vecOn\);/,'vector coverage must replace the FBM crack when available');
 assert.match(shader,/riverCoverage = mix\(riverCoverage, 1\.0, vecOn\);/,'vector channels carry their own pixel coverage');
-assert.match(shader,/float hwEff = max\(hw, 0\.60\*pixAng\);/,'a sub-pixel channel must keep a hairline');
+assert.match(shader,/float hwEff = max\(hw, 0\.65\*pixAng\);/,'a sub-pixel channel must keep a hairline');
 assert.match(shader,/float warpAmp = 0\.0034\*ss\(0\.003, 0\.028, h\);/,'sub-grid meander warp must fade at the coast');
 assert.match(shader,/riverHydroTex\s*=\s*texture\(uRiverTex, normalize\(sN\)\)/,'the raster corridor stays unwarped');
 
