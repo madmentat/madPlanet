@@ -23,9 +23,11 @@ const RDF_MODEL=1;
 const RDF_FACE_N_DESKTOP=256;
 const RDF_FACE_N_MOBILE=224;
 const RDF_FLOOD_EPS=4e-6;
-const RDF_Q_START_CELLS=40;      /* wet-weighted face-centre cell areas that start a channel */
+const RDF_Q_START_CELLS=24;      /* wet-weighted face-centre cell areas that start a channel */
 const RDF_Q_FULL_CELLS=3000;     /* Amazon-class trunk */
 const RDF_LAKE_MIN_DEPTH=0.006;  /* filled - h, terrain units */
+const RDF_LAKE_MIN_CELLS=4;      /* smaller depressions are ponds below planet scale */
+const RDF_STRENGTH_FLOOR=0.12;   /* a threshold channel is still a visible thread */
 const RDF_RUNOFF_REF=1.05e-5;    /* kg/m^2/s, ~331 mm/yr land mean */
 const RDF_RELAX_MAX_CELL=0.45;
 const RDF_HEAD_TAPER=0.40;
@@ -170,8 +172,8 @@ function rdfAccumulate(d,wet){
   return acc;
 }
 function rdfStrength(q){
-  if(!(q>RDF_Q_START_CELLS))return 0;
-  return rdfClamp(Math.log(q/RDF_Q_START_CELLS)/Math.log(RDF_Q_FULL_CELLS/RDF_Q_START_CELLS),0,1);
+  if(!(q>=RDF_Q_START_CELLS))return 0;
+  return RDF_STRENGTH_FLOOR+(1-RDF_STRENGTH_FLOOR)*rdfClamp(Math.log(q/RDF_Q_START_CELLS)/Math.log(RDF_Q_FULL_CELLS/RDF_Q_START_CELLS),0,1);
 }
 function rdfWidthM(F,q){
   const cellM2=Math.pow(2/F*RDF_PLANET_RADIUS_M,2),Q=q*cellM2*RDF_RUNOFF_REF*1e-3; /* m^3/s */
@@ -234,6 +236,27 @@ function rdfRelax(d,chains){
   return pos;
 }
 
+/* Connected depression components; ponds below RDF_LAKE_MIN_CELLS are dropped. */
+let rdfLakeCache=null;
+function rdfLakeCells(d){
+  if(rdfLakeCache&&rdfLakeCache.d===d)return rdfLakeCache.cells;
+  const n=d.n,F=d.F,mark=new Uint8Array(n),out=[],stack=new Int32Array(n);
+  for(let i=0;i<n;i++){
+    if(mark[i]||!d.land[i]||d.depth[i]<RDF_LAKE_MIN_DEPTH)continue;
+    let top=0,size=0;stack[top++]=i;mark[i]=1;const comp=[];
+    while(top>0){
+      const c=stack[--top];comp.push(c);size++;
+      for(let k=0;k<8;k++){
+        const nb=rdfNeighbour(F,c,RDF_DX[k],RDF_DY[k]);
+        if(mark[nb]||!d.land[nb]||d.depth[nb]<RDF_LAKE_MIN_DEPTH)continue;
+        mark[nb]=1;stack[top++]=nb;
+      }
+    }
+    if(size>=RDF_LAKE_MIN_CELLS)for(const c of comp)out.push(c);
+  }
+  const cells=Int32Array.from(out);rdfLakeCache={d,cells};return cells;
+}
+
 /* ---------- publication into the display bridge ---------- */
 function rdfPaintChord(ax,ay,az,bx,by,bz,strength,widthM,tmp){
   const len=Math.hypot(bx-ax,by-ay,bz-az),texel=2/Math.max(8,riverGpuN||8);
@@ -268,11 +291,14 @@ function rdfPublish(d,acc,chains,pos,tmp){
       chords+=2;
     }
   }
-  /* lakes: filled depressions, painted as lake support for the noise shoreline */
-  const dir=[0,0,0],lakeRadius=Math.max(0.6,0.55*(riverGpuN||8)/F);
+  /* lakes: filled depressions of at least RDF_LAKE_MIN_CELLS connected cells,
+     painted contiguously (the raster is finer than the drainage grid) as lake
+     support for the noise shoreline. */
+  const dir=[0,0,0],lakeRadius=0.5+0.8*(riverGpuN||8)/F;
+  const lakeCells=rdfLakeCells(d);
   let lakes=0;
-  for(let i=0;i<d.n;i++){
-    const dep=d.depth[i];if(dep<RDF_LAKE_MIN_DEPTH)continue;
+  for(let k=0;k<lakeCells.length;k++){
+    const i=lakeCells[k],dep=d.depth[i];
     rdfCellDir(F,i,dir);riverGpuPaintDir(riverGpuCurrLake,dir[0],dir[1],dir[2],lakeRadius,rdfClamp(0.30+dep/0.03,0.30,1),tmp);lakes++;
   }
   return {chords,lakes,chains:chains.length};
