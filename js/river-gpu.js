@@ -19,18 +19,205 @@
 
 const RIVER_GPU_MODEL=10;
 const RIVER_TEX_UNIT=2;
+const RIVER_LOOP_TEX_UNIT=8;
+const RIVER_LOOP_FILTER_MODEL=1;
+const RIVER_LOOP_MIN_N=96;
+const RIVER_LOOP_MAX_N=192;
 const RIVER_GPU_UPSCALE=16;
 const RIVER_BLEND_DEFAULT_MS=900;
 const RIVER_BLEND_MIN_MS=250;
 const RIVER_BLEND_MAX_MS=1200;
 
 if(typeof UNIFORM_NAMES!=='undefined'){
-  for(const n of ['uRiverTex','uRiverBlend','uRiverPhysicsOn'])if(!UNIFORM_NAMES.includes(n))UNIFORM_NAMES.push(n);
+  for(const n of ['uRiverTex','uRiverBlend','uRiverPhysicsOn','uRiverLoopTex','uRiverLoopOn'])if(!UNIFORM_NAMES.includes(n))UNIFORM_NAMES.push(n);
 }
 
 let riverGpuTex=null,riverGpuN=0,riverGpuFaces=[];
 let riverGpuPrevRiver=[],riverGpuPrevLake=[],riverGpuCurrRiver=[],riverGpuCurrLake=[];
 let riverGpuHasFrame=false,riverGpuLastSeed=NaN,riverGpuBlendStartMs=0,riverGpuBlendDurationMs=1,riverGpuLastUploadMs=NaN;
+
+/* 0.5.178 loop filter.
+   The historic 0.5.147 visible river is a zero-contour of a procedural scalar.
+   On the sphere those contours are naturally closed. We do NOT redraw them.
+   Instead, once per generated surface, a coarse cubemap classifies only the
+   contour components that are closed entirely on land. Those components get
+   a local kill mask; every coast/lake-connected component remains byte-for-byte
+   the old 0.5.147 artwork in surface.glsl. */
+let riverLoopTex=null,riverLoopN=0,riverLoopFaces=[];
+let riverLoopReady=false,riverLoopSupported=false,riverLoopSignature='';
+
+function riverLoopFract(x){return x-Math.floor(x);}
+function riverLoopMix(a,b,t){return a+(b-a)*t;}
+function riverLoopHash33(x,y,z,out){
+  x=riverLoopFract(x*0.1031);y=riverLoopFract(y*0.1030);z=riverLoopFract(z*0.0973);
+  const d=x*(y+33.33)+y*(x+33.33)+z*(z+33.33);x+=d;y+=d;z+=d;
+  out[0]=riverLoopFract((x+y)*z);
+  out[1]=riverLoopFract((x+x)*y);
+  out[2]=riverLoopFract((y+x)*x);
+  return out;
+}
+function riverLoopNoise3(x,y,z){
+  const ix=Math.floor(x),iy=Math.floor(y),iz=Math.floor(z);
+  const fx=x-ix,fy=y-iy,fz=z-iz;
+  const ux=fx*fx*(3-2*fx),uy=fy*fy*(3-2*fy),uz=fz*fz*(3-2*fz);
+  const h=[0,0,0],dot=(ox,oy,oz)=>{
+    riverLoopHash33(ix+ox,iy+oy,iz+oz,h);
+    return (h[0]-0.5)*(fx-ox)+(h[1]-0.5)*(fy-oy)+(h[2]-0.5)*(fz-oz);
+  };
+  const a=dot(0,0,0),b=dot(1,0,0),c=dot(0,1,0),d=dot(1,1,0);
+  const e=dot(0,0,1),g=dot(1,0,1),hh=dot(0,1,1),k=dot(1,1,1);
+  const z0=riverLoopMix(riverLoopMix(a,b,ux),riverLoopMix(c,d,ux),uy);
+  const z1=riverLoopMix(riverLoopMix(e,g,ux),riverLoopMix(hh,k,ux),uy);
+  return 2*riverLoopMix(z0,z1,uz);
+}
+function riverLoopFbm(x,y,z,oct){
+  let a=0.5,s=0;
+  for(let i=0;i<oct;i++){
+    s+=a*riverLoopNoise3(x,y,z);
+    const nx=(-0.80*y-0.60*z)*2.03+3.1;
+    const ny=( 0.80*x+0.36*y-0.48*z)*2.03+3.1;
+    const nz=( 0.60*x-0.48*y+0.64*z)*2.03+3.1;
+    x=nx;y=ny;z=nz;a*=0.5;
+  }
+  return s;
+}
+function riverLoopScalar(dx,dy,dz,seedS){
+  const sx=Number(seedS?.[0])||0,sy=Number(seedS?.[1])||0,sz=Number(seedS?.[2])||0;
+  const wx=riverLoopFbm(dx*3.1+sx,dy*3.1+sy,dz*3.1+sz,3);
+  const wy=riverLoopFbm(dx*3.1+sx+7.7,dy*3.1+sy+7.7,dz*3.1+sz+7.7,3);
+  return riverLoopFbm(dx*5.2+sx*1.9+0.5*wx,
+                      dy*5.2+sy*1.9+0.5*wy,
+                      dz*5.2+sz*1.9,4);
+}
+function riverLoopFaceDir(face,px,py,N,out){
+  const u=2*px/N-1,v=1-2*py/N;let x=0,y=0,z=0;
+  if(face===0){x= 1;y=v;z=-u;}
+  else if(face===1){x=-1;y=v;z= u;}
+  else if(face===2){x= u;y=1;z=-v;}
+  else if(face===3){x= u;y=-1;z=v;}
+  else if(face===4){x= u;y=v;z=1;}
+  else{x=-u;y=v;z=-1;}
+  const q=Math.hypot(x,y,z)||1;out[0]=x/q;out[1]=y/q;out[2]=z/q;return out;
+}
+function riverLoopIndex(face,x,y,N){return face*N*N+y*N+x;}
+function riverLoopIndexToCell(idx,N,out){
+  const face=Math.floor(idx/(N*N)),r=idx-face*N*N,y=Math.floor(r/N),x=r-y*N;
+  out.face=face;out.x=x;out.y=y;return out;
+}
+function riverLoopNeighborIndex(face,x,y,dx,dy,N,tmpDir,tmpUv){
+  const nx=x+dx,ny=y+dy;
+  if(nx>=0&&nx<N&&ny>=0&&ny<N)return riverLoopIndex(face,nx,ny,N);
+  riverLoopFaceDir(face,nx+0.5,ny+0.5,N,tmpDir);
+  riverGpuDirToFaceUV(tmpDir[0],tmpDir[1],tmpDir[2],tmpUv);
+  const xx=riverGpuClamp(Math.floor((tmpUv.u+1)*0.5*N),0,N-1);
+  const yy=riverGpuClamp(Math.floor((1-(tmpUv.v+1)*0.5)*N),0,N-1);
+  return riverLoopIndex(tmpUv.face,xx,yy,N);
+}
+function riverLoopWaterAt(core,dx,dy,dz){
+  if(typeof windDirToIndex!=='function')return false;
+  const i=windDirToIndex(core,dx,dy,dz);
+  if(!(i>=0&&i<core.count))return false;
+  if(typeof riverIsOcean==='function'&&riverIsOcean(core,i))return true;
+  if((Number(core.riverLakeFraction?.[i])||0)>0.045)return true;
+  return (Number(core.surfaceWaterFraction?.[i])||0)>0.55;
+}
+function riverLoopEnsureTexture(N){
+  const maxUnits=Number(gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS))||8;
+  riverLoopSupported=maxUnits>RIVER_LOOP_TEX_UNIT;
+  if(!riverLoopSupported){riverLoopReady=false;return false;}
+  if(riverLoopTex&&riverLoopN===N)return true;
+  if(riverLoopTex)gl.deleteTexture(riverLoopTex);
+  riverLoopN=N;riverLoopFaces=Array.from({length:6},()=>new Uint8Array(N*N*4));
+  riverLoopTex=gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0+RIVER_LOOP_TEX_UNIT);gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverLoopTex);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  if(webglVersion>=2)gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_R,gl.CLAMP_TO_EDGE);
+  for(let f=0;f<6;f++)gl.texImage2D(riverGpuFaceTarget(f),0,gl.RGBA,N,N,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);
+  riverLoopReady=false;return true;
+}
+function riverLoopBuildMask(core){
+  if(!core?.N||!world?.seedS)return false;
+  const N=Math.max(RIVER_LOOP_MIN_N,Math.min(RIVER_LOOP_MAX_N,Math.round(core.N*5)));
+  if(!riverLoopEnsureTexture(N))return false;
+  const sig=(core.seed|0)+'|'+String(core.h2oSurfaceSignature||'')+'|'+world.seedS.map(v=>Number(v).toFixed(5)).join(',');
+  if(riverLoopReady&&riverLoopSignature===sig)return true;
+
+  const facePix=N*N,total=6*facePix;
+  const active=new Uint8Array(total),water=new Uint8Array(total),visited=new Uint8Array(total);
+  const keep=new Uint8Array(total);keep.fill(255);
+  const corners=Array.from({length:6},()=>new Float32Array((N+1)*(N+1)));
+  const d=[0,0,0];
+
+  /* Marching-squares occupancy of the same rn=0 contour used by 0.5.147.
+     Width is deliberately ignored: component topology belongs to the zero
+     contour, while the original shader remains the owner of visible width. */
+  for(let f=0;f<6;f++){
+    const cv=corners[f];
+    for(let y=0;y<=N;y++)for(let x=0;x<=N;x++){
+      riverLoopFaceDir(f,x,y,N,d);
+      cv[y*(N+1)+x]=riverLoopScalar(d[0],d[1],d[2],world.seedS);
+    }
+    for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+      const a=cv[y*(N+1)+x],b=cv[y*(N+1)+x+1],c=cv[(y+1)*(N+1)+x],e=cv[(y+1)*(N+1)+x+1];
+      const lo=Math.min(a,b,c,e),hi=Math.max(a,b,c,e),idx=riverLoopIndex(f,x,y,N);
+      if(lo<=0&&hi>=0)active[idx]=1;
+      riverLoopFaceDir(f,x+0.5,y+0.5,N,d);
+      if(riverLoopWaterAt(core,d[0],d[1],d[2]))water[idx]=1;
+    }
+  }
+
+  const queue=new Int32Array(total),cell={face:0,x:0,y:0},uv={face:0,u:0,v:0},nd=[0,0,0];
+  let head=0,tail=0,removedComponents=0,removedPixels=0;
+  const dirs=[-1,-1,0,-1,1,-1,-1,0,1,0,-1,1,0,1,1,1];
+
+  for(let seed=0;seed<total;seed++){
+    if(!active[seed]||water[seed]||visited[seed])continue;
+    const start=tail;queue[tail++]=seed;visited[seed]=1;let anchored=false;
+    while(head<tail){
+      const idx=queue[head++];riverLoopIndexToCell(idx,N,cell);
+      for(let k=0;k<dirs.length;k+=2){
+        const ni=riverLoopNeighborIndex(cell.face,cell.x,cell.y,dirs[k],dirs[k+1],N,nd,uv);
+        if(!active[ni])continue;
+        if(water[ni]){anchored=true;continue;}
+        if(!visited[ni]){visited[ni]=1;queue[tail++]=ni;}
+      }
+    }
+    if(anchored)continue;
+
+    /* This entire land-only component is a closed procedural contour. Kill
+       only a one-pixel neighbourhood around it. Everywhere else keep=255, so
+       coast-connected 0.5.147 rivers are visually untouched. */
+    removedComponents++;
+    for(let q=start;q<tail;q++){
+      const idx=queue[q];if(keep[idx]){keep[idx]=0;removedPixels++;}
+      riverLoopIndexToCell(idx,N,cell);
+      for(let k=0;k<dirs.length;k+=2){
+        const ni=riverLoopNeighborIndex(cell.face,cell.x,cell.y,dirs[k],dirs[k+1],N,nd,uv);
+        keep[ni]=0;
+      }
+    }
+  }
+
+  for(let f=0;f<6;f++){
+    const pix=riverLoopFaces[f],off=f*facePix;
+    for(let i=0;i<facePix;i++){
+      const v=keep[off+i],p=i*4;pix[p]=v;pix[p+1]=v;pix[p+2]=v;pix[p+3]=255;
+    }
+  }
+  gl.activeTexture(gl.TEXTURE0+RIVER_LOOP_TEX_UNIT);gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverLoopTex);
+  for(let f=0;f<6;f++)gl.texSubImage2D(riverGpuFaceTarget(f),0,0,0,N,N,gl.RGBA,gl.UNSIGNED_BYTE,riverLoopFaces[f]);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);
+
+  riverLoopSignature=sig;riverLoopReady=true;
+  core.riverLoopFilterModel=RIVER_LOOP_FILTER_MODEL;
+  core.riverLoopRemovedComponents=removedComponents;
+  core.riverLoopRemovedPixels=removedPixels;
+  return true;
+}
 function riverGpuNowMs(){return (typeof performance!=='undefined'&&performance&&typeof performance.now==='function')?performance.now():Date.now();}
 function riverGpuClamp(x,a,b){return Math.max(a,Math.min(b,Number(x)||0));}
 function riverGpuByte(x){return Math.max(0,Math.min(255,Math.round(riverGpuClamp(x,0,1)*255)));}
@@ -244,6 +431,7 @@ function riverGpuPackUpload(){
 }
 function riverGpuUpload(core){
   if(!core?.N||!core?.riverChannelStrength)return false;riverGpuEnsure(riverGpuDisplayN(core.N));
+  riverLoopBuildMask(core);
   const now=riverGpuNowMs(),seed=core.seed|0,seedChanged=Number.isFinite(riverGpuLastSeed)&&riverGpuLastSeed!==seed;
   if(!riverGpuHasFrame||seedChanged){riverGpuReadCurrent(core);for(let f=0;f<6;f++){riverGpuPrevRiver[f].set(riverGpuCurrRiver[f]);riverGpuPrevLake[f].set(riverGpuCurrLake[f]);}riverGpuBlendDurationMs=1;riverGpuBlendStartMs=now;riverGpuHasFrame=true;}
   else{riverGpuCollapseVisible(riverGpuBlendAt(now));riverGpuReadCurrent(core);const interval=Number.isFinite(riverGpuLastUploadMs)?Math.max(1,now-riverGpuLastUploadMs):RIVER_BLEND_DEFAULT_MS;riverGpuBlendDurationMs=Math.max(RIVER_BLEND_MIN_MS,Math.min(RIVER_BLEND_MAX_MS,interval));riverGpuBlendStartMs=now;}
@@ -257,3 +445,11 @@ function riverGpuEnsureCurrent(){
   const core=(typeof weatherCoreEnsure==='function')?weatherCoreEnsure():null;if(!core)return null;
   if(!riverGpuTex||riverGpuN!==riverGpuDisplayN(core.N)||riverGpuLastSeed!==(core.seed|0))riverGpuUpload(core);return core;
 }
+
+if(typeof window!=='undefined')window.__madPlanetRiverLoopFilter={
+  model:RIVER_LOOP_FILTER_MODEL,
+  rebuild:()=>{riverLoopReady=false;const c=(typeof weatherCoreEnsure==='function')?weatherCoreEnsure():null;return c?riverLoopBuildMask(c):false;},
+  get ready(){return riverLoopReady;},
+  get supported(){return riverLoopSupported;},
+  get resolution(){return riverLoopN;}
+};

@@ -1,9 +1,12 @@
-VERSION 0.5.177
-Base: exact historical 0.5.147 behaviour (baseline/exact-0.5.173).
-Changes: rollback failed 0.5.176 topology renderer completely.
-  - All functional source files are restored exactly to the 0.5.173 / historical 0.5.147 checkpoint.
-  - No graph-owned shader extraction, no riverTopo thresholding, no topology domain warp, no coast-only gate, no broad guide, no vector/chord renderer.
-  - Rivers are again visually identical to the restored 0.5.147 state, including the two known defects: closed loops and coast-to-coast pseudo-rivers.
-Purpose: return to the verified visual baseline before the next topology experiment.
+VERSION 0.5.178
+Base: exact 0.5.177 / historical 0.5.147 river appearance.
+Changes: remove only land-locked closed procedural river loops.
+  - The visible 0.5.147 river formula, Catmull-Rom physical corridor, widths, meanders and coast-connected river components are unchanged.
+  - A static 96..192 px/face cubemap reproduces the historical procedural rn=0 contour only for connectivity classification.
+  - Connected contour components are evaluated on land. If a component reaches ocean or a diagnosed lake, it is kept exactly as before.
+  - A component that closes entirely on land gets a local one-pixel kill mask. The same mask removes its green floodplain ghost.
+  - This release deliberately does NOT address coast-to-coast rivers yet.
+  - No whole-continent physical mask, vector/chord renderer, topology threshold renderer, weather, water, biome or Random changes.
+  - On GPUs exposing only eight fragment texture units, the loop filter disables itself and the exact 0.5.147 rendering remains as fallback.
 Manual regression seeds: 87707715, 46523755, 28206851, 16394057.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
