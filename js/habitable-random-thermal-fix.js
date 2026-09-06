@@ -1,4 +1,4 @@
-/* ============ 0.5.165: warm habitable random worlds ============ */
+/* ============ 0.5.166: final warm random-world acceptance ============ */
 /*
    habitable-random.js historically solved the radiative climate attractor
    returned by climateModel(). That is not the same quantity shown as T_a:
@@ -17,7 +17,7 @@
    not merely a pleasant equilibrium estimate.
 */
 
-const CITY_TA_MODEL=2;
+const CITY_TA_MODEL=3;
 const CITY_TA_TARGET_MIN_C=14;
 const CITY_TA_TARGET_MAX_C=24;
 const CITY_TA_ACCEPT_MIN_C=10;
@@ -38,17 +38,25 @@ function cityTaMeanSurfaceC(core){
   }
   return sw>0?sum/sw-273.15:NaN;
 }
+function cityTaInvalidateCore(){
+  /* climate-consistency makes waterTemperatureK() prefer the CURRENT Weather
+     Core. A probe must therefore discard the previous-orbit core BEFORE water
+     equilibrium is settled, otherwise the old cold surface condenses water,
+     weakens greenhouse forcing and makes every following probe look cold too. */
+  try{if(typeof weatherCore!=='undefined')weatherCore=null;}catch(_e){}
+}
 function cityTaFreshCore(){
-  /* weatherCoreEnsure() caches by seed/resolution, not by orbital distance.
-     During a distance search we must invalidate that cache explicitly. */
   try{
-    if(typeof weatherCore!=='undefined')weatherCore=null;
+    cityTaInvalidateCore();
     const core=(typeof weatherCoreEnsure==='function')?weatherCoreEnsure():null;
     return cityTaMeanSurfaceC(core);
   }catch(_e){return NaN;}
 }
 function cityTaSetOrbit(au){
   if(typeof stellarDistanceSliderFromAU==='function')state.distance=stellarDistanceSliderFromAU(au);
+  /* Critical order for 0.5.166: invalidate stale physical surface first, then
+     settle H2O against the new orbit, then build a fresh Weather Core. */
+  cityTaInvalidateCore();
   if(typeof settleWaterEquilibriumImmediate==='function')settleWaterEquilibriumImmediate(2);
   if(typeof updateLegacyAtmoProxy==='function')updateLegacyAtmoProxy();
   return cityTaFreshCore();
@@ -94,6 +102,9 @@ if(typeof generateCityReadyRandomWorld==='function'){
   const cityRandomOriginal=generateCityReadyRandomWorld;
   generateCityReadyRandomWorld=function(randomSource=Math.random){
     const result=cityRandomOriginal(randomSource);
+    /* This wrapper is intentionally assembled AFTER climate-consistency.js.
+       All late water/temperature post-processing has therefore already run
+       inside cityRandomOriginal(), and this is the final thermal acceptance. */
     cityTaSolveCurrentSurface();
     if(typeof deriveWorld==='function')deriveWorld();
     /* Rebuild after deriveWorld too: it is the final state from which the first

@@ -4,8 +4,13 @@ const path=require('node:path');
 const vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
 const src=fs.readFileSync(path.join(root,'js/habitable-random-thermal-fix.js'),'utf8');
+const buildSh=fs.readFileSync(path.join(root,'build.sh'),'utf8');
+const buildPs=fs.readFileSync(path.join(root,'build.ps1'),'utf8');
+function ordered(text,names,label){let p=-1;for(const n of names){const q=text.indexOf(n);assert.ok(q>p,label+': '+n);p=q;}}
+ordered(buildSh,['js/climate-consistency.js','js/habitable-random-thermal-fix.js','js/input-frame-pacing.js'],'shell final thermal acceptance order');
+ordered(buildPs,['js/climate-consistency.js','js/habitable-random-thermal-fix.js','js/input-frame-pacing.js'],'PowerShell final thermal acceptance order');
 
-assert.match(src,/CITY_TA_MODEL=2/);
+assert.match(src,/CITY_TA_MODEL=3/);
 assert.match(src,/CITY_TA_TARGET_MIN_C=14/);
 assert.match(src,/CITY_TA_TARGET_MAX_C=24/);
 assert.match(src,/CITY_TA_ACCEPT_MIN_C=10/);
@@ -35,13 +40,15 @@ const ctx={console,Math,Number,Float32Array,state,window:{},
   habitableZoneForStar:()=>({conservativeInner:0.95,conservativeOuter:1.70}),
   orbitDistanceAU:x=>x,
   stellarDistanceSliderFromAU:x=>x,
-  settleWaterEquilibriumImmediate:()=>{},
+  settleWaterEquilibriumImmediate:()=>{
+    assert.equal(ctx.weatherCore,null,'each orbital probe must invalidate the previous Weather Core before water settling');
+  },
   updateLegacyAtmoProxy:()=>{},
   deriveWorld:()=>{},markRenderUniformsDirty:()=>{},syncUI:()=>{},saveHash:()=>{},
   climateModel:()=>({C:18})
 };
 let generated=0;
-ctx.generateCityReadyRandomWorld=()=>{generated++;return {C:18};};
+ctx.generateCityReadyRandomWorld=()=>{generated++;state.distance=1.45;ctx.weatherCore={count:1,surfaceTemp:new Float32Array([210])};return {C:-60};};
 vm.createContext(ctx);
 vm.runInContext(src,ctx,{filename:'habitable-random-thermal-fix.js'});
 ctx.generateCityReadyRandomWorld(()=>0.5);
