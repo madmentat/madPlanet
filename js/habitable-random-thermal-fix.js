@@ -1,4 +1,4 @@
-/* ============ 0.5.169: temperate Random weather + biosphere bootstrap ============ */
+/* ============ 0.5.170: temperate Random weather + biosphere bootstrap ============ */
 /*
    Random worlds are NEW worlds, not continuations of an old climate history.
    The previous 0.5.164..0.5.167 adapters tried to move the orbit until CURRENT
@@ -13,14 +13,16 @@
    climate. This is not a clamp on ordinary simulation: it only chooses the
    initial condition of the Random button.
 
-   0.5.169 also closes the final climate/weather loop, resets only the
-   render-only cloud visibility of the NEW Random world, and rebuilds its
-   soil-moisture baseline after the final warm thermal seed. This makes the
-   generated temperate worlds start as living hydrologic worlds rather than
-   visually dry, cloud-poor snapshots.
+   0.5.169 also closes the final climate/weather loop and rebuilds the
+   soil-moisture baseline after the final warm thermal seed.
+
+   0.5.170 deliberately stops touching lowOn/midOn/highOn here. Those switches
+   are render-only user preferences, not climate state. Forcing all three on
+   made independently composited decks overlap into a nearly opaque white
+   shell and also resurrected coastline-shaped low-cloud carpets.
 */
 
-const CITY_FINAL_MODEL=6;
+const CITY_FINAL_MODEL=7;
 const CITY_FINAL_TARGET_MIN_C=14;
 const CITY_FINAL_TARGET_MAX_C=24;
 const CITY_FINAL_ACCEPT_MIN_C=10;
@@ -107,13 +109,6 @@ function cityFinalCloseWeatherAndOrbit(targetC){
   cityFinalApplyWeatherTargets();
   return formal;
 }
-function cityFinalShowNaturalCloudLayers(){
-  /* Visibility switches are render-only. Random is a new presentation-ready
-     world, so do not inherit a previous world's hidden middle/high decks. */
-  state.lowOn=true;
-  state.midOn=true;
-  state.highOn=true;
-}
 function cityFinalAreaMeanC(core,field){
   if(!core?.count||!field||field.length!==core.count)return NaN;
   let s=0,w=0;
@@ -181,7 +176,6 @@ if(typeof generateCityReadyRandomWorld==='function'){
     const result=cityRandomBeforeFinal(randomSource);
     const target=cityFinalTargetFromSeed();
     const formal=cityFinalCloseWeatherAndOrbit(target);
-    cityFinalShowNaturalCloudLayers();
     if(typeof deriveWorld==='function')deriveWorld();
     const actual=cityFinalInitializeTemperateCore();
     if(typeof markRenderUniformsDirty==='function')markRenderUniformsDirty();

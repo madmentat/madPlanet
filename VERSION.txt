@@ -1,10 +1,10 @@
-VERSION 0.5.169
-Base: 0.5.168 temperate Random finalizer.
-Changes: restore coherent weather and biosphere initialization for newly generated temperate worlds.
-  - 0.5.168 correctly aligned T_a and T_f, but the final orbit solve happened after the earlier climateWeatherTargets() pass. Cloud amount controls could therefore describe the pre-final climate.
-  - Random now closes the small climate/weather loop: solve orbit -> recompute cloud/wind/convection targets -> solve again, then publishes the final weather targets.
-  - New Random worlds no longer inherit hidden cloud-deck visibility from the previous world: low/mid/high render-only cloud switches are enabled.
-  - After the final warm thermal seed, relative humidity and the soil-moisture baseline are rebuilt before the first rendered frame. Surface biomes already use physical soil wetness, so this restores vegetation where the climate and water inventory support it instead of painting green unconditionally.
-  - The normal weather simulation, manual worlds and saved non-Random climate history remain unchanged.
-Regression: final weather targets and visible cloud decks must be established before fresh-core initialization; final RH/soil baseline must be rebuilt after the warm thermal seed.
+VERSION 0.5.170
+Base: 0.5.169 temperate Random weather + biosphere bootstrap.
+Changes: remove the white-shell cloud regression while preserving the climate/soil fixes.
+  - Random no longer overwrites lowOn/midOn/highOn. These are render-only user preferences and must not be part of physical world initialization.
+  - Climate-derived cloud controls are calibrated into the nonlinear renderer range: low x0.78, middle x0.68, high x0.58. The physical temperature/H2O response and supercritical suppression are unchanged.
+  - Low-cloud ocean/land suitability is narrowed from 0.44+0.50*humidLand vs 0.90 ocean to 0.56+0.28*humidLand vs 0.82 ocean. This prevents a nearly solid white ocean carpet with continent-shaped holes while retaining desert/rain-shadow suppression.
+  - Keeps the 0.5.169 final RH and soil-moisture bootstrap, so wet temperate land can still drive vegetation.
+  - Repairs the habitable-random regression test that falsely searched for soil refresh after the initializer call instead of inside the initializer definition.
+Regression: temperate Earth-like cloud controls stay below blanket ranges; Random never mutates cloud visibility flags; cloud suitability must not recreate coastline masks.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
