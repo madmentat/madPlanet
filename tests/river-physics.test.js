@@ -48,24 +48,11 @@ for(const file of [buildSh,buildPs]){
 assert.match(header,/uniform samplerCube uRiverTex;/);
 assert.match(header,/uniform float uRiverBlend;/);
 assert.match(shader,/riverHydroTex\s*=\s*texture\(uRiverTex/);
-/* 0.5.176: topology comes only from the diagnosed downstream graph. The
-   historical procedural field may modulate style but cannot create rivers. */
-assert.match(shader,/vec3 riverSampleDir = normalize\(sN/,'graph-owned river support must be smoothly domain-warped');
-assert.match(shader,/float riverTopo = clamp\(mix\(riverTopoTex\.r,riverTopoTex\.b,uRiverBlend\),0\.0,1\.0\)/,
-  'warped physical river support is missing');
-assert.match(shader,/float riverGeomTopo = ss\(topoThreshold-topoAA,topoThreshold\+topoAA,riverTopo\)/,
-  'physical support must be reduced to a thin antialiased centre line');
-assert.match(shader,/float riverGeom = mix\(riverGeomProc,riverGeomTopo,uRiverPhysicsOn\)/,
-  'procedural topology must be disabled whenever physical rivers are enabled');
-assert.match(shader,/float floodplain = mix\(floodplainProc,floodplainPhys,uRiverPhysicsOn\)/,
-  'physical floodplains must follow the graph-owned river instead of FBM loops');
+/* 0.5.146: the coarse corridor map is never shown as water; thin sub-grid
+   channels stay, the trunk corridor only keeps one main channel continuous. */
+assert.match(shader,/riverGeomPhys\s*=\s*max\(riverGeomProc,\s*trunkChannel\*physRiverCore\)/,'physical corridor must gate sub-grid channels, not replace them');
 assert.doesNotMatch(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,/,'the coarse river texel must never be painted as water directly');
-assert.doesNotMatch(shader,/riverGeomProc\s*\*\s*physRiverHalo/,
-  'do not restore the failed 0.5.148 hard corridor gate');
-assert.doesNotMatch(shader,/riverGuide147|riverBasinPermit147|coastStrip|physicalMouth/,
-  'previous mask experiments must stay removed');
-assert.match(shader,/float warpAmp = 0\.0022 \+ 0\.0018/,'topological river warp must remain modest');
-assert.match(shader,/float oldStyleWidth = 0\.76 \+ 0\.24/,'old 0.5.147 width character should modulate, never cut, graph connectivity');
+assert.match(shader,/float trunkChannel = 1\.0 - ss\(w\*1\.05, w\*1\.65, riverSignal\)/,'trunk corridor needs a wider acceptance band for a continuous main channel');
 assert.match(shader,/riverClimateGate = mix\(ss\(0\.24,0\.44,moist\),ss\(0\.12,0\.40,max\(soilMoistPhys,physRiverHalo\)\),uRiverPhysicsOn\)/,'river density must follow resolved soil water');
 assert.match(shader,/float lthPhys = lth - 0\.22\*ss\(0\.15,0\.75,lakePhys\)/,'physical lakes must keep noise-shaped shorelines');
 assert.ok(gpu.includes('riverDownstream'),'GPU river map must rasterize the diagnosed drainage graph');

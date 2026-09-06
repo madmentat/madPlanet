@@ -1,12 +1,9 @@
-VERSION 0.5.176
-Base: exact 0.5.173 / historical 0.5.147 behaviour.
-Changes: first structural topology fix that does not use a whole-continent mask.
-  - riverDownstream / the physical Catmull graph now owns river existence while physics is enabled.
-  - The 0.5.147 FBM field is retained only for local width/roughness character; it can no longer invent a closed ring or an unrelated coast-to-coast river.
-  - The physical Catmull cubemap is sampled through a smooth, low-amplitude tangent-plane domain warp so connected graph channels keep natural bends rather than looking like D8/vector segments.
-  - A high antialiased level set extracts a thin sub-texel river from the coarse support texture instead of drawing the whole cubemap texel as water.
-  - Floodplain/riparian support follows the same graph-owned topology, removing green FBM rings together with blue river loops.
-  - Lakes, Priority-Flood, routing, Weather Core, water, vegetation, clouds and Random generation are unchanged.
-  - No 0.5.148 hard corridor mask, no 0.5.174 broad guide, no 0.5.175 coast-only gate, no vector/chord renderer.
-Manual regression seeds: 87707715, 46523755, 28206851.
+VERSION 0.5.177
+Base: exact historical 0.5.147 behaviour (baseline/exact-0.5.173).
+Changes: rollback failed 0.5.176 topology renderer completely.
+  - All functional source files are restored exactly to the 0.5.173 / historical 0.5.147 checkpoint.
+  - No graph-owned shader extraction, no riverTopo thresholding, no topology domain warp, no coast-only gate, no broad guide, no vector/chord renderer.
+  - Rivers are again visually identical to the restored 0.5.147 state, including the two known defects: closed loops and coast-to-coast pseudo-rivers.
+Purpose: return to the verified visual baseline before the next topology experiment.
+Manual regression seeds: 87707715, 46523755, 28206851, 16394057.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

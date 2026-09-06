@@ -102,56 +102,26 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float rn = fbm(sN*5.2 + uSeedS*1.9 + 0.5*vec3(riverWarpX,riverWarpY,0.0), 4);
   float wVar = 0.45 + 1.15*(0.5+0.5*fbm(sN*19.0 + uSeedS + vec3(71.0), 3));
   float wReal = mix(0.013, 0.0030, ss(0.02,0.22,h)) * wVar;
+  /* 0.5.146: the physical river cubemap is a CORRIDOR, never a brush. One
+     display texel spans ~50 km on the desktop grid, so painting physRiverCore
+     directly as water produced rivers 50..400 km wide with round 300 km
+     lakes. Thin channel geometry comes from the sub-grid function; physics
+     decides where channels exist (resolved soil water), how dense they are,
+     and which corridor carries the dominant trunk. */
   float trunkGain = mix(1.0, 1.55, physRiverCore);
   wReal *= mix(1.0,trunkGain,uRiverPhysicsOn);
   float wPix = tHit*uPixA*1.6;
   float w = max(wReal, wPix);
-
-  /* The historical 0.5.147 procedural contour is still kept as the fallback
-     style and as the source of local width/roughness variation. It no longer
-     owns topology while physics is enabled. */
   float riverSignal = abs(rn) + 0.0016*fbm(sN*260.0+uSeedS,2);
   float riverGeomProc = 1.0 - ss(w*0.82, w*1.06, riverSignal);
-
-  /* 0.5.176: downstream graph owns existence; old noise owns only shape.
-     We sample the already Catmull-smoothed physical river cubemap through a
-     smooth tangent-plane domain warp. A domain warp can bend an existing
-     connected channel, but it cannot invent a closed ring or a second outlet. */
-  vec3 riverRef = (abs(sN.y)<0.92) ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0);
-  vec3 riverTx = normalize(cross(riverRef,normalize(sN)));
-  vec3 riverTy = normalize(cross(normalize(sN),riverTx));
-  float warpFineX = fbm(sN*8.7 + uSeedS*2.1 + vec3(13.0,71.0,29.0),3);
-  float warpFineY = fbm(sN*8.7 + uSeedS*2.1 + vec3(97.0,11.0,53.0),3);
-  float warpAmp = 0.0022 + 0.0018*(0.5+0.5*fbm(sN*4.4+uSeedS*1.7,2));
-  vec3 riverSampleDir = normalize(sN
-    + riverTx*warpAmp*(0.72*riverWarpX + 0.28*warpFineX)
-    + riverTy*warpAmp*(0.72*riverWarpY + 0.28*warpFineY));
-  vec4 riverTopoTex = texture(uRiverTex,riverSampleDir);
-  float riverTopo = clamp(mix(riverTopoTex.r,riverTopoTex.b,uRiverBlend),0.0,1.0);
-
-  /* The cubemap remains only a support field, not a 50 km brush. A relatively
-     high, noise-modulated level set extracts a much thinner sub-texel centre
-     line. fwidth keeps it stable at different camera distances. */
-  float topoNoise = 0.5+0.5*fbm(sN*31.0+uSeedS*2.7+vec3(41.0),3);
-  float topoThreshold = mix(0.075,0.125,topoNoise);
-  float topoAA = max(0.006,1.15*fwidth(riverTopo));
-  float riverGeomTopo = ss(topoThreshold-topoAA,topoThreshold+topoAA,riverTopo);
-
-  /* Preserve the old 0.5.147 width character without letting the old contour
-     decide whether a river exists. This factor varies thickness softly and is
-     bounded away from zero, so physical connectivity cannot be cut. */
-  float oldStyleWidth = 0.76 + 0.24*ss(w*0.45,w*1.40,w-riverSignal);
-  riverGeomTopo *= oldStyleWidth;
-  float riverGeom = mix(riverGeomProc,riverGeomTopo,uRiverPhysicsOn);
-
-  /* The same rule applies to the riparian/floodplain signal: in physical mode
-     it follows the graph-owned channel rather than the closed global FBM
-     contours. This removes green pseudo-river rings together with blue ones. */
+  /* Inside the diagnosed trunk corridor a wider acceptance band keeps one
+     main channel continuous; outside it the fine network is unchanged. */
+  float trunkChannel = 1.0 - ss(w*1.05, w*1.65, riverSignal);
+  float riverGeomPhys = max(riverGeomProc, trunkChannel*physRiverCore);
+  float riverGeom = mix(riverGeomProc,riverGeomPhys,uRiverPhysicsOn);
   float floodplainProc = 1.0-ss(wReal*1.7,wReal*6.2,abs(rn));
   floodplainProc *= 1.0-ss(0.14,0.32,h);
-  float floodTopo = ss(0.018,0.105,riverTopo)*(1.0-ss(0.14,0.32,h));
-  float floodTexture = 0.72+0.28*(0.5+0.5*fbm(sN*22.0+uSeedS*3.1+vec3(17.0),2));
-  float floodplainPhys = clamp(floodTopo*floodTexture,0.0,1.0);
+  float floodplainPhys = floodplainProc*(0.55+0.45*physRiverHalo);
   float floodplain = mix(floodplainProc,floodplainPhys,uRiverPhysicsOn);
 
   float lakeN = fbm(sN*3.4 + uSeedS*3.7 + vec3(53.0), 4);
