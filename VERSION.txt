@@ -1,9 +1,9 @@
-VERSION 0.5.163
-Base: 0.5.162 fine rivers.
-Changes: restore reliable weather telemetry and visible low-cloud baseline on mobile/desktop.
-  - T_a now has a direct Weather Core area-weighted fallback when the climate-consistency adapter temporarily has no matching core.
-  - The fallback is installed before celsius-ui, so the existing single-writer telemetry path remains authoritative.
-  - Low-cloud visual influence keeps a display-only floor at -0.55; physical Weather Core fields remain unchanged. This prevents the inertial visual response from suppressing the default low cloud deck completely on dry worlds while preserving regional variation.
-  - No river, terrain or physical weather fields are changed by the visual floor.
-Regression: T_a must resolve to a finite Celsius value after Weather Core creation; low-cloud influence must never be packed below the display floor.
+VERSION 0.5.164
+Base: 0.5.163 weather telemetry and low-cloud visibility hotfix.
+Changes: make city-ready Random target the actual current T_a shown by Weather Core.
+  - The old generator solved climateModel()'s equilibrium temperature, while T_a is the current Weather Core surface mean and can be substantially colder after latitudinal thermal structure is applied.
+  - A post-generation orbital solve now rebuilds Weather Core probes and adjusts distance against the actual area-weighted surface temperature.
+  - Random worlds target T_a between +10 and +25 °C, with an acceptance band of +8 to +27 °C.
+  - The correction is restricted to the Random generator; manual worlds, weather physics, rivers and terrain are unchanged.
+Regression: Random must optimize CURRENT Weather Core T_a rather than only the climate attractor.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
