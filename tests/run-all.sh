@@ -102,6 +102,7 @@ tests=(
   tests/chromium-compat.test.js
   tests/hydrology.test.js
   tests/magnetosphere.test.js
+  tests/habitable-random-thermal.test.js
 )
 
 failures=()
