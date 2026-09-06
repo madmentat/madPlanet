@@ -48,10 +48,15 @@ for(const file of [buildSh,buildPs]){
 assert.match(header,/uniform samplerCube uRiverTex;/);
 assert.match(header,/uniform float uRiverBlend;/);
 assert.match(shader,/riverHydroTex\s*=\s*texture\(uRiverTex/);
-/* 0.5.146: the coarse corridor map is never shown as water; thin sub-grid
-   channels stay, the trunk corridor only keeps one main channel continuous. */
-assert.match(shader,/riverGeomPhys\s*=\s*max\(riverGeomProc,\s*trunkChannel\*physRiverCore\)/,'physical corridor must gate sub-grid channels, not replace them');
+/* 0.5.174: the 0.5.147 sub-grid artwork stays visible, but only inside a
+   soft, dilated physical guide. The coarse cubemap still never becomes water. */
+assert.match(shader,/float riverGuide147\(vec3 p\)/,'soft 0.5.147 guide is missing');
+assert.match(shader,/float r=0\.0090/,'guide must remain a small dilation, not a broad basin blanket');
+assert.match(shader,/riverGeomPhys\s*=\s*max\(riverGeomProc\*riverGuide,\s*trunkChannel\*physRiverCore\)/,
+  'physical guide must clip topology errors without replacing the 0.5.147 river shape');
 assert.doesNotMatch(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,/,'the coarse river texel must never be painted as water directly');
+assert.doesNotMatch(shader,/riverGeomProc\*physRiverHalo/,
+  'do not restore the narrow 0.5.148 hard corridor gate');
 assert.match(shader,/float trunkChannel = 1\.0 - ss\(w\*1\.05, w\*1\.65, riverSignal\)/,'trunk corridor needs a wider acceptance band for a continuous main channel');
 assert.match(shader,/riverClimateGate = mix\(ss\(0\.24,0\.44,moist\),ss\(0\.12,0\.40,max\(soilMoistPhys,physRiverHalo\)\),uRiverPhysicsOn\)/,'river density must follow resolved soil water');
 assert.match(shader,/float lthPhys = lth - 0\.22\*ss\(0\.15,0\.75,lakePhys\)/,'physical lakes must keep noise-shaped shorelines');
