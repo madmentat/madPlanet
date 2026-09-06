@@ -1,11 +1,10 @@
-VERSION 0.5.168
-Base: 0.5.167 Random snowball-attractor workaround.
-Changes: replace the unstable current-T_a orbital feedback with a temperate new-world initializer.
-  - 0.5.167 could produce T_a about -84 C while T_f exceeded +300 C because it kept moving the orbit inward while the finite-time Weather Core remained on a cold branch.
-  - Random now chooses orbital distance from the equilibrium climateModel() target (+14..+24 C) rather than chasing instantaneous T_a.
-  - After the final orbit is accepted, the brand-new Weather Core is initialized from that temperate climate state.
-  - Transient snow, land ice and sea ice stores are cleared only for the newly generated Random world; ordinary simulation and manually edited worlds keep their physical history.
-  - Land/SST/air thermal reservoirs are seeded consistently before the first rendered frame and the radiating skin is refreshed.
-  - Diagnostic state remains available at window.__madPlanetHabitableRandomThermalFix.last: targetC, formalC, actualC and AU.
-Regression: Random must never use current T_a as the orbital search signal; formal orbit solve precedes fresh Weather Core initialization.
+VERSION 0.5.169
+Base: 0.5.168 temperate Random finalizer.
+Changes: restore coherent weather and biosphere initialization for newly generated temperate worlds.
+  - 0.5.168 correctly aligned T_a and T_f, but the final orbit solve happened after the earlier climateWeatherTargets() pass. Cloud amount controls could therefore describe the pre-final climate.
+  - Random now closes the small climate/weather loop: solve orbit -> recompute cloud/wind/convection targets -> solve again, then publishes the final weather targets.
+  - New Random worlds no longer inherit hidden cloud-deck visibility from the previous world: low/mid/high render-only cloud switches are enabled.
+  - After the final warm thermal seed, relative humidity and the soil-moisture baseline are rebuilt before the first rendered frame. Surface biomes already use physical soil wetness, so this restores vegetation where the climate and water inventory support it instead of painting green unconditionally.
+  - The normal weather simulation, manual worlds and saved non-Random climate history remain unchanged.
+Regression: final weather targets and visible cloud decks must be established before fresh-core initialization; final RH/soil baseline must be rebuilt after the warm thermal seed.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

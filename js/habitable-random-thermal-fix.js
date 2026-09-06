@@ -1,4 +1,4 @@
-/* ============ 0.5.168: temperate Random finalizer ============ */
+/* ============ 0.5.169: temperate Random weather + biosphere bootstrap ============ */
 /*
    Random worlds are NEW worlds, not continuations of an old climate history.
    The previous 0.5.164..0.5.167 adapters tried to move the orbit until CURRENT
@@ -12,9 +12,15 @@
    then INITIALIZES the brand-new Weather Core from that accepted temperate
    climate. This is not a clamp on ordinary simulation: it only chooses the
    initial condition of the Random button.
+
+   0.5.169 also closes the final climate/weather loop, resets only the
+   render-only cloud visibility of the NEW Random world, and rebuilds its
+   soil-moisture baseline after the final warm thermal seed. This makes the
+   generated temperate worlds start as living hydrologic worlds rather than
+   visually dry, cloud-poor snapshots.
 */
 
-const CITY_FINAL_MODEL=5;
+const CITY_FINAL_MODEL=6;
 const CITY_FINAL_TARGET_MIN_C=14;
 const CITY_FINAL_TARGET_MAX_C=24;
 const CITY_FINAL_ACCEPT_MIN_C=10;
@@ -79,6 +85,35 @@ function cityFinalSolveTemperateOrbit(targetC){
   const final=cityFinalFormalProbe(bestAu,targetC);
   return final||best;
 }
+function cityFinalApplyWeatherTargets(){
+  if(typeof climateWeatherTargets!=='function')return;
+  let t=null;
+  try{t=climateWeatherTargets();}catch(_e){return;}
+  if(!t)return;
+  for(const k of ['snowAlt','cloudLow','cloudMid','cloudHigh','wind','convection','storm']){
+    if(Number.isFinite(t[k]))state[k]=cityFinalClamp(t[k],0,1);
+  }
+}
+function cityFinalCloseWeatherAndOrbit(targetC){
+  /* Cloud amount participates in climateModel() through cloud albedo, while
+     climateWeatherTargets() itself depends on the final temperature/H2O.
+     Close that small loop explicitly instead of keeping the weather targets
+     captured before the final 0.5.168 orbit solve. */
+  let formal=cityFinalSolveTemperateOrbit(targetC);
+  for(let i=0;i<2;i++){
+    cityFinalApplyWeatherTargets();
+    formal=cityFinalSolveTemperateOrbit(targetC)||formal;
+  }
+  cityFinalApplyWeatherTargets();
+  return formal;
+}
+function cityFinalShowNaturalCloudLayers(){
+  /* Visibility switches are render-only. Random is a new presentation-ready
+     world, so do not inherit a previous world's hidden middle/high decks. */
+  state.lowOn=true;
+  state.midOn=true;
+  state.highOn=true;
+}
 function cityFinalAreaMeanC(core,field){
   if(!core?.count||!field||field.length!==core.count)return NaN;
   let s=0,w=0;
@@ -118,6 +153,14 @@ function cityFinalInitializeTemperateCore(){
   if(core.seaIceConcentration)core.seaIceConcentration.fill(0);
   if(core.surfaceCryoFraction)core.surfaceCryoFraction.fill(0);
 
+  /* Recompute the hydrologic/soil initial condition AFTER the final warm
+     thermal seed. Biome colour reads soilMoisture/soilCapacity from this very
+     core, so leaving the pre-final baseline in place makes a +20 C new world
+     look like a post-catastrophe desert. */
+  if(typeof h2oRefreshRelativeHumidity==='function')h2oRefreshRelativeHumidity(core,climate);
+  if(typeof soilRefreshCapacity==='function')soilRefreshCapacity(core);
+  if(typeof soilRefreshBaseline==='function')soilRefreshBaseline(core);
+
   if(typeof oceanPublishSurface==='function')oceanPublishSurface(core);
   if(typeof cryoRefreshCovers==='function')cryoRefreshCovers(core);
   if(typeof pstRefreshPolarBudget==='function')pstRefreshPolarBudget(core,climate,axis,true);
@@ -137,7 +180,8 @@ if(typeof generateCityReadyRandomWorld==='function'){
   generateCityReadyRandomWorld=function(randomSource=Math.random){
     const result=cityRandomBeforeFinal(randomSource);
     const target=cityFinalTargetFromSeed();
-    const formal=cityFinalSolveTemperateOrbit(target);
+    const formal=cityFinalCloseWeatherAndOrbit(target);
+    cityFinalShowNaturalCloudLayers();
     if(typeof deriveWorld==='function')deriveWorld();
     const actual=cityFinalInitializeTemperateCore();
     if(typeof markRenderUniformsDirty==='function')markRenderUniformsDirty();
