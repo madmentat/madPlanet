@@ -1,4 +1,4 @@
-/* ============ 0.5.166: final warm random-world acceptance ============ */
+/* ============ 0.5.167: escape the snowball branch for Random ============ */
 /*
    habitable-random.js historically solved the radiative climate attractor
    returned by climateModel(). That is not the same quantity shown as T_a:
@@ -17,12 +17,12 @@
    not merely a pleasant equilibrium estimate.
 */
 
-const CITY_TA_MODEL=3;
+const CITY_TA_MODEL=4;
 const CITY_TA_TARGET_MIN_C=14;
 const CITY_TA_TARGET_MAX_C=24;
 const CITY_TA_ACCEPT_MIN_C=10;
 const CITY_TA_ACCEPT_MAX_C=27;
-const CITY_TA_SOLVE_STEPS=12;
+const CITY_TA_SOLVE_STEPS=14;
 
 function cityTaClamp(x,a,b){return Math.max(a,Math.min(b,Number(x)||0));}
 function cityTaMeanSurfaceC(core){
@@ -52,11 +52,19 @@ function cityTaFreshCore(){
     return cityTaMeanSurfaceC(core);
   }catch(_e){return NaN;}
 }
-function cityTaSetOrbit(au){
+function cityTaSetOrbit(au,targetC){
   if(typeof stellarDistanceSliderFromAU==='function')state.distance=stellarDistanceSliderFromAU(au);
-  /* Critical order for 0.5.166: invalidate stale physical surface first, then
-     settle H2O against the new orbit, then build a fresh Weather Core. */
+  /* Random is explicitly a temperate-world generator. climateModel() uses
+     state.temp as the initial condition of its ice/albedo iteration, while
+     climate-consistency continuously writes the CURRENT surface temperature
+     back into state.temp. After one snowball probe that made later probes start
+     from -70..-90 C and remain on the cold attractor even at a warmer orbit.
+     Warm-start each candidate before H2O equilibrium is solved. */
   cityTaInvalidateCore();
+  if(Number.isFinite(targetC)&&typeof tempToSlider==='function'){
+    const v=tempToSlider(targetC);
+    if(Number.isFinite(v))state.temp=v;
+  }
   if(typeof settleWaterEquilibriumImmediate==='function')settleWaterEquilibriumImmediate(2);
   if(typeof updateLegacyAtmoProxy==='function')updateLegacyAtmoProxy();
   return cityTaFreshCore();
@@ -78,24 +86,49 @@ function cityTaSolveCurrentSurface(){
   const target=cityTaTargetFromSeed();
   let bestAu=Math.max(lo,Math.min(hi,typeof orbitDistanceAU==='function'?orbitDistanceAU(state.distance):Math.sqrt(lo*hi)));
   let bestC=NaN,bestErr=Infinity;
+  const remember=(au,c)=>{
+    if(!Number.isFinite(c))return c;
+    const err=Math.abs(c-target);
+    if(err<bestErr){bestErr=err;bestAu=au;bestC=c;}
+    return c;
+  };
+  const probe=au=>remember(au,cityTaSetOrbit(au,target));
 
-  /* Weather Core is a deterministic projection of the current climate state.
-     Rebuild it at each probe because its surface field depends on c.T. */
+  /* First make sure the bracket actually straddles the warm solution.
+     HZ bounds are an excellent first guess, not a guarantee for every sampled
+     atmosphere/cloud/albedo state. Expand inward if even the nominal inner
+     probe is cold, and outward if the nominal outer probe is still hot. */
+  let cLo=probe(lo);
+  for(let i=0;i<7&&Number.isFinite(cLo)&&cLo<target&&lo>0.011;i++){
+    const next=Math.max(0.01,lo*0.72);
+    if(!(next<lo))break;
+    lo=next;cLo=probe(lo);
+  }
+  let cHi=probe(hi);
+  for(let i=0;i<7&&Number.isFinite(cHi)&&cHi>target&&hi<999;i++){
+    const next=Math.min(1000,hi*1.35);
+    if(!(next>hi))break;
+    hi=next;cHi=probe(hi);
+  }
+
+  /* Current surface temperature should decrease with orbital distance once
+     every probe starts from the same temperate branch. */
   for(let i=0;i<CITY_TA_SOLVE_STEPS;i++){
     const au=Math.sqrt(lo*hi);
-    const c=cityTaSetOrbit(au);
-    if(Number.isFinite(c)){
-      const err=Math.abs(c-target);
-      if(err<bestErr){bestErr=err;bestAu=au;bestC=c;}
-      /* Orbital distance is inverse to heating: a cold probe must move
-         inward (smaller AU), while a hot probe must move outward. 0.5.164
-         accidentally updated the opposite bracket and therefore drove cold
-         random worlds even farther from their star. */
-      if(c<target)hi=au;else lo=au;
-    }else break;
+    const c=probe(au);
+    if(!Number.isFinite(c))break;
+    if(c<target)hi=au;else lo=au;
   }
-  const finalC=cityTaSetOrbit(bestAu);
-  return Number.isFinite(finalC)?finalC:bestC;
+  const finalC=cityTaSetOrbit(bestAu,target);
+  const out=Number.isFinite(finalC)?finalC:bestC;
+  try{
+    if(typeof window!=='undefined'&&window.__madPlanetHabitableRandomThermalFix){
+      window.__madPlanetHabitableRandomThermalFix.last={
+        targetC:target,finalC:out,finalAu:bestAu,errorC:Number.isFinite(out)?out-target:NaN
+      };
+    }
+  }catch(_e){}
+  return out;
 }
 
 if(typeof generateCityReadyRandomWorld==='function'){

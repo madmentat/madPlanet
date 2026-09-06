@@ -1,11 +1,12 @@
-VERSION 0.5.166
-Base: 0.5.165 warm random-world orbital search.
-Changes: make the warm-orbit correction the FINAL random-world post-process and remove stale Weather Core feedback between probes.
-  - 0.5.165 ran the thermal solver before climate-consistency.js was assembled; climate-consistency then performed another water-equilibrium settle and could cool the accepted world back into a snowball.
-  - The thermal acceptance module is now assembled after climate-consistency.js, so no later climate/water wrapper can undo its result.
-  - Every orbital probe invalidates the previous Weather Core before H2O equilibrium is settled. This prevents waterTemperatureK() from using the previous cold orbit as feedback for the new candidate.
-  - Random worlds still target current T_a +14..+24 °C, with +10..+27 °C as the intended guard band.
-  - Regression tests enforce both the final assembly order and the stale-core invalidation order.
-  - Manual worlds, river physics, terrain and ordinary Weather Core evolution are unchanged.
-Regression: a cold post-processed random world must be warmed only after climate-consistency, and each orbit probe must settle water with no stale Weather Core.
+VERSION 0.5.167
+Base: 0.5.166 final random-world thermal acceptance.
+Changes: prevent Random from remaining trapped on the snowball climate branch.
+  - climate-consistency continuously writes the current Weather Core surface temperature back into state.temp.
+  - climateModel() uses state.temp as the initial condition of its nonlinear ice/albedo iteration, so after one -70..-90 C probe later orbital probes could remain on the frozen attractor even when moved substantially inward.
+  - Every Random orbital probe now invalidates the old Weather Core, warm-starts state.temp from the +14..+24 C target, settles H2O, and only then creates a fresh Weather Core.
+  - The HZ search bracket is now adaptive: if the inner probe is still cold it expands inward; if the outer probe is still hot it expands outward.
+  - The final solver result is exposed in window.__madPlanetHabitableRandomThermalFix.last for diagnosis.
+  - Regression test starts from an artificial -70 C snowball branch and requires Random to escape it and converge into the temperate target band.
+  - Manual worlds and ordinary climate evolution are unchanged; warm-starting is restricted to Random generation.
+Regression: a frozen state.temp must not trap Random on the cold attractor.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
