@@ -1,11 +1,8 @@
-VERSION 0.5.172
-Base: 0.5.147 restored as the visual/physical baseline.
-Changes: preserve the 0.5.147 river appearance while constraining it to drainage basins.
-  - Keep the 0.5.147 Catmull-Rom splines, FBM meanders, widths and tributary artwork; no vector/chord renderer.
-  - Use the physical drainage graph only as a broad basin/valley permission field; it does not become the visible river geometry.
-  - Narrow the permission near shore to the diagnosed mouth, reducing coast-to-coast island crossings.
-  - Stop physical and visual spline rasterization at the first detailed ocean crossing; it cannot reappear on the opposite shore.
-  - Priority-Flood/downstream/topological drainage is unchanged; lake overflow and endorheic basins are deliberately left for the next step.
-  - Weather, water, vegetation, clouds, Random generation and every non-river subsystem are exactly the 0.5.147 baseline.
-Regression: preserve 0.5.147 Catmull/FBM appearance; forbid narrow 0.5.148-style hard gating and 0.5.157+ vector/chord rivers.
+VERSION 0.5.173
+Base: exact 0.5.147 source tree.
+Changes: no functional changes. This release is a pure visual/behavioural restoration checkpoint.
+  - All river, weather, water, vegetation, cloud, Random and rendering source files are exactly the 0.5.147 versions.
+  - No basin permission, coastline guard, vector/chord renderer, fine-drainage renderer, Random thermal fix or post-0.5.147 river experiment is included.
+  - The only intentional source-tree difference from 0.5.147 is this VERSION.txt stamp.
+Purpose: verify that the historical 0.5.147 appearance really returns before making any further river-topology change.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

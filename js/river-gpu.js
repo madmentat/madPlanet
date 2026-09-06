@@ -31,8 +31,6 @@ if(typeof UNIFORM_NAMES!=='undefined'){
 let riverGpuTex=null,riverGpuN=0,riverGpuFaces=[];
 let riverGpuPrevRiver=[],riverGpuPrevLake=[],riverGpuCurrRiver=[],riverGpuCurrLake=[];
 let riverGpuHasFrame=false,riverGpuLastSeed=NaN,riverGpuBlendStartMs=0,riverGpuBlendDurationMs=1,riverGpuLastUploadMs=NaN;
-let riverGpuCoastMask=null,riverGpuCoastMaskN=0,riverGpuCoastMaskSig='';
-const riverGpuCoastTmp={face:0,u:0,v:0};
 function riverGpuNowMs(){return (typeof performance!=='undefined'&&performance&&typeof performance.now==='function')?performance.now():Date.now();}
 function riverGpuClamp(x,a,b){return Math.max(a,Math.min(b,Number(x)||0));}
 function riverGpuByte(x){return Math.max(0,Math.min(255,Math.round(riverGpuClamp(x,0,1)*255)));}
@@ -87,35 +85,6 @@ function riverGpuPaintDir(field,dx,dy,dz,radius,value,tmp){
   const cy=riverGpuClamp((N-1)-Math.round((tmp.v+1)*0.5*(N-1)),0,N-1);
   riverGpuPaint(field,tmp.face,cx,cy,radius,value);
 }
-/* 0.5.172: detailed shoreline guard. Keep the 0.5.147 Catmull/FBM
-   geometry, but once a spline hits ocean it cannot reappear ashore. */
-function riverGpuEnsureCoastMask(core){
-  const N=Math.max(32,Math.min(256,Math.round((Number(core?.N)||32)*4)));
-  const sea=(typeof h2oSeaLevelProxy==='function')?h2oSeaLevelProxy():0;
-  const sig=String(core?.h2oSurfaceSignature||core?.seed||'')+'|N='+N+'|sea='+Number(sea).toFixed(6);
-  if(!riverGpuCoastMask||riverGpuCoastMaskN!==N||riverGpuCoastMaskSig!==sig){
-    riverGpuCoastMask=new Uint8Array(6*N*N);riverGpuCoastMaskN=N;riverGpuCoastMaskSig=sig;
-  }
-  return sea;
-}
-function riverGpuDetailedLandAt(core,dx,dy,dz){
-  if(typeof h2oMacroTerrainHeight==='function'&&typeof h2oSeaLevelProxy==='function'){
-    const sea=riverGpuEnsureCoastMask(core),N=riverGpuCoastMaskN;
-    riverGpuDirToFaceUV(dx,dy,dz,riverGpuCoastTmp);
-    const x=riverGpuClamp(Math.floor((riverGpuCoastTmp.u+1)*0.5*N),0,N-1);
-    const y=riverGpuClamp(Math.floor((1-(riverGpuCoastTmp.v+1)*0.5)*N),0,N-1);
-    const k=(riverGpuCoastTmp.face*N+y)*N+x,cached=riverGpuCoastMask[k];
-    if(cached)return cached===1;
-    const land=h2oMacroTerrainHeight(dx,dy,dz)>sea;
-    riverGpuCoastMask[k]=land?1:2;return land;
-  }
-  if(typeof windDirToIndex==='function'){
-    const i=windDirToIndex(core,dx,dy,dz);
-    return i>=0&&i<core.count&&!riverIsOcean(core,i);
-  }
-  return true;
-}
-
 function riverGpuEdgeHash(seed,i,j,salt){
   let x=(seed|0)^Math.imul((i+1)|0,0x45d9f3b)^Math.imul((j+1)|0,0x119de1f3)^salt;
   x^=x>>>16;x=Math.imul(x,0x7feb352d);x^=x>>>15;x=Math.imul(x,0x846ca68b);x^=x>>>16;
@@ -169,13 +138,11 @@ function riverGpuPaintSplineSegment(core,i0,i1,i2,i3,s0,s1,w0,w1,tmp){
     const bend=amp*wave;
     let dx=d.x+nx*bend,dy=d.y+ny*bend,dz=d.z+nz*bend;
     const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
-    if(!riverGpuDetailedLandAt(core,dx,dy,dz))return false;
     const strength=s0+(s1-s0)*t,width=w0+(w1-w0)*t;
     const widthScale=riverGpuClamp(Math.log2(1+width/18)/7.0,0,1);
     const radius=0.045+0.10*Math.pow(strength,0.9)+0.22*widthScale*widthScale;
     riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.22+0.78*strength,tmp);
   }
-  return true;
 }
 
 function riverGpuPaintEdge(core,i,j,up,tmp){
@@ -224,7 +191,6 @@ function riverGpuPaintVisualBranch(core,branch,tmp){
       const amp=cellAng*(0.10+0.05*Math.abs(branch.phase||0))*(0.70+0.30*Math.sin(Math.PI*t));
       let dx=d.x+nx*amp*wave,dy=d.y+ny*amp*wave,dz=d.z+nz*amp*wave;
       const q=Math.hypot(dx,dy,dz)||1;dx/=q;dy/=q;dz/=q;
-      if(!riverGpuDetailedLandAt(core,dx,dy,dz))return;
       const strength=s0+(s1-s0)*t;
       const radius=0.035+0.055*Math.sqrt(strength);
       riverGpuPaintDir(riverGpuCurrRiver,dx,dy,dz,radius,0.16+0.50*strength,tmp);
