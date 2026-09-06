@@ -1,11 +1,10 @@
-VERSION 0.5.174
+VERSION 0.5.175
 Base: exact 0.5.173 / historical 0.5.147 behaviour.
-Changes: one surgical river-topology experiment; no other subsystem changes.
-  - Preserve the exact 0.5.147 Catmull-Rom, FBM meanders, widths and tributary artwork.
-  - Add a small soft dilation of the already-existing physical Catmull river corridor (about two river cubemap texels).
-  - The old procedural river is visible only inside that soft guide; the physical corridor itself is still never drawn as the river.
-  - Goal: break closed FBM contour loops and long coast-to-coast pseudo-rivers while keeping the 0.5.147 visual style.
-  - This deliberately does NOT use the narrow 0.5.148 riverGeomProc*physRiverHalo gate and does NOT add coastline clipping, vector/chord rivers, fine drainage or climate changes.
-  - Weather, water, vegetation, clouds, Random generation and river physics remain byte-for-byte 0.5.147 except for this surface-shader visibility rule.
-Manual regression seed: 87707715 from the 0.5.173 screenshots.
+Changes: rollback the failed 0.5.174 whole-continent guide and make one narrower experiment.
+  - All inland river geometry is exactly the 0.5.147 formula: same FBM, Catmull-Rom, widths, tributaries and meanders.
+  - Only a very narrow coastal strip (h about 0.006..0.020) is gated by diagnosed physical river-mouth support.
+  - Goal: stop pseudo-rivers from reaching two different coasts without changing the visual character of rivers over the rest of the continent.
+  - Inland loops are deliberately NOT addressed in this version; that will be a separate experiment only after the coast-only change is visually accepted.
+  - No vector/chord rivers, fine drainage, global river guide, coastline spline clipping, weather or climate changes.
+Manual regression seeds: 87707715 and 46523755.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

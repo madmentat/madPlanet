@@ -48,15 +48,19 @@ for(const file of [buildSh,buildPs]){
 assert.match(header,/uniform samplerCube uRiverTex;/);
 assert.match(header,/uniform float uRiverBlend;/);
 assert.match(shader,/riverHydroTex\s*=\s*texture\(uRiverTex/);
-/* 0.5.174: the 0.5.147 sub-grid artwork stays visible, but only inside a
-   soft, dilated physical guide. The coarse cubemap still never becomes water. */
-assert.match(shader,/float riverGuide147\(vec3 p\)/,'soft 0.5.147 guide is missing');
-assert.match(shader,/float r=0\.0090/,'guide must remain a small dilation, not a broad basin blanket');
-assert.match(shader,/riverGeomPhys\s*=\s*max\(riverGeomProc\*riverGuide,\s*trunkChannel\*physRiverCore\)/,
-  'physical guide must clip topology errors without replacing the 0.5.147 river shape');
+/* 0.5.175: preserve the exact 0.5.147 river geometry inland and gate only
+   the very narrow coastal strip by diagnosed physical mouth support. */
+assert.match(shader,/float coastStrip = land \* \(1\.0 - ss\(0\.006,0\.020,h\)\)/,
+  'coast-only river guard must remain narrow');
+assert.match(shader,/float physicalMouth = ss\(0\.008,0\.060,physRiverHalo\)/,
+  'coast-only guard must use physical mouth support');
+assert.match(shader,/riverGeomPhys\s*=\s*max\(riverGeomProcCoast,\s*trunkChannel\*physRiverCore\)/,
+  'inland 0.5.147 artwork must remain untouched while coast crossings are gated');
 assert.doesNotMatch(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,/,'the coarse river texel must never be painted as water directly');
 assert.doesNotMatch(shader,/riverGeomProc\*physRiverHalo/,
-  'do not restore the narrow 0.5.148 hard corridor gate');
+  'do not restore the 0.5.148 whole-continent hard corridor gate');
+assert.doesNotMatch(shader,/riverGuide147|riverBasinPermit147/,
+  '0.5.174 whole-continent soft guide must stay removed');
 assert.match(shader,/float trunkChannel = 1\.0 - ss\(w\*1\.05, w\*1\.65, riverSignal\)/,'trunk corridor needs a wider acceptance band for a continuous main channel');
 assert.match(shader,/riverClimateGate = mix\(ss\(0\.24,0\.44,moist\),ss\(0\.12,0\.40,max\(soilMoistPhys,physRiverHalo\)\),uRiverPhysicsOn\)/,'river density must follow resolved soil water');
 assert.match(shader,/float lthPhys = lth - 0\.22\*ss\(0\.15,0\.75,lakePhys\)/,'physical lakes must keep noise-shaped shorelines');

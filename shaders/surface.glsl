@@ -1,32 +1,3 @@
-/* 0.5.174: soft physical guide for the original 0.5.147 artwork.
-   This is intentionally NOT the narrow 0.5.148 hard corridor gate.
-   The physical Catmull network is dilated by about two cubemap texels, giving
-   the old FBM line room to keep its natural bends while breaking contour loops
-   that have no diagnosed downstream path. */
-float riverGuide147(vec3 p){
-  p=normalize(p);
-  vec3 ref=(abs(p.y)<0.92)?vec3(0.0,1.0,0.0):vec3(1.0,0.0,0.0);
-  vec3 tx=normalize(cross(ref,p));
-  vec3 ty=normalize(cross(p,tx));
-  float r=0.0090;
-  float m=0.0;
-  vec4 q0=texture(uRiverTex,p);
-  vec4 q1=texture(uRiverTex,normalize(p+tx*r));
-  vec4 q2=texture(uRiverTex,normalize(p-tx*r));
-  vec4 q3=texture(uRiverTex,normalize(p+ty*r));
-  vec4 q4=texture(uRiverTex,normalize(p-ty*r));
-  vec4 q5=texture(uRiverTex,normalize(p+(tx+ty)*r*0.7071));
-  vec4 q6=texture(uRiverTex,normalize(p+(tx-ty)*r*0.7071));
-  vec4 q7=texture(uRiverTex,normalize(p+(-tx+ty)*r*0.7071));
-  vec4 q8=texture(uRiverTex,normalize(p-(tx+ty)*r*0.7071));
-  m=max(m,mix(q0.r,q0.b,uRiverBlend));
-  m=max(m,mix(q1.r,q1.b,uRiverBlend));m=max(m,mix(q2.r,q2.b,uRiverBlend));
-  m=max(m,mix(q3.r,q3.b,uRiverBlend));m=max(m,mix(q4.r,q4.b,uRiverBlend));
-  m=max(m,mix(q5.r,q5.b,uRiverBlend));m=max(m,mix(q6.r,q6.b,uRiverBlend));
-  m=max(m,mix(q7.r,q7.b,uRiverBlend));m=max(m,mix(q8.r,q8.b,uRiverBlend));
-  return ss(0.004,0.050,m);
-}
-
 /* ---------- поверхность ---------- */
 vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec3 n0 = normalize(pos);
@@ -146,11 +117,14 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   /* Inside the diagnosed trunk corridor a wider acceptance band keeps one
      main channel continuous; outside it the fine network is unchanged. */
   float trunkChannel = 1.0 - ss(w*1.05, w*1.65, riverSignal);
-  /* Keep the 0.5.147 line shape, but only where a real downstream river
-     corridor exists nearby. The guide is deliberately soft and wider than
-     physRiverHalo, so it clips topology errors rather than redrawing rivers. */
-  float riverGuide = riverGuide147(normalize(sN));
-  float riverGeomPhys = max(riverGeomProc*riverGuide, trunkChannel*physRiverCore);
+  /* 0.5.175: keep the 0.5.147 river artwork everywhere inland.
+     Only inside a very narrow coastal strip do we require support from the
+     diagnosed physical outlet. This is meant to break coast-to-coast pseudo-
+     rivers without changing inland meanders, widths or tributary shapes. */
+  float coastStrip = land * (1.0 - ss(0.006,0.020,h));
+  float physicalMouth = ss(0.008,0.060,physRiverHalo);
+  float riverGeomProcCoast = riverGeomProc * mix(1.0,physicalMouth,coastStrip);
+  float riverGeomPhys = max(riverGeomProcCoast, trunkChannel*physRiverCore);
   float riverGeom = mix(riverGeomProc,riverGeomPhys,uRiverPhysicsOn);
   float floodplainProc = 1.0-ss(wReal*1.7,wReal*6.2,abs(rn));
   floodplainProc *= 1.0-ss(0.14,0.32,h);
