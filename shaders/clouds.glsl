@@ -134,11 +134,12 @@ float lowCloudSuitability(float h,float temp,float moist,float lat){
   float desert=land*hot*dry;
   float humidLand=ss(0.20,0.72,moist);
   float polar=ss(0.90,0.985,lat);
-  /* 0.5.170: ocean/land permission must differ only mildly. A much larger
-     jump made the lower deck turn oceans white while leaving continent-shaped
-     holes, so cloud edges read as coastlines. Hot/dry suppression below still
-     creates real continental rain shadows without using the shore as a mask. */
-  float suit=mix(0.56+0.28*humidLand,0.82,ocean);
+  /* Разрыв между морем и сушей нарочно небольшой. Когда над океаном было
+     0.98, а над сушей могло быть втрое меньше, при высоком ползунке море
+     затягивало сплошняком, суша — нет, и граница облачности повторяла
+     береговую линию. Теперь потолок над морем ниже, пол над сушей выше, и
+     кромка покрова перестаёт совпадать с берегом. */
+  float suit=mix(0.44+0.50*humidLand,0.90,ocean);
   suit*=1.0-0.62*desert;
   suit*=1.0-0.26*polar*(1.0-ocean*0.55);
   return clamp(suit,0.14,1.0);

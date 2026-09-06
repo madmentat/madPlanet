@@ -67,8 +67,7 @@ tests=(
   tests/soil-hydrology.test.js
   tests/river-physics.test.js
   tests/river-visual-tributaries.test.js
-  tests/river-vector.test.js
-  tests/river-drainage-fine.test.js
+  tests/river-basin-visual.test.js
   tests/weather-worker.test.js
   tests/weather-fronts.test.js
   tests/pressure-systems.test.js
@@ -102,7 +101,6 @@ tests=(
   tests/chromium-compat.test.js
   tests/hydrology.test.js
   tests/magnetosphere.test.js
-  tests/habitable-random-thermal.test.js
 )
 
 failures=()

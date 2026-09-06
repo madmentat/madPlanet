@@ -21,7 +21,7 @@
    dendritic texture; still basin-locked and downhill-only, no invented water.
 */
 
-const RIVER_VISUAL_TRIBUTARY_MODEL=7;
+const RIVER_VISUAL_TRIBUTARY_MODEL=5;
 const RIVER_VISUAL_REBUILD_TICKS=12;
 const RIVER_VISUAL_MAX_BRANCH_STEPS=28;
 const RIVER_VISUAL_MIN_TRUNK_DISTANCE=1;
@@ -88,14 +88,10 @@ function riverVisualBuildBasins(core){
 }
 function riverVisualSourceStrength(core,i){
   if(riverIsOcean(core,i)||riverVisualIsReceiver(core,i))return 0;
-  /* A decorative headwater may not start in the first coarse land ring next
-     to the sea. Real short coastal streams return with the future detailed
-     hydrology grid; at synoptic resolution they become coast-to-coast canals. */
-  if(core?.riverCoastDistance&&(core.riverCoastDistance[i]|0)<=1)return 0;
   const d=core.riverVisualDistToTrunk?.[i]|0;
   if(d<RIVER_VISUAL_MIN_TRUNK_DISTANCE||d>RIVER_VISUAL_MAX_TRUNK_DISTANCE)return 0;
   const wet=riverVisualWetness(core,i);
-  const slope=riverSmooth(1e-8,1.5e-6,core?.riverSlope?.[i]||0);
+  const slope=riverSmooth(8e-9,1.2e-5,core?.riverSlope?.[i]||0);
   const relief=riverSmooth(-0.015,0.18,riverTerrainAt(core,i));
   const distanceRoom=riverSmooth(RIVER_VISUAL_MIN_TRUNK_DISTANCE,7,d);
   return riverClamp(wet*(0.34+0.66*slope)*(0.90+0.10*relief)*(0.90+0.10*distanceRoom),0,1);
@@ -182,7 +178,6 @@ function riverVisualChooseUpstream(core,i,salt,visited){
   let best=-1,bestScore=-1e9;
   riverVisualNeighbourCandidates(core,i,j=>{
     if(riverIsOcean(core,j)||riverVisualIsReceiver(core,j)||visited.has(j))return;
-    if(core?.riverCoastDistance&&(core.riverCoastDistance[j]|0)<=1)return;
     if((basin[j]|0)!==b0)return;
     const dj=dist[j]|0;if(!(dj>d0)||dj>RIVER_VISUAL_MAX_TRUNK_DISTANCE)return;
     const hj=Number(core?.riverFilledTerrain?.[j]);

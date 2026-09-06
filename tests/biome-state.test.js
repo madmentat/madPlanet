@@ -78,7 +78,7 @@ assert.match(surface,/float lakeFreeze = max\(deepColdIce,1\.0-ss\(lakeFreezeLo,
 assert.match(surface,/float riverFreeze = max\(deepColdIce,1\.0-ss\(268\.8,272\.2,ecologyK\)\)/,'deep cold must close moving rivers too');
 assert.match(surface,/float inlandLiquid = 0\.0/,'liquid inland-water fraction must be tracked separately from ice');
 assert.match(surface,/inlandLiquid = [^;]*\*hotLiquidGate/,'inland liquid water must disappear above the boiling/critical regime');
-assert.match(surface,/alb = mix\(alb, inlandIce, frozenRv\*0\.62\)/,'inland ice colour must use the spatial frozen fraction');
+assert.match(surface,/alb = mix\(alb, inlandIce, frozenRv\*0\.96\)/,'inland ice colour must use the spatial frozen fraction');
 assert.match(surface,/inlandLiquid\*land\*0\.40/,'only liquid inland water may retain liquid-water specular');
 
 /* Ocean bathymetry still exists for shallow/deep colour and dry-basin phase
@@ -97,9 +97,7 @@ assert.match(surface,/oc=mix\(dryBed,oc,hotLiquidGate\)/,'hot ocean geometry mus
    longer own river/lake placement when the physical bridge is enabled. */
 assert.equal((surface.match(/float rn = fbm\(/g)||[]).length,1,'river sub-grid geometry should be evaluated once');
 assert.equal((surface.match(/float lakeN = fbm\(/g)||[]).length,1,'lake sub-grid geometry should be evaluated once');
-assert.match(surface,/float riverGeomPhys = max\(riverGeomProc\*physRiverHalo, trunkChannel\*physRiverCore\);/,'physical support must confine both ordinary and trunk channel morphology');
-assert.doesNotMatch(surface,/\btrunkLine\b/,'the coarse drainage-map ridge must never be drawn directly as water');
-assert.doesNotMatch(surface,/riverGeomPhys = max\(riverGeomProc, trunkChannel/,'FBM zero contours must not create rivers outside physical drainage corridors');
+assert.match(surface,/riverGeomPhys = max\(riverGeomProc, trunkChannel\*physRiverCore\)/,'physical trunk corridor must keep a continuous sub-grid main channel');
 const hydro=surface.indexOf('float riverWarpX');
 const drought=surface.indexOf('float drought =');
 const biome=surface.indexOf('vec3 SAND=');

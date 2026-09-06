@@ -82,9 +82,6 @@ assert.ok(surface.includes('mix(-0.55, 1.55, uTemp)'),
 assert.ok(!/clamp\s*\(\s*uTemp/.test(surface),'surface must not clamp the extrapolating temperature channel back to 0..1');
 
 const earthTargets=ctx.climateWeatherTargets();
-assert.ok(earthTargets.cloudLow<0.46,'temperate low-cloud renderer control must stay below blanket range');
-assert.ok(earthTargets.cloudMid<0.31,'temperate middle-cloud renderer control must leave broad clear gaps');
-assert.ok(earthTargets.cloudHigh<0.22,'temperate high-cloud renderer control must remain wispy');
 climate={C:460,T:733.15,S:3,iceArea:0,waterAvail:1,moistIndex:1,partialPressures:{h2o:120}};
 const steamTargets=ctx.climateWeatherTargets();
 assert.ok(steamTargets.cloudLow<earthTargets.cloudLow*0.5,

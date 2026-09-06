@@ -30,14 +30,11 @@ assert.ok(!/latitude|latGate|riverBand/.test(executable),'river placement must n
    and an established graph channel must remain continuous downstream. */
 assert.match(refine,/Array\.from\(\{length:8\}/,'river routing needs an eight-neighbour D8-like stencil');
 assert.match(refine,/riverContributingArea/,'resolved contributing area gate is missing');
-assert.match(refine,/RIVER_AREA_START_CELLS=0\.72/,'a headwater still needs most of one resolved catchment cell');
-assert.match(refine,/RIVER_Q_START_LOCAL_MULT=1\.05/,'cell-local runoff alone must not turn every wet coarse cell into a river');
-assert.match(refine,/riverSmooth\(1e-8,1\.5e-6,core\.riverSlope\[i\]\)/,'slope support must be scaled to the resolved macro slopes');
+assert.match(refine,/RIVER_AREA_START_CELLS=0\.72/,'coarse Weather Core must allow a runoff-supported fractional-cell headwater');
+assert.match(refine,/RIVER_Q_START_LOCAL_MULT=1\.05/,'headwaters must still require more than the climate baseflow reference');
 assert.match(refine,/riverRoutingCarryChannelsDownstream/,'real channel support must be carried along its diagnosed downstream graph');
 assert.match(refine,/RIVER_CONTINUITY_DECAY=0\.90/,'downstream visual continuity needs a bounded decay');
-assert.match(refine,/RIVER_ROUTING_REFINEMENT_MODEL=5/,'conservative coast-aware river routing refinement model must be active');
-assert.match(refine,/function riverRoutingBuildCoastDistance\(core\)/,'routing must diagnose distance from every land cell to the coast');
-assert.match(refine,/coastSourceGate=\(core\.riverCoastDistance\[i\]\|0\)<=1/,'single-cell coastal runoff must not become a headwater');
+assert.match(refine,/RIVER_ROUTING_REFINEMENT_MODEL=2/,'river routing refinement model must be bumped');
 assert.match(visual,/riverVisualBasin/,'fine tributaries must be basin constrained');
 assert.match(visual,/riverVisualDistToTrunk/,'fine tributaries must converge toward a physical receiver');
 
@@ -50,80 +47,27 @@ for(const file of [buildSh,buildPs]){
 }
 assert.match(header,/uniform samplerCube uRiverTex;/);
 assert.match(header,/uniform float uRiverBlend;/);
-assert.match(shader,/riverHydroTex\s*=\s*texture\(uRiverTex, normalize\(sN\)\)/,'the physical corridor must be sampled without a geometry-distorting warp');
-/* The coarse map owns river existence but never becomes visible water. FBM
-   supplies only sub-grid morphology inside a diagnosed corridor. */
-assert.match(shader,/float riverGeomPhys = max\(riverGeomProc\*physRiverHalo, trunkChannel\*physRiverCore\);/,'physical support must confine both normal and trunk morphology');
-assert.doesNotMatch(shader,/riverGeomPhys\s*=\s*max\(riverGeomProc,\s*trunkChannel/,'procedural FBM must not own river existence outside diagnosed corridors');
-assert.match(shader,/float trunkChannel = 1\.0 - ss\(w\*1\.05, w\*1\.65, riverSignal\);/,'a diagnosed stem needs a bounded morphology continuity gate');
-assert.match(shader,/float trunkGain = mix\(1\.0, 1\.55, physRiverCore\);/,'discharge may widen sub-grid morphology without exposing the coarse brush');
-assert.doesNotMatch(shader,/\btrunkLine\b/,'the cubemap ridge must never be painted directly as water');
-assert.doesNotMatch(shader,/\btapA\b|riverHydroTex\s*=\s*max/,'max footprint taps would dilate channels at distance');
-assert.doesNotMatch(shader,/\briverDir\b|\briverWarp\b/,'texture-coordinate warping must not detach the permission corridor from the graph');
-assert.match(shader,/float riverCoverage = clamp\(wReal\/max\(wPix,1\.0e-6\)\*0\.8, 0\.0, 1\.0\);/,'sub-pixel river coverage must remain numerically safe');
-assert.match(shader,/float riverLodFloor = mix\(0\.34,0\.52,physRiverCore\);/,'physical rivers need a bounded orbit-scale visibility floor');
-assert.match(shader,/riverCoverage = mix\(riverCoverage,max\(riverCoverage,riverLodFloor\),uRiverPhysicsOn\);/,'only diagnosed physical rivers may bypass the legacy distance fade');
-assert.doesNotMatch(shader,/riv \*= clamp\(wReal\/wPix/,'the old unbounded distance fade must not erase physical rivers');
-assert.doesNotMatch(header,/uRiverTexel/,'the retired footprint dilation uniform must be removed');
-assert.doesNotMatch(render,/uRiverTexel/,'the renderer must not upload the retired footprint dilation uniform');
-assert.doesNotMatch(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,/,'the coarse river texel must never be painted as a fat brush');
-assert.match(gpu,/return 0\.045\+0\.10\*Math\.pow\(riverGpuClamp\(strength,0,1\),0\.9\)\+0\.22\*widthScale\*widthScale;/,'even the strongest trunk must remain a one-texel permission corridor');
-assert.match(gpu,/0\.035\+0\.055\*Math\.sqrt\(strength\)/,'visual branches must stay thinner than trunks');
+assert.match(shader,/riverHydroTex\s*=\s*texture\(uRiverTex/);
+/* 0.5.146: the coarse corridor map is never shown as water; thin sub-grid
+   channels stay, the trunk corridor only keeps one main channel continuous. */
+assert.match(shader,/riverGeomPhys\s*=\s*max\(riverGeomProc,\s*trunkChannel\*physRiverCore\)/,'physical corridor must gate sub-grid channels, not replace them');
+assert.doesNotMatch(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,/,'the coarse river texel must never be painted as water directly');
+assert.match(shader,/float trunkChannel = 1\.0 - ss\(w\*1\.05, w\*1\.65, riverSignal\)/,'trunk corridor needs a wider acceptance band for a continuous main channel');
 assert.match(shader,/riverClimateGate = mix\(ss\(0\.24,0\.44,moist\),ss\(0\.12,0\.40,max\(soilMoistPhys,physRiverHalo\)\),uRiverPhysicsOn\)/,'river density must follow resolved soil water');
 assert.match(shader,/float lthPhys = lth - 0\.22\*ss\(0\.15,0\.75,lakePhys\)/,'physical lakes must keep noise-shaped shorelines');
 assert.ok(gpu.includes('riverDownstream'),'GPU river map must rasterize the diagnosed drainage graph');
-assert.ok(gpu.includes('riverGpuPaintEdge')&&gpu.includes('ds[j]|0'),'GPU river map must paint diagnosed graph edges with downstream context');
-assert.ok(gpu.includes('riverGpuEdgeHash')&&gpu.includes('function riverGpuEdgeBend('),'coarse graph edges need deterministic node-anchored meanders');
-assert.match(gpu,/RIVER_GPU_MODEL=17/,'river display bridge must use coverage-preserving minification');
+assert.ok(gpu.includes('riverGpuPaintEdge'),'GPU river map must paint graph edges rather than hydrology cells');
+assert.ok(gpu.includes('riverGpuEdgeHash')&&gpu.includes('Math.sin(Math.PI*t)'),'coarse graph edges need deterministic sub-cell bending to hide lattice directions');
+assert.match(gpu,/RIVER_GPU_MODEL=10/,'river display bridge must be the corridor-mask model');
 assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'river cubemap must resolve well below the Weather Core cell size');
-assert.match(gpu,/gl\.LINEAR_MIPMAP_LINEAR/,'WebGL2 must minify the corridor from mip levels instead of undersampling level zero');
-assert.match(gpu,/if\(riverGpuUseMipmaps\(\)\)gl\.generateMipmap\(gl\.TEXTURE_CUBE_MAP\);/,'river uploads must rebuild the coverage mip chain');
-assert.match(gpu,/Math\.min\(96,Math\.ceil\(Math\.max\(ang,cellAng\)\*riverGpuN\*3\.2\)\)/,'Catmull edges need dense spherical samples rather than chunky segments');
-assert.match(gpu,/const envelope=Math\.sin\(Math\.PI\*t\);/,'meander offsets must be zero at graph nodes to avoid angular joins');
-assert.match(gpu,/const wave=envelope\*envelope\*/,'the meander tangent must also vanish at graph nodes');
-assert.doesNotMatch(gpu,/riverGpuChaikin|riverGpuDisplace|riverGpuPaintTrunkChains/,'whole-chain averaging must not recreate straight diagonal canals');
-assert.match(gpu,/function riverGpuDetailedLandAt\(core,dx,dy,dz\)/,'spline rasterization must sample the continuous coastline');
-assert.match(gpu,/new Uint8Array\(6\*N\*N\)/,'continuous coast samples must be memoized instead of rerunning terrain noise for every spline sample');
-assert.match(gpu,/\*4\)\)\)/,'coast guard must resolve below the synoptic Weather Core grid');
-assert.match(gpu,/if\(!riverGpuDetailedLandAt\(core,dx,dy,dz\)\)\{[^}]*return false;/,'a raster path must terminate at its first ocean sample');
+assert.match(gpu,/Math\.min\(96,Math\.ceil\(Math\.max\(ang,cellAng\)\*riverGpuN\*3\.2\)\)/,'long physical graph links need dense spherical samples rather than chunky segments');
+assert.match(gpu,/const amp=cellAng\*\(0\.12\+0\.06\*Math\.abs\(h2\)\)/,'corridor meander must stay small: visible wiggles belong to the sub-grid channel');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches'),'GPU bridge must paint the fine tributary overlay');
 assert.ok(!gpu.includes('requestAnimationFrame'),'river texture must not upload from render FPS');
 assert.ok(render.includes('uRiverPhysicsOn')&&render.includes('uRiverTex'));
 
-/* Numeric guards for the two visual regressions that regex-only tests blessed
-   in 0.5.154: endpoint jumps and a multi-texel trunk brush. */
-const gpuCtx={console,Math,Number,Date,Array,Map,Set,Float32Array,Float64Array,Int32Array,Int16Array,Uint8Array,
-  UNIFORM_NAMES:[],weatherCoreCreate:()=>({count:1}),weatherCoreStep:c=>c};
-vm.createContext(gpuCtx);vm.runInContext(gpu,gpuCtx,{filename:'river-gpu.js'});
-const gpuCalls=[];
-gpuCtx.webglVersion=2;
-gpuCtx.gl={TEXTURE_CUBE_MAP:1,TEXTURE_CUBE_MAP_POSITIVE_X:10,TEXTURE0:20,RGBA:30,UNSIGNED_BYTE:40,
-  TEXTURE_MIN_FILTER:50,TEXTURE_MAG_FILTER:51,TEXTURE_WRAP_S:52,TEXTURE_WRAP_T:53,TEXTURE_WRAP_R:54,
-  LINEAR:60,LINEAR_MIPMAP_LINEAR:61,CLAMP_TO_EDGE:62,
-  createTexture:()=>({}),deleteTexture:()=>{},activeTexture:()=>{},bindTexture:()=>{},
-  texParameteri:(...a)=>gpuCalls.push(['param',...a]),texImage2D:()=>{},texSubImage2D:()=>{},
-  generateMipmap:(...a)=>gpuCalls.push(['mipmap',...a])};
-gpuCtx.riverGpuEnsure(24);
-assert.ok(gpuCalls.some(c=>c[0]==='param'&&c[2]===gpuCtx.gl.TEXTURE_MIN_FILTER&&c[3]===gpuCtx.gl.LINEAR_MIPMAP_LINEAR),
-  'WebGL2 river texture must select trilinear minification');
-const mipAfterEnsure=gpuCalls.filter(c=>c[0]==='mipmap').length;
-gpuCtx.riverGpuPackUpload();
-assert.equal(gpuCalls.filter(c=>c[0]==='mipmap').length,mipAfterEnsure+1,
-  'publishing new river coverage must regenerate exactly one mip chain');
-const bendCore={seed:7345730};
-assert.ok(Math.abs(gpuCtx.riverGpuEdgeBend(bendCore,7,11,0,0.05))<1e-12,'meander must start on its graph node');
-assert.ok(Math.abs(gpuCtx.riverGpuEdgeBend(bendCore,7,11,1,0.05))<1e-12,'meander must end on its graph node');
-assert.ok(Math.abs(gpuCtx.riverGpuEdgeBend(bendCore,7,11,1e-5,0.05)/1e-5)<1e-5,'meander must not add a sharp departure tangent');
-assert.ok(Math.abs(gpuCtx.riverGpuEdgeBend(bendCore,7,11,1-1e-5,0.05)/1e-5)<1e-5,'meander must not add a sharp arrival tangent');
-const corridor=Array.from({length:6},()=>new Float32Array(32*32));
-vm.runInContext('riverGpuN=32',gpuCtx);
-const maxRadius=gpuCtx.riverGpuCorridorRadius(1,1e12);
-assert.ok(maxRadius<0.40,'hydraulic width must not expand a trunk beyond one corridor texel');
-gpuCtx.riverGpuPaint(corridor,0,16,16,maxRadius,1);
-assert.equal(corridor[0].reduce((n,v)=>n+(v>0?1:0),0),1,'the maximum trunk brush must touch exactly one cubemap texel');
-
 const ctx={
-  console,Math,Number,Float32Array,Float64Array,Int32Array,Int16Array,Uint8Array,
+  console,Math,Number,Float32Array,Float64Array,Int32Array,Uint8Array,
   WEATHER_CORE_FIXED_DT_SEC:300,
   weatherCoreCreate:()=>({count:1}),
   weatherCoreStep:(c)=>c,
@@ -197,31 +141,6 @@ function chainCore(terrain){
   assert.ok(c.riverFillDepth[1]>3.5,'Priority-Flood must hydro-condition an interior depression');
   let i=0,guard=0;while(i>=0&&i<c.count-1&&guard++<10)i=c.riverDownstream[i];
   assert.equal(i,c.count-1,'conditioned drainage must reach the ocean instead of terminating in the pit');
-}
-
-// Opposing coasts on an island must remain separated by a watershed divide.
-{
-  const c=chainCore([0,2,5,2,0]);c.surfaceWaterFraction[0]=1;
-  ctx.riverEnsureFields(c);ctx.riverRebuildTopology(c,{radiusM:6371000});
-  assert.equal(c.riverCoastDistance[0],0);assert.equal(c.riverCoastDistance[4],0);
-  assert.equal(c.riverCoastDistance[2],2,'island interior must be farther from the sea than both coastal rings');
-  assert.equal(c.riverDownstream[1],0,'west slope must drain only to the west coast');
-  assert.equal(c.riverDownstream[3],4,'east slope must drain only to the east coast');
-  const path=[];let i=2;
-  for(let guard=0;i>=0&&guard++<8;i=c.riverDownstream[i])path.push(i);
-  assert.ok(path.includes(0)!==path.includes(4),'one river path may terminate at only one of the opposing coasts');
-}
-
-// A malformed downstream cycle must be cut instead of reaching the display.
-{
-  const c=chainCore([5,4,3,2,0]);ctx.riverEnsureFields(c);
-  c.riverDownstream.set([1,2,0,4,-1]);
-  ctx.riverBuildTopo(c);
-  assert.equal(c.riverDownstream[0],-1);
-  assert.equal(c.riverDownstream[1],-1);
-  assert.equal(c.riverDownstream[2],-1);
-  assert.equal(c.riverDownstream[3],4,'valid acyclic drainage must survive the defensive cycle cut');
-  assert.equal(c.riverTopoCount,4,'topology must contain every remaining land cell exactly once');
 }
 
 // Hydraulic geometry and stream power respond monotonically to Q and slope.

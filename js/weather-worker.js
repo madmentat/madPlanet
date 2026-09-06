@@ -93,10 +93,6 @@ if(MP_IS_WEATHER_WORKER){
   weatherCoreRequestedResolution=function(){return wwN;};
   if(typeof cryoGpuDisplayResolution==='function')cryoGpuDisplayResolution=function(){return wwDisplayN;};
   if(typeof riverGpuDisplayN==='function')riverGpuDisplayN=function(){return wwRiverN;};
-  /* wwRiverFaces is the single river publication point in the worker: the
-     bridge's own upload wrapper would otherwise repeat the whole fine
-     drainage publication and pack textures against the stub GL. */
-  if(typeof riverGpuUpload==='function')riverGpuUpload=function(){return false;};
   function wwApply(m){
     if(m.stateJson&&m.stateJson!==wwStateJson){
       wwStateJson=m.stateJson;
@@ -108,10 +104,6 @@ if(MP_IS_WEATHER_WORKER){
     if(Number.isFinite(m.N))wwN=m.N;
     if(Number.isFinite(m.displayN))wwDisplayN=m.displayN;
     if(Number.isFinite(m.riverN))wwRiverN=m.riverN;
-    if(typeof riverFineSetExpected==='function')riverFineSetExpected(!!m.terrainExpected);
-    if(m.terrain&&m.terrain.h&&typeof riverFineSetTerrain==='function'){
-      if(riverFineSetTerrain(m.terrain.F,m.terrain.h,m.terrain.sig))wwTicksSinceRiver=1e9;
-    }
   }
   function wwQuantizeFaces(faces){
     const out=[],transfer=[];
@@ -145,10 +137,7 @@ if(MP_IS_WEATHER_WORKER){
     wwTicksSinceRiver=0;wwRiverSeed=core.seed|0;
     riverGpuEnsure(wwRiverN);riverGpuReadCurrent(core);
     const qr=wwQuantizeFaces(riverGpuCurrRiver),ql=wwQuantizeFaces(riverGpuCurrLake);
-    const vec=(typeof riverGpuVectorData==='function')?riverGpuVectorData():null;
-    const transfer=qr.transfer.concat(ql.transfer);if(vec)transfer.push(...vec.transfer);
-    const fine=(typeof riverFineDiagnostics==='function')?riverFineDiagnostics():null;
-    return {N:riverGpuN,river:qr.out,lake:ql.out,vec:vec?{count:vec.count,binN:vec.binN,seg:vec.seg,bins:vec.bins,list:vec.list,chords:vec.chords,listCount:vec.listCount}:null,fine,transfer};
+    return {N:riverGpuN,river:qr.out,lake:ql.out,transfer:qr.transfer.concat(ql.transfer)};
   }
   self.onmessage=function(e){
     const m=e.data;if(!m||m.type!=='tick')return;
@@ -165,7 +154,7 @@ if(MP_IS_WEATHER_WORKER){
       const cryo=wwCryoFaces(core);if(cryo)mir.transfer.push(...cryo.transfer);
       const river=wwRiverFaces(core,created);if(river)mir.transfer.push(...river.transfer);
       self.postMessage({type:'core',ok:true,fields:mir.fields,cryo:cryo?{N:cryo.N,land:cryo.land,sea:cryo.sea}:null,
-        river:river?{N:river.N,river:river.river,lake:river.lake,vec:river.vec,fine:river.fine}:null,ms:performance.now()-t0,requestId:m.requestId},mir.transfer);
+        river:river?{N:river.N,river:river.river,lake:river.lake}:null,ms:performance.now()-t0,requestId:m.requestId},mir.transfer);
     }catch(err){
       self.postMessage({type:'core',ok:false,reason:String(err&&err.stack||err),requestId:m.requestId});
     }
@@ -201,12 +190,8 @@ function weatherWorkerRequest(step){
   const displayN=(typeof cryoGpuDisplayResolution==='function')?cryoGpuDisplayResolution(N):Math.max(8,N*7);
   const riverN=(typeof riverGpuDisplayN==='function')?riverGpuDisplayN(N):Math.max(8,N*16);
   weatherWorkerBusy=true;weatherWorkerRequestId++;
-  /* 0.5.160: a fresh terrain bake rides along exactly once per signature. */
-  let terrain=null;if(typeof riverFineTerrainForWorker==='function'){try{terrain=riverFineTerrainForWorker();}catch(_e){terrain=null;}}
-  const msg={type:'tick',requestId:weatherWorkerRequestId,step:!!step,dtSec:weatherWorkerTickSeconds(),
-    stateJson:weatherWorkerSnapshotState(),climate,axis:[axis[0],axis[1],axis[2]],N,displayN,riverN,terrain,
-    terrainExpected:(typeof terrainBakeAvailable==='function')&&terrainBakeAvailable()};
-  if(terrain)weatherWorker.postMessage(msg,[terrain.h.buffer]);else weatherWorker.postMessage(msg);
+  weatherWorker.postMessage({type:'tick',requestId:weatherWorkerRequestId,step:!!step,dtSec:weatherWorkerTickSeconds(),
+    stateJson:weatherWorkerSnapshotState(),climate,axis:[axis[0],axis[1],axis[2]],N,displayN,riverN});
   return true;
 }
 /* Apply a received core over consecutive macrotasks: mirror + cloud/fog
@@ -229,7 +214,7 @@ function weatherWorkerApplyStep(){
     const mirror=m.fields;mirror.__mirror=true;
     weatherWorkerMirror=mirror;weatherCore=mirror;
     if(m.cryo)weatherWorkerCryoFaces=m.cryo;
-    if(m.river){weatherWorkerRiverFaces=m.river;if(m.river.fine&&typeof riverFineSetRemoteDiagnostics==='function')riverFineSetRemoteDiagnostics(m.river.fine);}
+    if(m.river)weatherWorkerRiverFaces=m.river;
     if(typeof weatherCloudGpuUpload==='function')try{weatherCloudGpuUpload(mirror);}catch(_e){}
     if(typeof fogGpuUpload==='function')try{fogGpuUpload(mirror);}catch(_e){}
     weatherWorkerApplyStage=1;
@@ -323,9 +308,6 @@ function weatherWorkerInstall(){
     riverGpuReadCurrent=function(core){
       const f=weatherWorkerRiverFaces;
       if(core&&core.__mirror&&f&&f.N===riverGpuN&&f.river&&f.river.length===6){
-        /* chords and their raster gate/halo publish together, inside the
-           same paced upload, so a new course never shows against an old corridor */
-        if(f.vec&&typeof riverGpuVectorSet==='function'){riverGpuVectorSet(f.vec);f.vec=null;}
         for(let face=0;face<6;face++){
           const r=riverGpuCurrRiver[face],l=riverGpuCurrLake[face],qr=f.river[face],ql=f.lake[face];
           for(let i=0;i<r.length;i++){r[i]=qr[i]/255;l[i]=ql[i]/255;}

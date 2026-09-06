@@ -81,7 +81,7 @@ assert.match(state, /k:'tect'.*Тектоника/s, 'mountain slider must be re
 
 assert.ok(/suit=min\(suit,/.test(lowClimate), 'cloud moisture memory must keep the worst of the trail');
 assert.ok(!/acc\/max\(wsum/.test(lowClimate), 'the reversible trail average must not return');
-assert.match(clouds, /mix\(0\.56\+0\.28\*humidLand,0\.82,ocean\)/, 'ocean/land suitability gap must stay narrow enough to avoid coastline carpets');
+assert.match(clouds, /mix\(0\.44\+0\.50\*humidLand,0\.90,ocean\)/, 'ocean/land suitability gap must stay narrow');
 assert.match(surface, /float warmRock = /, 'slope colour must be rock-based, not ochre-by-altitude');
 assert.ok(!/vec3 SLOPE = vec3\(0\.420,0\.340,0\.180\)/.test(surface), 'the sandy foothill colour must not return');
 assert.match(state, /k:'ringInner'/, 'ring radius control missing');

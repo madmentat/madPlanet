@@ -222,22 +222,12 @@ function climateWeatherTargets(){
      global mean passes water's critical region they disappear as white cloud
      decks: the atmosphere is steam/supercritical fluid, not floating liquid
      droplets. Snowball worlds favour low stratiform cover instead. */
-  const cloudLowRaw=Math.max(0,Math.min(1,
+  const cloudLow=Math.max(0,Math.min(1,
     (0.30+0.30*wet+0.10*waterAvail+0.12*snowball)*(1-0.82*supercritical)*(1-0.30*hot*(1-wet))));
-  const cloudMidRaw=Math.max(0,Math.min(1,
+  const cloudMid=Math.max(0,Math.min(1,
     (0.25+0.22*wet+0.17*warm*wet+0.08*fluxStress)*(1-0.78*supercritical)));
-  const cloudHighRaw=Math.max(0,Math.min(1,
+  const cloudHigh=Math.max(0,Math.min(1,
     (0.16+0.20*wet+0.24*warm*wet+0.12*(c.moistIndex||0))*(1-0.68*supercritical)));
-
-  /* These are renderer amount controls, not literal cloud fractions. The
-     shader maps them nonlinearly and then composites three independent decks;
-     feeding raw physical-looking fractions made a temperate wet world almost
-     opaque when more than one deck was visible. Keep the climate response but
-     calibrate it into the renderer's useful range. Extreme/supercritical
-     suppression remains in the raw terms above. */
-  const cloudLow=Math.max(0,Math.min(1,cloudLowRaw*0.78));
-  const cloudMid=Math.max(0,Math.min(1,cloudMidRaw*0.68));
-  const cloudHigh=Math.max(0,Math.min(1,cloudHighRaw*0.58));
 
   const wind=Math.max(0,Math.min(1,0.42+0.18*fluxStress+0.12*warm+0.10*snowball));
   const convection=Math.max(0,Math.min(1,
