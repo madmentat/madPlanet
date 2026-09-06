@@ -91,10 +91,10 @@ if(typeof generateCityReadyRandomWorld==='function'){
   generateCityReadyRandomWorld=function(randomSource=Math.random){
     const result=cityRandomOriginal(randomSource);
     cityTaSolveCurrentSurface();
-    /* Rebuild the persistent core once more from the final orbit so the first
-       rendered T_a cannot retain a probe from the previous binary-search step. */
-    cityTaFreshCore();
     if(typeof deriveWorld==='function')deriveWorld();
+    /* Rebuild after deriveWorld too: it is the final state from which the first
+       rendered T_a must be sampled. */
+    cityTaFreshCore();
     if(typeof markRenderUniformsDirty==='function')markRenderUniformsDirty();
     if(typeof syncUI==='function')syncUI();
     if(typeof saveHash==='function')saveHash();
