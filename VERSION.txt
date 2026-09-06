@@ -1,12 +1,11 @@
-VERSION 0.5.167
-Base: 0.5.166 final random-world thermal acceptance.
-Changes: prevent Random from remaining trapped on the snowball climate branch.
-  - climate-consistency continuously writes the current Weather Core surface temperature back into state.temp.
-  - climateModel() uses state.temp as the initial condition of its nonlinear ice/albedo iteration, so after one -70..-90 C probe later orbital probes could remain on the frozen attractor even when moved substantially inward.
-  - Every Random orbital probe now invalidates the old Weather Core, warm-starts state.temp from the +14..+24 C target, settles H2O, and only then creates a fresh Weather Core.
-  - The HZ search bracket is now adaptive: if the inner probe is still cold it expands inward; if the outer probe is still hot it expands outward.
-  - The final solver result is exposed in window.__madPlanetHabitableRandomThermalFix.last for diagnosis.
-  - Regression test starts from an artificial -70 C snowball branch and requires Random to escape it and converge into the temperate target band.
-  - Manual worlds and ordinary climate evolution are unchanged; warm-starting is restricted to Random generation.
-Regression: a frozen state.temp must not trap Random on the cold attractor.
+VERSION 0.5.168
+Base: 0.5.167 Random snowball-attractor workaround.
+Changes: replace the unstable current-T_a orbital feedback with a temperate new-world initializer.
+  - 0.5.167 could produce T_a about -84 C while T_f exceeded +300 C because it kept moving the orbit inward while the finite-time Weather Core remained on a cold branch.
+  - Random now chooses orbital distance from the equilibrium climateModel() target (+14..+24 C) rather than chasing instantaneous T_a.
+  - After the final orbit is accepted, the brand-new Weather Core is initialized from that temperate climate state.
+  - Transient snow, land ice and sea ice stores are cleared only for the newly generated Random world; ordinary simulation and manually edited worlds keep their physical history.
+  - Land/SST/air thermal reservoirs are seeded consistently before the first rendered frame and the radiating skin is refreshed.
+  - Diagnostic state remains available at window.__madPlanetHabitableRandomThermalFix.last: targetC, formalC, actualC and AU.
+Regression: Random must never use current T_a as the orbital search signal; formal orbit solve precedes fresh Weather Core initialization.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
