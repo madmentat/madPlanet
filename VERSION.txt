@@ -1,10 +1,12 @@
-VERSION 0.5.175
+VERSION 0.5.176
 Base: exact 0.5.173 / historical 0.5.147 behaviour.
-Changes: rollback the failed 0.5.174 whole-continent guide and make one narrower experiment.
-  - All inland river geometry is exactly the 0.5.147 formula: same FBM, Catmull-Rom, widths, tributaries and meanders.
-  - Only a very narrow coastal strip (h about 0.006..0.020) is gated by diagnosed physical river-mouth support.
-  - Goal: stop pseudo-rivers from reaching two different coasts without changing the visual character of rivers over the rest of the continent.
-  - Inland loops are deliberately NOT addressed in this version; that will be a separate experiment only after the coast-only change is visually accepted.
-  - No vector/chord rivers, fine drainage, global river guide, coastline spline clipping, weather or climate changes.
-Manual regression seeds: 87707715 and 46523755.
+Changes: first structural topology fix that does not use a whole-continent mask.
+  - riverDownstream / the physical Catmull graph now owns river existence while physics is enabled.
+  - The 0.5.147 FBM field is retained only for local width/roughness character; it can no longer invent a closed ring or an unrelated coast-to-coast river.
+  - The physical Catmull cubemap is sampled through a smooth, low-amplitude tangent-plane domain warp so connected graph channels keep natural bends rather than looking like D8/vector segments.
+  - A high antialiased level set extracts a thin sub-texel river from the coarse support texture instead of drawing the whole cubemap texel as water.
+  - Floodplain/riparian support follows the same graph-owned topology, removing green FBM rings together with blue river loops.
+  - Lakes, Priority-Flood, routing, Weather Core, water, vegetation, clouds and Random generation are unchanged.
+  - No 0.5.148 hard corridor mask, no 0.5.174 broad guide, no 0.5.175 coast-only gate, no vector/chord renderer.
+Manual regression seeds: 87707715, 46523755, 28206851.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
