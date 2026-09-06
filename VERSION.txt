@@ -1,9 +1,10 @@
-VERSION 0.5.164
-Base: 0.5.163 weather telemetry and low-cloud visibility hotfix.
-Changes: make city-ready Random target the actual current T_a shown by Weather Core.
-  - The old generator solved climateModel()'s equilibrium temperature, while T_a is the current Weather Core surface mean and can be substantially colder after latitudinal thermal structure is applied.
-  - A post-generation orbital solve now rebuilds Weather Core probes and adjusts distance against the actual area-weighted surface temperature.
-  - Random worlds target T_a between +10 and +25 °C, with an acceptance band of +8 to +27 °C.
-  - The correction is restricted to the Random generator; manual worlds, weather physics, rivers and terrain are unchanged.
-Regression: Random must optimize CURRENT Weather Core T_a rather than only the climate attractor.
+VERSION 0.5.165
+Base: 0.5.164 current-T_a random-world correction.
+Changes: fix the random-world orbital solver and bias generated worlds warmer.
+  - 0.5.164 had the binary-search direction reversed: a cold Weather Core probe moved the orbit farther from the star, making already-cold worlds colder and commonly producing T_a around -60 °C.
+  - Cold probes now move inward (smaller AU); hot probes move outward (larger AU).
+  - Random-world target T_a is now +14 to +24 °C, inside the intended roughly +10 to +25 °C habitable range, with a +10 to +27 °C acceptance guard.
+  - The regression test uses a monotonic synthetic climate and fails if a cold world is moved outward again.
+  - Manual worlds and the underlying climate/weather physics remain unchanged; only the Random generator's orbital solve is corrected.
+Regression: Random must converge toward a warm current Weather Core T_a and a cold probe must decrease orbital distance.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

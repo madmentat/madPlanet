@@ -1,4 +1,4 @@
-/* ============ 0.5.164: random worlds target CURRENT T_a ============ */
+/* ============ 0.5.165: warm habitable random worlds ============ */
 /*
    habitable-random.js historically solved the radiative climate attractor
    returned by climateModel(). That is not the same quantity shown as T_a:
@@ -17,10 +17,10 @@
    not merely a pleasant equilibrium estimate.
 */
 
-const CITY_TA_MODEL=1;
-const CITY_TA_TARGET_MIN_C=10;
-const CITY_TA_TARGET_MAX_C=25;
-const CITY_TA_ACCEPT_MIN_C=8;
+const CITY_TA_MODEL=2;
+const CITY_TA_TARGET_MIN_C=14;
+const CITY_TA_TARGET_MAX_C=24;
+const CITY_TA_ACCEPT_MIN_C=10;
 const CITY_TA_ACCEPT_MAX_C=27;
 const CITY_TA_SOLVE_STEPS=12;
 
@@ -79,7 +79,11 @@ function cityTaSolveCurrentSurface(){
     if(Number.isFinite(c)){
       const err=Math.abs(c-target);
       if(err<bestErr){bestErr=err;bestAu=au;bestC=c;}
-      if(c<target)lo=au;else hi=au;
+      /* Orbital distance is inverse to heating: a cold probe must move
+         inward (smaller AU), while a hot probe must move outward. 0.5.164
+         accidentally updated the opposite bracket and therefore drove cold
+         random worlds even farther from their star. */
+      if(c<target)hi=au;else lo=au;
     }else break;
   }
   const finalC=cityTaSetOrbit(bestAu);
