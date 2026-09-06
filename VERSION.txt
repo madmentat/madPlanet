@@ -1,10 +1,9 @@
-VERSION 0.5.162
-Base: 0.5.161 terrain-driven rivers with review fixes.
-Changes: continuous, curved and width-graded channels on dense networks.
-  - Chord bins are 128 per cubemap face with a 0.008 rad margin and the shader visits up to 48 chords per bin; on a land-heavy world the 64-bin index overflowed the 32-chord cap in hundreds of bins and dropped the weakest chords, which read as rivers breaking near confluences.
-  - Fine channels use their own width curve (0.00035 + 0.0030*s^1.8 + 0.001*ws^2 rad), about 8:1 between a threshold creek and an Amazon-class trunk instead of 2:1.
-  - Chain relaxation runs three passes with a 0.6-cell bound and the sub-grid meander warp uses three octaves at 0.0046 rad, so the 40 km D8 staircase reads as a curve instead of a crowbar.
-  - Basin wetness has a 0.30 floor (a dry basin needs ~3x the catchment, not infinite) and an unbootstrapped runoff memory counts as uniform wetness, so a fresh or loaded world grows rivers immediately instead of waiting 24 model days.
-  - Worker mirrors publish immediately: the idle-slot river pacing was written for main-thread reconstruction and starved a device that never reports an idle frame.
-Regression: guards require the finer bins, the fine width curve, the wetness floor and bootstrap fallback, and the immediate mirror publication.
+VERSION 0.5.163
+Base: 0.5.162 fine rivers.
+Changes: restore reliable weather telemetry and visible low-cloud baseline on mobile/desktop.
+  - T_a now has a direct Weather Core area-weighted fallback when the climate-consistency adapter temporarily has no matching core.
+  - The fallback is installed before celsius-ui, so the existing single-writer telemetry path remains authoritative.
+  - Low-cloud visual influence keeps a display-only floor at -0.55; physical Weather Core fields remain unchanged. This prevents the inertial visual response from suppressing the default low cloud deck completely on dry worlds while preserving regional variation.
+  - No river, terrain or physical weather fields are changed by the visual floor.
+Regression: T_a must resolve to a finite Celsius value after Weather Core creation; low-cloud influence must never be packed below the display floor.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
