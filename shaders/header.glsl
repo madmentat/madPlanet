@@ -72,9 +72,8 @@ uniform float uCryosphereBlend;
 uniform samplerCube uRiverTex;
 uniform float uRiverBlend;
 uniform float uRiverPhysicsOn;
-/* 0.5.178: 1 everywhere except around land-only closed components of the
-   historical procedural river contour. This removes loops without redrawing
-   any coast-connected 0.5.147 river. */
+/* Retained procedural river arcs, classified against the rendered terrain.
+   Closed arcs and connections between two shores are suppressed. */
 uniform samplerCube uRiverLoopTex;
 uniform float uRiverLoopOn;
 uniform vec4  uCycA[5];   /* 0.5.52 bridge: xyz lightning centre, w stays 0 */

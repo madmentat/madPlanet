@@ -198,6 +198,12 @@ float lowCloudClimate(vec3 dir){
   return clamp(suit,0.0,1.0);
 }
 
+/* The amount is already a climate-derived coverage control. Local weather
+   shifts it around the neutral 0.72 influence, rather than multiplying away
+   the global coverage a second time before both morphology thresholds. */
+float cumulusAmount(float amount,float climate){
+  return clamp(amount+0.35*(climate-0.72),0.0,1.0);
+}
 float cumulusRegion(vec3 p,float climate){
   float broad=0.5+0.5*fbm(p*0.30+uSeedC*0.37+vec3(67.0),3);
   /* Граница засушливой зоны — не геометрический контур: её размывает
@@ -211,7 +217,7 @@ float cumulusRegion(vec3 p,float climate){
   float jit=fbm(p*1.35+uSeedC*0.83+vec3(149.0,37.0,211.0),2);
   float cl0=clamp(climate,0.0,1.0);
   float clim=clamp(cl0+jit*0.30*(4.0*cl0*(1.0-cl0)),0.0,1.0);
-  float amount=clamp(uCloudLow*clim,0.0,1.0);
+  float amount=cumulusAmount(uCloudLow,clim);
   float a=amount*amount*(3.0-2.0*amount);
   /* Порог должен проходить весь размах поля. broad лежит в 0.308..0.694, и
      прежний нижний край 0.45 давал на максимуме ползунка едва треть покрытия,
@@ -219,7 +225,7 @@ float cumulusRegion(vec3 p,float climate){
      без нижнего яруса. Теперь максимум уводит порог ниже минимума поля, то
      есть ползунок действительно проходит путь от ясного неба до сплошной
      облачности. */
-  float threshold=mix(0.72,0.26,a);
+  float threshold=mix(0.62,0.22,a);
   float region=ss(threshold,threshold+0.105,broad);
   /* Пустыня разрежает облачность плавно и с остатком: даже при максимальном
      ползунке она не превращается в сплошное покрывало, но и не выстригается
@@ -228,9 +234,9 @@ float cumulusRegion(vec3 p,float climate){
 }
 
 float cumulusDensityFromShape(vec3 p,float shape,float foot,float climate){
-  float amount=clamp(uCloudLow*climate,0.0,1.0);
+  float amount=cumulusAmount(uCloudLow,climate);
   float a=amount*amount*(3.0-2.0*amount);
-  float edge=mix(0.675,0.445,a);
+  float edge=mix(0.60,0.40,a);
   float aa=clamp(foot*3.6,0.0055,0.027);
   float puff=ss(edge-aa,edge+aa,shape);
   return clamp(puff*cumulusRegion(p,climate),0.0,1.0);

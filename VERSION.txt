@@ -1,12 +1,11 @@
-VERSION 0.5.178
-Base: exact 0.5.177 / historical 0.5.147 river appearance.
-Changes: remove only land-locked closed procedural river loops.
-  - The visible 0.5.147 river formula, Catmull-Rom physical corridor, widths, meanders and coast-connected river components are unchanged.
-  - A static 96..192 px/face cubemap reproduces the historical procedural rn=0 contour only for connectivity classification.
-  - Connected contour components are evaluated on land. If a component reaches ocean or a diagnosed lake, it is kept exactly as before.
-  - A component that closes entirely on land gets a local one-pixel kill mask. The same mask removes its green floodplain ghost.
-  - This release deliberately does NOT address coast-to-coast rivers yet.
-  - No whole-continent physical mask, vector/chord renderer, topology threshold renderer, weather, water, biome or Random changes.
-  - On GPUs exposing only eight fragment texture units, the loop filter disables itself and the exact 0.5.147 rendering remains as fallback.
-Manual regression seeds: 87707715, 46523755, 28206851, 16394057.
+VERSION 0.5.179
+Changes: cloud coverage calibration and rendered-terrain river topology.
+  - Moderate low-cloud amounts now produce visible coverage; local weather biases coverage instead of multiplying it down before two morphology thresholds.
+  - River contours are sampled in GPU precision using the renderer's terrain and lake geometry, replacing false shoreline anchors from the coarse Weather Core terrain.
+  - Land arcs form a single-outlet forest: closed loops are removed and arcs joining two water contacts are split, including returns to the same sea or lake.
+  - Physical trunk geometry and floodplains obey the same retained-contour mask.
+  - Surface sampling waits for the planet shader and uses asynchronous linking where supported.
+Validation: Node regression suite; GPU cloud-coverage probe; spherical contour topology tests.
+Manual regression seeds: 5569959, 55807208, 87707715, 46523755, 28206851, 16394057.
+Compatibility: GPUs with only eight fragment texture units still disable the river filter; unavailable GPU surface sampling uses the coarse fallback.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.

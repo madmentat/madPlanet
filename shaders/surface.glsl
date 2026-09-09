@@ -114,14 +114,14 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float w = max(wReal, wPix);
   float riverSignal = abs(rn) + 0.0016*fbm(sN*260.0+uSeedS,2);
   float riverGeomProc = 1.0 - ss(w*0.82, w*1.06, riverSignal);
-  /* 0.5.178 changes no river geometry. The mask is 1 for every normal
-     coast/lake-connected contour and 0 only around procedural components that
-     close entirely on land. */
+  /* Suppress closed contours and separate arcs joining two water contacts.
+     Apply to both procedural and trunk geometry so physics cannot refill cuts. */
   float riverLoopKeep = mix(1.0,texture(uRiverLoopTex,normalize(sN)).r,uRiverLoopOn);
   riverGeomProc *= riverLoopKeep;
   /* Inside the diagnosed trunk corridor a wider acceptance band keeps one
      main channel continuous; outside it the fine network is unchanged. */
   float trunkChannel = 1.0 - ss(w*1.05, w*1.65, riverSignal);
+  trunkChannel *= riverLoopKeep;
   float riverGeomPhys = max(riverGeomProc, trunkChannel*physRiverCore);
   float riverGeom = mix(riverGeomProc,riverGeomPhys,uRiverPhysicsOn);
   float floodplainProc = 1.0-ss(wReal*1.7,wReal*6.2,abs(rn));

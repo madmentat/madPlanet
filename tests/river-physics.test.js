@@ -67,10 +67,11 @@ assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'river cubemap must resolve well below t
 assert.match(gpu,/Math\.min\(96,Math\.ceil\(Math\.max\(ang,cellAng\)\*riverGpuN\*3\.2\)\)/,'long physical graph links need dense spherical samples rather than chunky segments');
 assert.match(gpu,/const amp=cellAng\*\(0\.12\+0\.06\*Math\.abs\(h2\)\)/,'corridor meander must stay small: visible wiggles belong to the sub-grid channel');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches'),'GPU bridge must paint the fine tributary overlay');
-assert.match(gpu,/RIVER_LOOP_FILTER_MODEL=1/,'closed-loop filter model missing');
+assert.match(gpu,/RIVER_LOOP_FILTER_MODEL=3/,'GPU terrain contour filter model missing');
 assert.ok(gpu.includes('riverLoopScalar')&&gpu.includes('riverLoopBuildMask'),'procedural component classifier missing');
-assert.ok(gpu.includes('if\(anchored\)continue')&&gpu.includes('removedComponents++'),
-  'coast/lake-connected components must survive while land-only closed contours are removed');
+assert.ok(gpu.includes('riverLoopRootedForest')&&gpu.includes('riverLoopContourGraph'),
+  'contour topology must reject cycles and multiple water contacts');
+assert.match(shader,/trunkChannel \*= riverLoopKeep/,'physical trunks must not restore rejected contours');
 assert.ok(gpu.includes('riverLoopWaterAt'),'loop classification must be anchored by real ocean/lake support');
 assert.doesNotMatch(shader,/riverGuide147|riverBasinPermit147|riverGeomProc\*physRiverHalo/,
   'loop removal must not reintroduce whole-continent river masks');
