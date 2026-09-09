@@ -50,14 +50,10 @@ assert.match(header,/uniform float uRiverBlend;/);
 assert.match(header,/uniform samplerCube uRiverLoopTex;/,'closed-loop kill mask sampler missing');
 assert.match(header,/uniform float uRiverLoopOn;/,'closed-loop kill mask switch missing');
 assert.match(shader,/riverHydroTex\s*=\s*texture\(uRiverTex/);
-/* 0.5.146: the coarse corridor map is never shown as water; thin sub-grid
-   channels stay, the trunk corridor only keeps one main channel continuous. */
-assert.match(shader,/riverGeomPhys\s*=\s*max\(riverGeomProc,\s*trunkChannel\*physRiverCore\)/,'0.5.147 river geometry formula must remain');
-assert.match(shader,/riverGeomProc \*= riverLoopKeep/,'only closed procedural components may be suppressed');
-assert.match(shader,/floodplainProc \*= riverLoopKeep/,'green floodplain loops must be removed with blue river loops');
-assert.doesNotMatch(shader,/riverGeomPhys\s*=\s*max\(physRiverCore,/,'the coarse river texel must never be painted as water directly');
-assert.match(shader,/float trunkChannel = 1\.0 - ss\(w\*1\.05, w\*1\.65, riverSignal\)/,'trunk corridor needs a wider acceptance band for a continuous main channel');
-assert.match(shader,/riverClimateGate = mix\(ss\(0\.24,0\.44,moist\),ss\(0\.12,0\.40,max\(soilMoistPhys,physRiverHalo\)\),uRiverPhysicsOn\)/,'river density must follow resolved soil water');
+/* Visible rivers follow the terrain drainage graph; the coarse weather
+   corridor and zero contours cannot independently paint water. */
+assert.match(shader,/riverChannelSample/,'surface must use routed analytic channels');
+assert.doesNotMatch(shader,/riverGeomProc|trunkChannel|riverSignal/,'noise contours must not return');
 assert.match(shader,/float lthPhys = lth - 0\.22\*ss\(0\.15,0\.75,lakePhys\)/,'physical lakes must keep noise-shaped shorelines');
 assert.ok(gpu.includes('riverDownstream'),'GPU river map must rasterize the diagnosed drainage graph');
 assert.ok(gpu.includes('riverGpuPaintEdge'),'GPU river map must paint graph edges rather than hydrology cells');
@@ -67,12 +63,9 @@ assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'river cubemap must resolve well below t
 assert.match(gpu,/Math\.min\(96,Math\.ceil\(Math\.max\(ang,cellAng\)\*riverGpuN\*3\.2\)\)/,'long physical graph links need dense spherical samples rather than chunky segments');
 assert.match(gpu,/const amp=cellAng\*\(0\.12\+0\.06\*Math\.abs\(h2\)\)/,'corridor meander must stay small: visible wiggles belong to the sub-grid channel');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches'),'GPU bridge must paint the fine tributary overlay');
-assert.match(gpu,/RIVER_LOOP_FILTER_MODEL=3/,'GPU terrain contour filter model missing');
-assert.ok(gpu.includes('riverLoopScalar')&&gpu.includes('riverLoopBuildMask'),'procedural component classifier missing');
-assert.ok(gpu.includes('riverLoopRootedForest')&&gpu.includes('riverLoopContourGraph'),
-  'contour topology must reject cycles and multiple water contacts');
-assert.match(shader,/trunkChannel \*= riverLoopKeep/,'physical trunks must not restore rejected contours');
-assert.ok(gpu.includes('riverLoopWaterAt'),'loop classification must be anchored by real ocean/lake support');
+assert.match(gpu,/RIVER_LOOP_FILTER_MODEL=4/,'terrain drainage model missing');
+assert.ok(gpu.includes('riverDrainageBuild')&&gpu.includes('riverDrainageRaster'));
+
 assert.doesNotMatch(shader,/riverGuide147|riverBasinPermit147|riverGeomProc\*physRiverHalo/,
   'loop removal must not reintroduce whole-continent river masks');
 assert.ok(!gpu.includes('requestAnimationFrame'),'river texture must not upload from render FPS');

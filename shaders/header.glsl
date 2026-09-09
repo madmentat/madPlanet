@@ -72,8 +72,8 @@ uniform float uCryosphereBlend;
 uniform samplerCube uRiverTex;
 uniform float uRiverBlend;
 uniform float uRiverPhysicsOn;
-/* Retained procedural river arcs, classified against the rendered terrain.
-   Closed arcs and connections between two shores are suppressed. */
+/* Analytic drainage segments on the rendered terrain (RGBA32F endpoints).
+   No noise-contour rivers are drawn while this graph is unavailable. */
 uniform samplerCube uRiverLoopTex;
 uniform float uRiverLoopOn;
 uniform vec4  uCycA[5];   /* 0.5.52 bridge: xyz lightning centre, w stays 0 */

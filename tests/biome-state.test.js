@@ -39,9 +39,7 @@ assert.match(surface,/float soilMoistPhys = mix\(soilCont, clamp\(surfaceWx\.b,0
 assert.match(surface,/float tempCode = clamp\(surfaceWx\.a/,'surface must decode the physical temperature channel');
 assert.match(surface,/mix\(80\.0,180\.0,tempCode\/0\.05\)/,'surface must decode the deep-cold temperature tail');
 assert.match(surface,/mix\(380\.0,1000\.0,\(tempCode-0\.90\)\/0\.10\)/,'surface must decode the extreme-hot temperature tail');
-assert.match(surface,/float floodplainProc = 1\.0-ss\(/,'sub-grid river floodplain morphology must exist');
-assert.match(surface,/float floodplainPhys = floodplainProc\*\(0\.55\+0\.45\*physRiverHalo\)/,'physical river corridor must strengthen, not blanket, floodplain wetness');
-assert.match(surface,/float floodplain = mix\(floodplainProc,floodplainPhys,uRiverPhysicsOn\)/,'physical/legacy floodplain selection missing');
+assert.match(surface,/float floodplain=drainage\.y/,'sub-grid river floodplain morphology must exist');
 assert.match(surface,/float lakeMarginProc = ss\(/,'sub-grid lake-adjacent wetness must exist');
 assert.match(surface,/float lakeMarginPhys = ss\(lthPhys-0\.12,lthPhys\+0\.025,lakeN\)[^\n]*lakeSupport/,'physical lake support must own lake-adjacent wetness with a noise-shaped shoreline');
 assert.match(surface,/float lakeMargin = mix\(lakeMarginProc,lakeMarginPhys,uRiverPhysicsOn\)/,'physical/legacy lake margin selection missing');
@@ -93,12 +91,10 @@ assert.doesNotMatch(surface,/shoreBiasedSea\*iceMicro/,'bathymetry must not be c
 assert.match(surface,/if\(ice > 0\.5\)\{[\s\S]*?oc = iceCol;/,'covered ocean samples must receive solid ice colour');
 assert.match(surface,/oc=mix\(dryBed,oc,hotLiquidGate\)/,'hot ocean geometry must render a dry basin rather than blue liquid');
 
-/* Hydrology noise is evaluated once and reused as sub-grid texture. It may no
-   longer own river/lake placement when the physical bridge is enabled. */
-assert.equal((surface.match(/float rn = fbm\(/g)||[]).length,1,'river sub-grid geometry should be evaluated once');
+/* Hydrology geometry is evaluated once and reused for water and ecology. */
+assert.equal((surface.match(/riverChannelSample\(/g)||[]).length,1,'river sub-grid geometry should be evaluated once');
 assert.equal((surface.match(/float lakeN = fbm\(/g)||[]).length,1,'lake sub-grid geometry should be evaluated once');
-assert.match(surface,/riverGeomPhys = max\(riverGeomProc, trunkChannel\*physRiverCore\)/,'physical trunk corridor must keep a continuous sub-grid main channel');
-const hydro=surface.indexOf('float riverWarpX');
+const hydro=surface.indexOf('vec2 drainage=');
 const drought=surface.indexOf('float drought =');
 const biome=surface.indexOf('vec3 SAND=');
 assert.ok(hydro>=0&&hydro<drought&&drought<biome,'hydrology must disaggregate coarse moisture before biome colour selection');

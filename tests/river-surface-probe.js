@@ -1,5 +1,5 @@
 /* Run: node tests/river-surface-probe.js, then open /river-surface.tmp.html.
-   Runs the production GPU sampler, contour graph and final mask together. */
+   Runs the production GPU terrain sampler and directed drainage graph. */
 const fs=require('node:fs'),path=require('node:path');
 const root=path.join(__dirname,'..'),read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const frag=['#version 300 es',read('shaders/header.glsl'),read('shaders/noise.glsl'),read('shaders/terrain.glsl'),read('shaders/weather-cloud-prelude.glsl')].join('\n');
@@ -7,7 +7,7 @@ const script=[read('js/math.js'),read('js/state.js'),`
 const FRAG=${JSON.stringify(frag)};
 const gl=document.createElement('canvas').getContext('webgl2'),webglVersion=2;
 function weatherCoreCreate(){}function weatherCoreStep(){}
-`,read('js/river-gpu.js'),`
+`,read('js/river-drainage.js'),read('js/river-gpu.js'),`
 const out=document.querySelector('pre'),results=[];
 const sampleOriginal=riverLoopSampleSurface;let sampled;
 riverLoopSampleSurface=function(N){const s=sampleOriginal(N);if(s&&!s.pending)sampled=s;return s;};
@@ -18,38 +18,38 @@ function run(){
   const core={N:32,count:6144,seed:state.seed,h2oSurfaceSignature:'probe'};
   if(!riverLoopBuildMask(core)){setTimeout(run,250);return;}
   if(core.riverLoopSampling!=='gpu-terrain')throw Error('GPU sampling unavailable');
-  const graph=riverLoopContourGraph(sampled.corners,sampled.water,riverLoopN);
-  const kept=riverLoopRootedForest(graph.neighbors,graph.water),seen=new Set();
-  let components=0,segments=0;
-  for(let i=0;i<kept.length;i++)if(kept[i]&&!seen.has(i)){
-   components++;const queue=[i];seen.add(i);let edges=0,contacts=0;
-   for(const j of queue)for(const k of graph.neighbors[j]){
-    if(graph.water[k])contacts++;
-    else if(kept[k]){edges++;if(!seen.has(k)){seen.add(k);queue.push(k);}}
-   }
-   if(contacts!==1||edges/2!==queue.length-1)throw Error('Cycle or multiple shore contacts');
-   segments+=queue.length;
+  const grid=riverDrainageGridCache,N=grid.N;
+  const network=riverDrainageBuild(sampled.height,sampled.water,sampled.moisture,grid.neighbors,grid.area,{sourceArea:2*(N/160)**2});
+  const incoming=new Int32Array(network.down.length);let segments=0,mouths=0,sources=0;
+  for(let i=0;i<network.down.length;i++)if(network.channel[i]){
+    const j=network.down[i];segments++;incoming[j]++;
+    if(sampled.water[i])throw Error('River starts in water');
+    if(j<0||(!sampled.water[j]&&!network.channel[j]))throw Error('River stops before reaching water');
+    if(!sampled.water[j]&&sampled.height[j]>sampled.height[i])throw Error('Uphill flow');
+    if(sampled.water[j])mouths++;
   }
-  const N=riverLoopN;
-  for(let i=0;i<kept.length;i++)if(!kept[i]&&!graph.water[i]){
-   const p=graph.pixels[i],f=Math.floor(p/(N*N)),k=p%(N*N);
-   if(riverLoopFaces[f][k*4]!==0)throw Error('Rejected contour restored by final raster mask');
+  for(let i=0;i<incoming.length;i++)if(network.channel[i]&&!incoming[i]){
+    sources++;if(network.coastDistance[i]<3)throw Error('Headwater on coast');
+    const seen=new Set();let k=i;
+    while(!sampled.water[k]){if(seen.has(k))throw Error('Loop');seen.add(k);k=network.down[k];}
   }
-  if(!segments||!core.riverLoopRemovedSegments)throw Error('Vacuous result: need retained and removed rivers');
-  const canvas=document.createElement('canvas');canvas.width=N*6;canvas.height=N*2;
+  if(!segments||!mouths||!sources)throw Error('Empty drainage network');
+  const canvas=document.createElement('canvas');canvas.width=N*6;canvas.height=N;
   const ctx=canvas.getContext('2d'),img=ctx.createImageData(canvas.width,canvas.height);
-  for(let f=0;f<6;f++)for(let y=0;y<N;y++)for(let x=0;x<N;x++)for(let row=0;row<2;row++){
-   const wet=sampled.water[f*N*N+y*N+x],p=((row*N+y)*canvas.width+f*N+x)*4;
-   img.data.set(wet?[110,156,192,255]:[209,205,178,255],p);
+  for(let f=0;f<6;f++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+   const i=f*N*N+y*N+x,p=(y*canvas.width+f*N+x)*4;
+   const wet=sampled.water[i],h=sampled.height[i];
+   img.data.set(wet?[85,134,174,255]:[130+h*220,159+h*160,103+h*220,255],p);
   }
-  for(let i=0;i<graph.pixels.length;i++){
-   const p=graph.pixels[i],f=Math.floor(p/(N*N)),k=p%(N*N),x=k%N,y=Math.floor(k/N);
-   for(let row=0;row<2;row++)if(!row||riverLoopFaces[f][k*4]>0)
-    img.data.set([15,55,103,255],((row*N+y)*canvas.width+f*N+x)*4);
+  ctx.putImageData(img,0,0);ctx.strokeStyle='#153e63';ctx.lineWidth=0.65;
+  for(let i=0;i<network.down.length;i++)if(network.channel[i]){
+    const j=network.down[i],f=Math.floor(i/(N*N)),g=Math.floor(j/(N*N));if(f!==g)continue;
+    ctx.beginPath();ctx.moveTo(f*N+i%N+0.5,Math.floor(i/N)%N+0.5);
+    ctx.lineTo(g*N+j%N+0.5,Math.floor(j/N)%N+0.5);ctx.stroke();
   }
-  ctx.putImageData(img,0,0);document.body.appendChild(document.createTextNode('Seed '+state.seed+': before / after'));document.body.appendChild(canvas);
-  results.push({seed:state.seed,components,segments,removed:core.riverLoopRemovedSegments,sampling:core.riverLoopSampling});
-  next++;out.textContent=(next===seeds.length?'PASS':'Running')+': GPU river topology and raster cuts\\n'+JSON.stringify(results,null,2);
+  document.body.appendChild(document.createTextNode('Seed '+state.seed));document.body.appendChild(canvas);
+  results.push({seed:state.seed,segments,sources,mouths,sampling:core.riverLoopSampling});
+  next++;out.textContent=(next===seeds.length?'PASS':'Running')+': GPU downhill drainage\\n'+JSON.stringify(results,null,2);
   if(next<seeds.length)setTimeout(run,100);
  }catch(e){out.textContent='FAIL: '+e.stack;}
 }

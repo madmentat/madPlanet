@@ -12,14 +12,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float landCryoPhys = mix(cryoTex.r, cryoTex.b, uCryosphereBlend);
   float seaIcePhys = mix(cryoTex.g, cryoTex.a, uCryosphereBlend);
   vec4 surfaceWx = physicalFogSample(n0);
-  /* 0.5.131: the CPU drainage graph owns river/lake existence. The denser
-     cubemap carries connected rasterized channel corridors; FBM below is only
-     sub-grid edge/morphology detail inside those physical corridors. */
+  /* Weather Core supplies lake storage; visible river channels use the
+     higher-resolution terrain drainage graph below. */
   vec4 riverHydroTex = texture(uRiverTex, normalize(sN));
-  float riverPhys = clamp(mix(riverHydroTex.r, riverHydroTex.b, uRiverBlend),0.0,1.0);
   float lakePhys = clamp(mix(riverHydroTex.g, riverHydroTex.a, uRiverBlend),0.0,1.0);
-  float physRiverCore = ss(0.08,0.42,riverPhys);
-  float physRiverHalo = ss(0.012,0.15,riverPhys);
   float physLakeCore = ss(0.04,0.34,lakePhys);
   /* 0.5.100: never let cubemap B/A fully own biomes — residual face seams
      still read as knife cuts through rivers. Continuous FBM carries ≥45%. */
@@ -97,38 +93,9 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float arid = ss(0.46, 1.00, temp) * contin * (0.30 + 0.70*ss(0.06, 0.55, lee));
   moist = clamp(moist*(1.0 - 0.78*arid) + 0.22*coastal*coastal, 0.0, 1.0);
 
-  float riverWarpX = fbm(sN*3.1+uSeedS,3);
-  float riverWarpY = fbm(sN*3.1+uSeedS+vec3(7.7),3);
-  float rn = fbm(sN*5.2 + uSeedS*1.9 + 0.5*vec3(riverWarpX,riverWarpY,0.0), 4);
-  float wVar = 0.45 + 1.15*(0.5+0.5*fbm(sN*19.0 + uSeedS + vec3(71.0), 3));
-  float wReal = mix(0.013, 0.0030, ss(0.02,0.22,h)) * wVar;
-  /* 0.5.146: the physical river cubemap is a CORRIDOR, never a brush. One
-     display texel spans ~50 km on the desktop grid, so painting physRiverCore
-     directly as water produced rivers 50..400 km wide with round 300 km
-     lakes. Thin channel geometry comes from the sub-grid function; physics
-     decides where channels exist (resolved soil water), how dense they are,
-     and which corridor carries the dominant trunk. */
-  float trunkGain = mix(1.0, 1.55, physRiverCore);
-  wReal *= mix(1.0,trunkGain,uRiverPhysicsOn);
-  float wPix = tHit*uPixA*1.6;
-  float w = max(wReal, wPix);
-  float riverSignal = abs(rn) + 0.0016*fbm(sN*260.0+uSeedS,2);
-  float riverGeomProc = 1.0 - ss(w*0.82, w*1.06, riverSignal);
-  /* Suppress closed contours and separate arcs joining two water contacts.
-     Apply to both procedural and trunk geometry so physics cannot refill cuts. */
-  float riverLoopKeep = mix(1.0,texture(uRiverLoopTex,normalize(sN)).r,uRiverLoopOn);
-  riverGeomProc *= riverLoopKeep;
-  /* Inside the diagnosed trunk corridor a wider acceptance band keeps one
-     main channel continuous; outside it the fine network is unchanged. */
-  float trunkChannel = 1.0 - ss(w*1.05, w*1.65, riverSignal);
-  trunkChannel *= riverLoopKeep;
-  float riverGeomPhys = max(riverGeomProc, trunkChannel*physRiverCore);
-  float riverGeom = mix(riverGeomProc,riverGeomPhys,uRiverPhysicsOn);
-  float floodplainProc = 1.0-ss(wReal*1.7,wReal*6.2,abs(rn));
-  floodplainProc *= riverLoopKeep;
-  floodplainProc *= 1.0-ss(0.14,0.32,h);
-  float floodplainPhys = floodplainProc*(0.55+0.45*physRiverHalo);
-  float floodplain = mix(floodplainProc,floodplainPhys,uRiverPhysicsOn);
+  vec2 drainage=riverChannelSample(normalize(sN),tHit*uPixA);
+  float riverGeom=drainage.x;
+  float floodplain=drainage.y*(1.0-ss(0.14,0.32,h));
 
   float lakeN = fbm(sN*3.4 + uSeedS*3.7 + vec3(53.0), 4);
   float lth = mix(0.46, 0.20, uLake);
@@ -138,7 +105,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float lakeSupport = ss(0.02,0.30,lakePhys);
   float lthPhys = lth - 0.22*ss(0.15,0.75,lakePhys);
   float lakeGeomPhys = ss(lthPhys,lthPhys+0.07,lakeN) * (1.0-ss(0.05,0.14,h)) * lakeSupport * ss(0.02,0.10,uLake);
-  float lakeGeom = mix(lakeGeomProc,lakeGeomPhys,uRiverPhysicsOn);
+  float lakeGeom = max(lakeGeomProc,mix(lakeGeomProc,lakeGeomPhys,uRiverPhysicsOn));
   float lakeMarginProc = ss(lth-0.12,lth+0.025,lakeN) * (1.0-ss(0.07,0.18,h)) * ss(0.02,0.10,uLake);
   float lakeMarginPhys = ss(lthPhys-0.12,lthPhys+0.025,lakeN) * (1.0-ss(0.07,0.18,h)) * lakeSupport * ss(0.02,0.10,uLake);
   float lakeMargin = mix(lakeMarginProc,lakeMarginPhys,uRiverPhysicsOn);
@@ -262,10 +229,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float hydroReveal = 1.0-ss(0.18,0.62,landCryoPhys);
   if(h > 0.0 && hydroReveal > 0.01){
     float riv = riverGeom;
-    riv *= clamp(wReal/wPix*0.8, 0.0, 1.0);
-    float riverClimateGate = mix(ss(0.24,0.44,moist),ss(0.12,0.40,max(soilMoistPhys,physRiverHalo)),uRiverPhysicsOn);
-    float riverHighlandGate = mix(1.0-ss(0.16,0.30,h),1.0-0.45*ss(0.20,0.42,h),uRiverPhysicsOn);
-    riv *= riverClimateGate*riverHighlandGate;
+    // Accumulated upstream water keeps the trunk continuous through dry land.
     float lakeClimateGate = mix(ss(0.20,0.38,moist),0.72+0.28*physLakeCore,uRiverPhysicsOn);
     float lake = lakeGeom*lakeClimateGate;
     float waterScale = hydroReveal*(1.0-ss(0.18,0.72,snowM));

@@ -11,7 +11,7 @@ function riverBindForFrame(){
   if(riverBoundProgram!==prog){
     gl.useProgram(prog);
     if(U.uRiverTex!==null&&U.uRiverTex!==undefined)gl.uniform1i(U.uRiverTex,RIVER_TEX_UNIT);
-    if(U.uRiverLoopTex!==null&&U.uRiverLoopTex!==undefined)gl.uniform1i(U.uRiverLoopTex,RIVER_LOOP_TEX_UNIT);
+    if(U.uRiverLoopTex!==null&&U.uRiverLoopTex!==undefined)gl.uniform1i(U.uRiverLoopTex,riverLoopSupported?RIVER_LOOP_TEX_UNIT:RIVER_TEX_UNIT);
     riverBoundProgram=prog;
   }
   if(U.uRiverBlend!==null&&U.uRiverBlend!==undefined)gl.uniform1f(U.uRiverBlend,riverGpuBlendAt(riverGpuNowMs()));

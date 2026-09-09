@@ -247,7 +247,7 @@
   <h1>madPlanet</h1>
   <!-- Номер подставляет сборка из VERSION.txt: держать его здесь вторым
        экземпляром значит однажды поднять только один из двух. -->
-  <div class="ver">v0.5.179</div>
+  <div class="ver">v0.5.180</div>
   <div class="sub">МИР <b id="seedLabel">№ —</b></div>
 </div>
 
@@ -292,7 +292,7 @@
 <script>
 'use strict';
 
-const APP_VERSION = '0.5.179';
+const APP_VERSION = '0.5.180';
 const VERT = `#version 300 es
 layout(location=0) in vec2 aPos;
 void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
@@ -371,8 +371,8 @@ uniform float uCryosphereBlend;
 uniform samplerCube uRiverTex;
 uniform float uRiverBlend;
 uniform float uRiverPhysicsOn;
-/* Retained procedural river arcs, classified against the rendered terrain.
-   Closed arcs and connections between two shores are suppressed. */
+/* Analytic drainage segments on the rendered terrain (RGBA32F endpoints).
+   No noise-contour rivers are drawn while this graph is unavailable. */
 uniform samplerCube uRiverLoopTex;
 uniform float uRiverLoopOn;
 uniform vec4  uCycA[5];   /* 0.5.52 bridge: xyz lightning centre, w stays 0 */
@@ -1700,6 +1700,59 @@ vec4 cryoSurfaceSample(samplerCube tex, vec3 dir){
 
 #define uTect (1.75*uTect)
 
+/* Thin channels follow drainage segments. The texture is an acceleration
+   structure, not a painted river mask; its texel size never sets river width. */
+vec3 riverFaceDirection(int face,vec2 p){
+  if(face==0)return normalize(vec3(1.0,p.y,-p.x));
+  if(face==1)return normalize(vec3(-1.0,p.y,p.x));
+  if(face==2)return normalize(vec3(p.x,1.0,-p.y));
+  if(face==3)return normalize(vec3(p.x,-1.0,p.y));
+  if(face==4)return normalize(vec3(p.x,p.y,1.0));
+  return normalize(vec3(-p.x,p.y,-1.0));
+}
+vec2 riverChannelSample(vec3 d,float footprint){
+  if(uRiverLoopOn<0.5)return vec2(0.0);
+  vec3 ad=abs(d);vec2 uv;int face;
+  if(ad.x>=ad.y&&ad.x>=ad.z){
+    face=d.x>=0.0?0:1;uv=vec2(d.x>=0.0?-d.z:d.z,d.y)/ad.x;
+  }else if(ad.y>=ad.z){
+    face=d.y>=0.0?2:3;uv=vec2(d.x,d.y>=0.0?-d.z:d.z)/ad.y;
+  }else{
+    face=d.z>=0.0?4:5;uv=vec2(d.z>=0.0?d.x:-d.x,d.y)/ad.z;
+  }
+  float size=float(textureSize(uRiverLoopTex,0).x);
+  vec2 base=floor((vec2(uv.x,-uv.y)*0.5+0.5)*size);
+  vec2 result=vec2(0.0);
+  // At a confluence the trunk can own all four nearest texels. Include the
+  // upstream texel too, so the last part of a tributary reaches the junction.
+  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+    vec2 cell=base+vec2(float(x),float(y));
+    vec2 p=(cell+0.5)/size*2.0-1.0;p.y=-p.y;
+    vec3 query=riverFaceDirection(face,p);
+    vec4 edge=texture(uRiverLoopTex,query);
+    int edgeFace=face;
+    if(any(greaterThan(abs(p),vec2(1.0)))){
+      vec3 aq=abs(query);
+      if(aq.x>=aq.y&&aq.x>=aq.z)edgeFace=query.x>=0.0?0:1;
+      else if(aq.y>=aq.z)edgeFace=query.y>=0.0?2:3;
+      else edgeFace=query.z>=0.0?4:5;
+    }
+    float widthBin=floor(edge.r/8.0+0.5);
+    if(widthBin<0.5)continue;
+    vec3 a=riverFaceDirection(edgeFace,vec2(edge.r-widthBin*8.0,edge.g));
+    vec3 b=riverFaceDirection(edgeFace,edge.ba),ab=b-a;
+    float t=clamp(dot(d-a,ab)/max(dot(ab,ab),1e-12),0.0,1.0);
+    float distance=length(d-normalize(a+ab*t));
+    float halfWidth=mix(0.000008,0.00012,pow(widthBin/15.0,1.6));
+    float aa=max(0.000004,footprint*0.60);
+    float ink=(1.0-smoothstep(max(0.0,halfWidth-aa),halfWidth+aa,distance));
+    ink*=clamp(halfWidth/aa,0.32,1.0);
+    float plain=1.0-smoothstep(halfWidth*2.0,halfWidth*8.0+aa,distance);
+    result=max(result,vec2(ink,plain));
+  }
+  return result;
+}
+
 /* ---------- поверхность ---------- */
 vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   vec3 n0 = normalize(pos);
@@ -1714,14 +1767,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float landCryoPhys = mix(cryoTex.r, cryoTex.b, uCryosphereBlend);
   float seaIcePhys = mix(cryoTex.g, cryoTex.a, uCryosphereBlend);
   vec4 surfaceWx = physicalFogSample(n0);
-  /* 0.5.131: the CPU drainage graph owns river/lake existence. The denser
-     cubemap carries connected rasterized channel corridors; FBM below is only
-     sub-grid edge/morphology detail inside those physical corridors. */
+  /* Weather Core supplies lake storage; visible river channels use the
+     higher-resolution terrain drainage graph below. */
   vec4 riverHydroTex = texture(uRiverTex, normalize(sN));
-  float riverPhys = clamp(mix(riverHydroTex.r, riverHydroTex.b, uRiverBlend),0.0,1.0);
   float lakePhys = clamp(mix(riverHydroTex.g, riverHydroTex.a, uRiverBlend),0.0,1.0);
-  float physRiverCore = ss(0.08,0.42,riverPhys);
-  float physRiverHalo = ss(0.012,0.15,riverPhys);
   float physLakeCore = ss(0.04,0.34,lakePhys);
   /* 0.5.100: never let cubemap B/A fully own biomes — residual face seams
      still read as knife cuts through rivers. Continuous FBM carries ≥45%. */
@@ -1799,38 +1848,9 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float arid = ss(0.46, 1.00, temp) * contin * (0.30 + 0.70*ss(0.06, 0.55, lee));
   moist = clamp(moist*(1.0 - 0.78*arid) + 0.22*coastal*coastal, 0.0, 1.0);
 
-  float riverWarpX = fbm(sN*3.1+uSeedS,3);
-  float riverWarpY = fbm(sN*3.1+uSeedS+vec3(7.7),3);
-  float rn = fbm(sN*5.2 + uSeedS*1.9 + 0.5*vec3(riverWarpX,riverWarpY,0.0), 4);
-  float wVar = 0.45 + 1.15*(0.5+0.5*fbm(sN*19.0 + uSeedS + vec3(71.0), 3));
-  float wReal = mix(0.013, 0.0030, ss(0.02,0.22,h)) * wVar;
-  /* 0.5.146: the physical river cubemap is a CORRIDOR, never a brush. One
-     display texel spans ~50 km on the desktop grid, so painting physRiverCore
-     directly as water produced rivers 50..400 km wide with round 300 km
-     lakes. Thin channel geometry comes from the sub-grid function; physics
-     decides where channels exist (resolved soil water), how dense they are,
-     and which corridor carries the dominant trunk. */
-  float trunkGain = mix(1.0, 1.55, physRiverCore);
-  wReal *= mix(1.0,trunkGain,uRiverPhysicsOn);
-  float wPix = tHit*uPixA*1.6;
-  float w = max(wReal, wPix);
-  float riverSignal = abs(rn) + 0.0016*fbm(sN*260.0+uSeedS,2);
-  float riverGeomProc = 1.0 - ss(w*0.82, w*1.06, riverSignal);
-  /* Suppress closed contours and separate arcs joining two water contacts.
-     Apply to both procedural and trunk geometry so physics cannot refill cuts. */
-  float riverLoopKeep = mix(1.0,texture(uRiverLoopTex,normalize(sN)).r,uRiverLoopOn);
-  riverGeomProc *= riverLoopKeep;
-  /* Inside the diagnosed trunk corridor a wider acceptance band keeps one
-     main channel continuous; outside it the fine network is unchanged. */
-  float trunkChannel = 1.0 - ss(w*1.05, w*1.65, riverSignal);
-  trunkChannel *= riverLoopKeep;
-  float riverGeomPhys = max(riverGeomProc, trunkChannel*physRiverCore);
-  float riverGeom = mix(riverGeomProc,riverGeomPhys,uRiverPhysicsOn);
-  float floodplainProc = 1.0-ss(wReal*1.7,wReal*6.2,abs(rn));
-  floodplainProc *= riverLoopKeep;
-  floodplainProc *= 1.0-ss(0.14,0.32,h);
-  float floodplainPhys = floodplainProc*(0.55+0.45*physRiverHalo);
-  float floodplain = mix(floodplainProc,floodplainPhys,uRiverPhysicsOn);
+  vec2 drainage=riverChannelSample(normalize(sN),tHit*uPixA);
+  float riverGeom=drainage.x;
+  float floodplain=drainage.y*(1.0-ss(0.14,0.32,h));
 
   float lakeN = fbm(sN*3.4 + uSeedS*3.7 + vec3(53.0), 4);
   float lth = mix(0.46, 0.20, uLake);
@@ -1840,7 +1860,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float lakeSupport = ss(0.02,0.30,lakePhys);
   float lthPhys = lth - 0.22*ss(0.15,0.75,lakePhys);
   float lakeGeomPhys = ss(lthPhys,lthPhys+0.07,lakeN) * (1.0-ss(0.05,0.14,h)) * lakeSupport * ss(0.02,0.10,uLake);
-  float lakeGeom = mix(lakeGeomProc,lakeGeomPhys,uRiverPhysicsOn);
+  float lakeGeom = max(lakeGeomProc,mix(lakeGeomProc,lakeGeomPhys,uRiverPhysicsOn));
   float lakeMarginProc = ss(lth-0.12,lth+0.025,lakeN) * (1.0-ss(0.07,0.18,h)) * ss(0.02,0.10,uLake);
   float lakeMarginPhys = ss(lthPhys-0.12,lthPhys+0.025,lakeN) * (1.0-ss(0.07,0.18,h)) * lakeSupport * ss(0.02,0.10,uLake);
   float lakeMargin = mix(lakeMarginProc,lakeMarginPhys,uRiverPhysicsOn);
@@ -1964,10 +1984,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float hydroReveal = 1.0-ss(0.18,0.62,landCryoPhys);
   if(h > 0.0 && hydroReveal > 0.01){
     float riv = riverGeom;
-    riv *= clamp(wReal/wPix*0.8, 0.0, 1.0);
-    float riverClimateGate = mix(ss(0.24,0.44,moist),ss(0.12,0.40,max(soilMoistPhys,physRiverHalo)),uRiverPhysicsOn);
-    float riverHighlandGate = mix(1.0-ss(0.16,0.30,h),1.0-0.45*ss(0.20,0.42,h),uRiverPhysicsOn);
-    riv *= riverClimateGate*riverHighlandGate;
+    // Accumulated upstream water keeps the trunk continuous through dry land.
     float lakeClimateGate = mix(ss(0.20,0.38,moist),0.72+0.28*physLakeCore,uRiverPhysicsOn);
     float lake = lakeGeom*lakeClimateGate;
     float waterScale = hydroReveal*(1.0-ss(0.18,0.72,snowM));
@@ -17064,6 +17081,123 @@ if(typeof window!=='undefined')window.__madPlanetResolvedLiftClouds={
   parcelTemperatureK:rlcParcelTemperatureK
 };
 
+/* Render-terrain drainage. Each land cell has one strictly lower receiver;
+   equal-height plateaus use a stable index order. Water cells are terminal.
+   Closed dry depressions are left without a surface outlet, never breached
+   uphill to manufacture a river. The weather solver still owns water mass. */
+function riverDrainageBuild(height,water,moisture,neighbors,area,options={}){
+  const n=height.length,down=new Int32Array(n).fill(-1);
+  const order=Array.from({length:n},(_,i)=>i).sort((a,b)=>height[a]-height[b]||a-b);
+  const reachesWater=new Uint8Array(n),flow=new Float64Array(n),channel=new Uint8Array(n);
+  const coastDistance=new Int32Array(n).fill(-1),queue=new Int32Array(n);
+  let head=0,tail=0;
+  for(let i=0;i<n;i++)if(water[i]){reachesWater[i]=1;coastDistance[i]=0;queue[tail++]=i;}
+  while(head<tail){
+    const i=queue[head++];
+    const edges=neighbors[i];
+    for(let k=0;k<edges.length;k+=2){
+      const j=edges[k];
+      if(coastDistance[j]<0){coastDistance[j]=coastDistance[i]+1;queue[tail++]=j;}
+    }
+  }
+  for(const i of order){
+    if(water[i])continue;
+    let best=-Infinity;
+    const edges=neighbors[i];
+    for(let k=0;k<edges.length;k+=2){
+      const j=edges[k],distance=edges[k+1];
+      if(!water[j]&&!(height[j]<height[i]||(height[j]===height[i]&&j<i)))continue;
+      const drop=water[j]?Math.max(0.00001,height[i]-height[j]):height[i]-height[j];
+      const slope=drop/Math.max(1e-9,distance);
+      if(slope>best||(slope===best&&j<down[i])){best=slope;down[i]=j;}
+    }
+    if(down[i]>=0)reachesWater[i]=reachesWater[down[i]];
+    // A wet catchment supplies more tributaries; a dry local patch cannot
+    // erase a trunk which already carries water from its upstream basin.
+    const m=Math.max(0,Math.min(1,(moisture[i]-0.25)/0.40));
+    flow[i]=(area?.[i]??1)*m*m*(3-2*m);
+  }
+  const sourceArea=options.sourceArea??10,sourceInset=options.sourceInset??3;
+  for(let k=n-1;k>=0;k--){
+    const i=order[k],j=down[i];
+    if(water[i]||!reachesWater[i]||j<0)continue;
+    if(flow[i]>=sourceArea&&coastDistance[i]>=sourceInset&&height[i]>0.01)channel[i]=1;
+    flow[j]+=flow[i];
+    if(channel[i]&&!water[j])channel[j]=1;
+  }
+  return {down,flow,channel,reachesWater,coastDistance,order};
+}
+
+function riverDrainageGrid(N){
+  const count=6*N*N,dirs=new Float64Array(count*3),area=new Float64Array(count);
+  const neighbors=new Array(count),d=[0,0,0],uv={};
+  for(let f=0;f<6;f++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    const i=riverLoopIndex(f,x,y,N),u=2*(x+0.5)/N-1,v=2*(y+0.5)/N-1;
+    riverLoopFaceDir(f,x+0.5,y+0.5,N,d);dirs.set(d,3*i);
+    area[i]=1/Math.pow(1+u*u+v*v,1.5);
+  }
+  for(let f=0;f<6;f++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    const i=riverLoopIndex(f,x,y,N),seen=new Set(),edges=[];
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      if(!dx&&!dy)continue;
+      const j=riverLoopNeighborIndex(f,x,y,dx,dy,N,d,uv);
+      if(j===i||seen.has(j))continue;seen.add(j);
+      const distance=Math.hypot(dirs[3*i]-dirs[3*j],dirs[3*i+1]-dirs[3*j+1],dirs[3*i+2]-dirs[3*j+2]);
+      edges.push(j,distance);
+    }
+    neighbors[i]=Float64Array.from(edges);
+  }
+  return {N,dirs,area,neighbors};
+}
+
+// Project an endpoint onto the selected cube face, including seam margins.
+function riverDrainageProject(face,x,y,z){
+  if(face===0)return [-z/x,y/x];
+  if(face===1)return [-z/x,-y/x];
+  if(face===2)return [x/y,-z/y];
+  if(face===3)return [-x/y,-z/y];
+  if(face===4)return [x/z,y/z];
+  return [x/z,-y/z];
+}
+
+/* Each display texel stores a nearby segment, not a water-filled pixel.
+   The fragment shader computes distance to that segment analytically, so a
+   50-km grid cell can contain a 200-m river without becoming a blue blot.
+   R packs a 1..15 width bin in multiples of 8 plus endpoint A's face U;
+   G/B/A hold A.V/B.U/B.V. RGBA32F + NEAREST preserves endpoint precision. */
+function riverDrainageRaster(grid,network,M){
+  const {dirs}=grid,{down,channel,flow}=network;
+  const faces=Array.from({length:6},()=>new Float32Array(M*M*4));
+  const best=Array.from({length:6},()=>new Float32Array(M*M).fill(Infinity));
+  const seen=new Set(),padding=3,scale=M*0.5;
+  let segments=0;
+  for(let i=0;i<down.length;i++){
+    if(!channel[i])continue;
+    const j=down[i];if(j<0)continue;segments++;
+    const a=dirs.subarray(3*i,3*i+3),b=dirs.subarray(3*j,3*j+3);
+    // A small seam overlap includes both faces (three at cube corners).
+    seen.clear();
+    for(const p of [a,b])for(let axis=0;axis<3;axis++)
+      if(Math.abs(p[axis])>=Math.max(Math.abs(p[0]),Math.abs(p[1]),Math.abs(p[2]))-6/M)
+        seen.add(axis*2+(p[axis]<0?1:0));
+    const bin=Math.max(1,Math.min(15,Math.round(1+3*Math.log2(1+flow[i]/10))));
+    for(const face of seen){
+      const av=riverDrainageProject(face,...a),bv=riverDrainageProject(face,...b);
+      const ax=(av[0]+1)*scale,ay=(1-av[1])*scale,bx=(bv[0]+1)*scale,by=(1-bv[1])*scale;
+      const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
+      const x0=Math.max(0,Math.floor(Math.min(ax,bx)-padding)),x1=Math.min(M-1,Math.ceil(Math.max(ax,bx)+padding));
+      const y0=Math.max(0,Math.floor(Math.min(ay,by)-padding)),y1=Math.min(M-1,Math.ceil(Math.max(ay,by)+padding));
+      for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+        const t=Math.max(0,Math.min(1,((x+0.5-ax)*dx+(y+0.5-ay)*dy)/Math.max(1e-12,len2)));
+        const dist=(x+0.5-ax-t*dx)**2+(y+0.5-ay-t*dy)**2,k=y*M+x;
+        if(dist>=best[face][k])continue;
+        best[face][k]=dist;faces[face].set([av[0]+8*bin,av[1],bv[0],bv[1]],4*k);
+      }
+    }
+  }
+  return {faces,segments};
+}
+
 /* ============ 0.5.131 .. 0.5.146: physical rivers -> GPU cubemap ============ */
 /*
    R/G = previous river/lake support, B/A = current river/lake support.
@@ -17081,12 +17215,15 @@ if(typeof window!=='undefined')window.__madPlanetResolvedLiftClouds={
    exist, where the dominant trunk runs and where lakes are stored. Meander
    amplitude is reduced accordingly: a corridor must follow the graph, the
    visible wiggles belong to the sub-grid channel.
+
+   Since 0.5.180 this legacy weather texture supplies lake storage only.
+   Surface rivers are analytic segments from the finer terrain drainage graph.
 */
 
 const RIVER_GPU_MODEL=10;
 const RIVER_TEX_UNIT=2;
 const RIVER_LOOP_TEX_UNIT=8;
-const RIVER_LOOP_FILTER_MODEL=3;
+const RIVER_LOOP_FILTER_MODEL=4;
 const RIVER_LOOP_MIN_N=96;
 const RIVER_LOOP_MAX_N=192;
 const RIVER_GPU_UPSCALE=16;
@@ -17102,16 +17239,15 @@ let riverGpuTex=null,riverGpuN=0,riverGpuFaces=[];
 let riverGpuPrevRiver=[],riverGpuPrevLake=[],riverGpuCurrRiver=[],riverGpuCurrLake=[];
 let riverGpuHasFrame=false,riverGpuLastSeed=NaN,riverGpuBlendStartMs=0,riverGpuBlendDurationMs=1,riverGpuLastUploadMs=NaN;
 
-/* The historic visible river is a zero-contour of a procedural scalar.
-   Its land arcs need individual water outlets: a closed arc is removed and
-   an arc joining two shores is split into two headwaters. This is a display
-   topology filter, not a replacement for the physical drainage solver. */
+/* The display graph is routed on the same terrain as the visible planet.
+   Unit 8 stores analytic river segments, replacing the historic contour mask. */
 let riverLoopTex=null,riverLoopN=0,riverLoopFaces=[];
 let riverLoopReady=false,riverLoopSupported=false,riverLoopSignature='';
 let riverLoopSampler=null;
 let riverLoopSamplerFailed=false;
+let riverDrainageGridCache=null;
 
-/* Sample the renderer's actual terrain and contour, in GPU precision. The
+/* Sample the renderer's terrain, lakes and moisture in GPU precision. The
    Weather Core macroTerrain still uses a different, coarse noise basis and
    cannot classify visible shorelines. A private tiny context keeps this bake
    from disturbing the planet renderer's VAO, textures or asynchronous link. */
@@ -17139,17 +17275,15 @@ vec3 sampleDir(vec2 p){
   return normalize(vec3(-u,v,-1.0));
 }
 void main(){
-  vec3 d=sampleDir(gl_FragCoord.xy-0.5);
-  float wx=fbm(d*3.1+uSeedS,3),wy=fbm(d*3.1+uSeedS+vec3(7.7),3);
-  float rn=fbm(d*5.2+uSeedS*1.9+0.5*vec3(wx,wy,0.0),4);
-  float code=floor(clamp(rn*0.5+0.5,0.0,1.0)*65535.0+0.5);
   vec3 c=sampleDir(gl_FragCoord.xy);
   float rock,mount,lee;float h=terrain(c,rock,mount,lee);
+  float code=floor(clamp(h*0.5+0.5,0.0,1.0)*65535.0+0.5);
   float lakeN=fbm(c*3.4+uSeedS*3.7+vec3(53.0),4);
   float lth=mix(0.46,0.20,uLake);
   float lake=ss(lth,lth+0.07,lakeN)*(1.0-ss(0.05,0.14,h))*ss(0.02,0.10,uLake);
   float water=(h<0.0||lake>0.65)?1.0:0.0;
-  fragColor=vec4(floor(code/256.0)/255.0,mod(code,256.0)/255.0,water,1.0);
+  float moisture=0.5+0.5*fbm(c*2.4+uSeedS*1.3+vec3(17.0),4);
+  fragColor=vec4(floor(code/256.0)/255.0,mod(code,256.0)/255.0,water,moisture);
 }`;
       const program=g.createProgram();
       for(const [type,source] of [[g.VERTEX_SHADER,'#version 300 es\nvoid main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);gl_Position=vec4(p*2.0-1.0,0.0,1.0);}'],[g.FRAGMENT_SHADER,fragment]]){
@@ -17166,7 +17300,7 @@ void main(){
       if(!g.getProgramParameter(program,g.LINK_STATUS))throw new Error(g.getProgramInfoLog(program));
       riverLoopSampler.ready=true;
     }
-    canvas.width=canvas.height=N+1;g.viewport(0,0,N+1,N+1);g.disable(g.DITHER);g.useProgram(program);
+    canvas.width=canvas.height=N;g.viewport(0,0,N,N);g.disable(g.DITHER);g.useProgram(program);
     const loc=name=>g.getUniformLocation(program,name);
     g.uniform1f(loc('sampleN'),N);
     g.uniformMatrix3fv(loc('uRotS'),false,[1,0,0,0,1,0,0,0,1]);
@@ -17175,67 +17309,24 @@ void main(){
     g.uniform1f(loc('uDraft'),1);g.uniform1f(loc('uCamDist'),4);
     g.uniform1i(loc('uPlateN'),world.plateN);
     g.uniform4fv(loc('uPlateP'),world.plateP);g.uniform4fv(loc('uPlateW'),world.plateW);
-    const corners=[],water=new Uint8Array(6*N*N),pixels=new Uint8Array((N+1)*(N+1)*4);
+    const height=new Float32Array(6*N*N),moisture=new Float32Array(6*N*N);
+    const water=new Uint8Array(6*N*N),pixels=new Uint8Array(N*N*4);
     for(let f=0;f<6;f++){
       g.uniform1i(loc('sampleFace'),f);g.drawArrays(g.TRIANGLES,0,3);
-      g.readPixels(0,0,N+1,N+1,g.RGBA,g.UNSIGNED_BYTE,pixels);
-      const c=new Float32Array((N+1)*(N+1));corners.push(c);
-      for(let y=0;y<=N;y++)for(let x=0;x<=N;x++){
-        const k=y*(N+1)+x,p=k*4;c[k]=(pixels[p]*256+pixels[p+1])/65535*2-1;
-        if(x<N&&y<N)water[riverLoopIndex(f,x,y,N)]=pixels[p+2]>127?1:0;
+      g.readPixels(0,0,N,N,g.RGBA,g.UNSIGNED_BYTE,pixels);
+      for(let k=0;k<N*N;k++){
+        const i=f*N*N+k,p=k*4;height[i]=(pixels[p]*256+pixels[p+1])/65535*2-1;
+        water[i]=pixels[p+2]>127?1:0;moisture[i]=pixels[p+3]/255;
       }
     }
-    return {corners,water};
+    return {height,water,moisture};
   }catch(error){
     riverLoopSamplerFailed=true;
-    console.warn('[madPlanet] River surface sampling failed; using coarse fallback',error);
+    console.warn('[madPlanet] River surface sampling failed; surface rivers unavailable',error);
     return null;
   }
 }
 
-function riverLoopFract(x){return x-Math.floor(x);}
-function riverLoopMix(a,b,t){return a+(b-a)*t;}
-function riverLoopHash33(x,y,z,out){
-  x=riverLoopFract(x*0.1031);y=riverLoopFract(y*0.1030);z=riverLoopFract(z*0.0973);
-  const d=x*(y+33.33)+y*(x+33.33)+z*(z+33.33);x+=d;y+=d;z+=d;
-  out[0]=riverLoopFract((x+y)*z);
-  out[1]=riverLoopFract((x+x)*y);
-  out[2]=riverLoopFract((y+x)*x);
-  return out;
-}
-function riverLoopNoise3(x,y,z){
-  const ix=Math.floor(x),iy=Math.floor(y),iz=Math.floor(z);
-  const fx=x-ix,fy=y-iy,fz=z-iz;
-  const ux=fx*fx*(3-2*fx),uy=fy*fy*(3-2*fy),uz=fz*fz*(3-2*fz);
-  const h=[0,0,0],dot=(ox,oy,oz)=>{
-    riverLoopHash33(ix+ox,iy+oy,iz+oz,h);
-    return (h[0]-0.5)*(fx-ox)+(h[1]-0.5)*(fy-oy)+(h[2]-0.5)*(fz-oz);
-  };
-  const a=dot(0,0,0),b=dot(1,0,0),c=dot(0,1,0),d=dot(1,1,0);
-  const e=dot(0,0,1),g=dot(1,0,1),hh=dot(0,1,1),k=dot(1,1,1);
-  const z0=riverLoopMix(riverLoopMix(a,b,ux),riverLoopMix(c,d,ux),uy);
-  const z1=riverLoopMix(riverLoopMix(e,g,ux),riverLoopMix(hh,k,ux),uy);
-  return 2*riverLoopMix(z0,z1,uz);
-}
-function riverLoopFbm(x,y,z,oct){
-  let a=0.5,s=0;
-  for(let i=0;i<oct;i++){
-    s+=a*riverLoopNoise3(x,y,z);
-    const nx=(-0.80*y-0.60*z)*2.03+3.1;
-    const ny=( 0.80*x+0.36*y-0.48*z)*2.03+3.1;
-    const nz=( 0.60*x-0.48*y+0.64*z)*2.03+3.1;
-    x=nx;y=ny;z=nz;a*=0.5;
-  }
-  return s;
-}
-function riverLoopScalar(dx,dy,dz,seedS){
-  const sx=Number(seedS?.[0])||0,sy=Number(seedS?.[1])||0,sz=Number(seedS?.[2])||0;
-  const wx=riverLoopFbm(dx*3.1+sx,dy*3.1+sy,dz*3.1+sz,3);
-  const wy=riverLoopFbm(dx*3.1+sx+7.7,dy*3.1+sy+7.7,dz*3.1+sz+7.7,3);
-  return riverLoopFbm(dx*5.2+sx*1.9+0.5*wx,
-                      dy*5.2+sy*1.9+0.5*wy,
-                      dz*5.2+sz*1.9,4);
-}
 function riverLoopFaceDir(face,px,py,N,out){
   const u=2*px/N-1,v=1-2*py/N;let x=0,y=0,z=0;
   if(face===0){x= 1;y=v;z=-u;}
@@ -17260,159 +17351,45 @@ function riverLoopNeighborIndex(face,x,y,dx,dy,N,tmpDir,tmpUv){
   const yy=riverGpuClamp(Math.floor((1-(tmpUv.v+1)*0.5)*N),0,N-1);
   return riverLoopIndex(tmpUv.face,xx,yy,N);
 }
-function riverLoopWaterAt(core,dx,dy,dz){
-  if(typeof windDirToIndex!=='function')return false;
-  const i=windDirToIndex(core,dx,dy,dz);
-  if(!(i>=0&&i<core.count))return false;
-  if(typeof riverIsOcean==='function'&&riverIsOcean(core,i))return true;
-  if((Number(core.riverLakeFraction?.[i])||0)>0.045)return true;
-  return (Number(core.surfaceWaterFraction?.[i])||0)>0.55;
-}
 function riverLoopEnsureTexture(N){
   const maxUnits=Number(gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS))||8;
-  riverLoopSupported=maxUnits>RIVER_LOOP_TEX_UNIT;
+  riverLoopSupported=webglVersion>=2&&maxUnits>RIVER_LOOP_TEX_UNIT;
   if(!riverLoopSupported){riverLoopReady=false;return false;}
   if(riverLoopTex&&riverLoopN===N)return true;
   if(riverLoopTex)gl.deleteTexture(riverLoopTex);
-  riverLoopN=N;riverLoopFaces=Array.from({length:6},()=>new Uint8Array(N*N*4));
+  riverLoopN=N;riverLoopFaces=Array.from({length:6},()=>new Float32Array(N*N*4));
   riverLoopTex=gl.createTexture();
   gl.activeTexture(gl.TEXTURE0+RIVER_LOOP_TEX_UNIT);gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverLoopTex);
-  gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
   if(webglVersion>=2)gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_R,gl.CLAMP_TO_EDGE);
-  for(let f=0;f<6;f++)gl.texImage2D(riverGpuFaceTarget(f),0,gl.RGBA,N,N,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+  for(let f=0;f<6;f++)gl.texImage2D(riverGpuFaceTarget(f),0,gl.RGBA32F,N,N,0,gl.RGBA,gl.FLOAT,null);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);
   riverLoopReady=false;return true;
-}
-/* Keep an induced forest rooted at individual water contacts. Counting every
-   contact (even contacts with the same sea/lake) prevents a river returning to
-   its own mouth. Rejecting a second retained neighbour cuts cycles, rather
-   than merely hiding a cycle in the traversal's visited set. */
-function riverLoopRootedForest(neighbors,water){
-  const n=neighbors.length,keep=new Uint8Array(n),queued=new Uint8Array(n);
-  const queue=new Int32Array(n);let head=0,tail=0;
-  for(let i=0;i<n;i++)if(!water[i]&&neighbors[i].some(j=>water[j])){
-    queue[tail++]=i;queued[i]=1;
-  }
-  while(head<tail){
-    const i=queue[head++];let contacts=0;
-    for(const j of neighbors[i])if(water[j]||keep[j])contacts++;
-    if(contacts!==1)continue;
-    keep[i]=1;
-    for(const j of neighbors[i])if(!water[j]&&!queued[j]){queued[j]=1;queue[tail++]=j;}
-  }
-  return keep;
-}
-
-/* Marching squares connects actual edge crossings, not all eight nearby
-   pixels: diagonal proximity is not a tributary or a loop. Canonical spherical
-   edge keys also stitch the six cube faces, including their corners. */
-function riverLoopContourGraph(corners,water,N){
-  const neighbors=[],wet=[],pixels=[],edges=new Map(),d=[0,0,0];
-  function vertex(f,x,y){
-    riverLoopFaceDir(f,x,y,N,d);
-    return d.map(v=>Math.round(v*1e8)).join(',');
-  }
-  for(let f=0;f<6;f++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){
-    const c=corners[f],stride=N+1;
-    const values=[c[y*stride+x],c[y*stride+x+1],c[(y+1)*stride+x+1],c[(y+1)*stride+x]];
-    const points=[[x,y],[x+1,y],[x+1,y+1],[x,y+1]],crossings=[];
-    for(let e=0;e<4;e++)if((values[e]>0)!==(values[(e+1)%4]>0))crossings.push(e);
-    if(!crossings.length)continue;
-    let pairs=[crossings];
-    if(crossings.length===4){
-      // Bilinear asymptotic decider for the two disjoint saddle arcs.
-      pairs=values[0]*values[2]-values[1]*values[3]>=0?[[0,1],[2,3]]:[[0,3],[1,2]];
-    }
-    for(const pair of pairs){
-      const i=neighbors.length,pixel=riverLoopIndex(f,x,y,N);
-      neighbors.push([]);wet.push(water[pixel]);pixels.push(pixel);
-      for(const e of pair){
-        const a=points[e],b=points[(e+1)%4];
-        const va=vertex(f,...a),vb=vertex(f,...b),key=va<vb?va+'|'+vb:vb+'|'+va;
-        if(edges.has(key)){
-          const j=edges.get(key);neighbors[i].push(j);neighbors[j].push(i);
-          edges.delete(key);
-        }else edges.set(key,i);
-      }
-    }
-  }
-  return {neighbors,water:wet,pixels};
 }
 function riverLoopBuildMask(core){
   if(!core?.N||!world?.seedS)return false;
   const N=Math.max(RIVER_LOOP_MIN_N,Math.min(RIVER_LOOP_MAX_N,Math.round(core.N*5)));
-  if(!riverLoopEnsureTexture(N))return false;
-  const sig=[RIVER_LOOP_FILTER_MODEL,N,core.seed,core.h2oSurfaceSignature,...world.seedS,
-    state.cont,Number(state.sea).toFixed(3),state.tect,state.isle,state.lake].join('|');
+  const M=N*2;
+  if(!riverLoopEnsureTexture(M))return false;
+  const sig=[RIVER_LOOP_FILTER_MODEL,N,...world.seedS,state.cont,
+    Number(state.sea).toFixed(3),state.tect,state.isle,state.lake].join('|');
   if(riverLoopReady&&riverLoopSignature===sig)return true;
-
-  const facePix=N*N,total=6*facePix;
   const sampled=riverLoopSampleSurface(N);
-  if(sampled?.pending){riverLoopReady=false;return false;}
-  const water=sampled?sampled.water:new Uint8Array(total);
-  const keep=new Uint8Array(total);
-  const corners=sampled?sampled.corners:Array.from({length:6},()=>new Float32Array((N+1)*(N+1)));
-  const d=[0,0,0];
-
-  /* Marching-squares occupancy of the same rn=0 contour used by 0.5.147.
-     Width is deliberately ignored: component topology belongs to the zero
-     contour, while the original shader remains the owner of visible width. */
-  for(let f=0;!sampled&&f<6;f++){
-    const cv=corners[f];
-    for(let y=0;y<=N;y++)for(let x=0;x<=N;x++){
-      riverLoopFaceDir(f,x,y,N,d);
-      cv[y*(N+1)+x]=riverLoopScalar(d[0],d[1],d[2],world.seedS);
-    }
-    for(let y=0;y<N;y++)for(let x=0;x<N;x++){
-      const idx=riverLoopIndex(f,x,y,N);
-      riverLoopFaceDir(f,x+0.5,y+0.5,N,d);
-      if(riverLoopWaterAt(core,d[0],d[1],d[2]))water[idx]=1;
-    }
-  }
-
-  const cell={face:0,x:0,y:0},uv={face:0,u:0,v:0},nd=[0,0,0];
-  let removedPixels=0;
-  const dirs=[-1,-1,0,-1,1,-1,-1,0,1,0,-1,1,0,1,1,1];
-  const graph=riverLoopContourGraph(corners,water,N);
-  const retained=riverLoopRootedForest(graph.neighbors,graph.water);
-  // Permit only sampled, retained arcs. Starting from all-white let small
-  // unresolved loops and GPU/CPU contour offsets escape the old kill mask.
-  for(let i=0;i<retained.length;i++)if(graph.water[i]||retained[i]){
-    const idx=graph.pixels[i];keep[idx]=255;riverLoopIndexToCell(idx,N,cell);
-    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
-      const ni=riverLoopNeighborIndex(cell.face,cell.x,cell.y,dx,dy,N,nd,uv);keep[ni]=255;
-    }
-  }
-  let removedSegments=0;
-  for(let i=0;i<retained.length;i++)if(!graph.water[i]&&!retained[i]){
-      removedSegments++;
-      const idx=graph.pixels[i];keep[idx]=0;
-      riverLoopIndexToCell(idx,N,cell);
-      for(let k=0;k<dirs.length;k+=2){
-        const ni=riverLoopNeighborIndex(cell.face,cell.x,cell.y,dirs[k],dirs[k+1],N,nd,uv);
-        keep[ni]=0;
-      }
-  }
-  for(const v of keep)if(!v)removedPixels++;
-
-  for(let f=0;f<6;f++){
-    const pix=riverLoopFaces[f],off=f*facePix;
-    for(let i=0;i<facePix;i++){
-      const v=keep[off+i],p=i*4;pix[p]=v;pix[p+1]=v;pix[p+2]=v;pix[p+3]=255;
-    }
-  }
+  if(!sampled||sampled.pending){riverLoopReady=false;return false;}
+  if(!riverDrainageGridCache||riverDrainageGridCache.N!==N)riverDrainageGridCache=riverDrainageGrid(N);
+  const grid=riverDrainageGridCache;
+  const network=riverDrainageBuild(sampled.height,sampled.water,sampled.moisture,grid.neighbors,grid.area,
+    {sourceArea:2*(N/160)**2});
+  const raster=riverDrainageRaster(grid,network,M);riverLoopFaces=raster.faces;
   gl.activeTexture(gl.TEXTURE0+RIVER_LOOP_TEX_UNIT);gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverLoopTex);
-  for(let f=0;f<6;f++)gl.texSubImage2D(riverGpuFaceTarget(f),0,0,0,N,N,gl.RGBA,gl.UNSIGNED_BYTE,riverLoopFaces[f]);
+  for(let f=0;f<6;f++)gl.texSubImage2D(riverGpuFaceTarget(f),0,0,0,M,M,gl.RGBA,gl.FLOAT,riverLoopFaces[f]);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);
-
   riverLoopSignature=sig;riverLoopReady=true;
   core.riverLoopFilterModel=RIVER_LOOP_FILTER_MODEL;
-  core.riverLoopSampling=sampled?'gpu-terrain':'coarse-fallback';
-  core.riverLoopRemovedSegments=removedSegments;
-  core.riverLoopRemovedPixels=removedPixels;
+  core.riverLoopSampling='gpu-terrain';core.riverDrainageSegments=raster.segments;
   return true;
 }
 function riverGpuNowMs(){return (typeof performance!=='undefined'&&performance&&typeof performance.now==='function')?performance.now():Date.now();}
@@ -20347,7 +20324,7 @@ function riverBindForFrame(){
   if(riverBoundProgram!==prog){
     gl.useProgram(prog);
     if(U.uRiverTex!==null&&U.uRiverTex!==undefined)gl.uniform1i(U.uRiverTex,RIVER_TEX_UNIT);
-    if(U.uRiverLoopTex!==null&&U.uRiverLoopTex!==undefined)gl.uniform1i(U.uRiverLoopTex,RIVER_LOOP_TEX_UNIT);
+    if(U.uRiverLoopTex!==null&&U.uRiverLoopTex!==undefined)gl.uniform1i(U.uRiverLoopTex,riverLoopSupported?RIVER_LOOP_TEX_UNIT:RIVER_TEX_UNIT);
     riverBoundProgram=prog;
   }
   if(U.uRiverBlend!==null&&U.uRiverBlend!==undefined)gl.uniform1f(U.uRiverBlend,riverGpuBlendAt(riverGpuNowMs()));
