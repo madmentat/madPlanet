@@ -69,6 +69,7 @@ tests=(
   tests/river-loop-topology.test.js
   tests/river-drainage.test.js
   tests/river-atlas-continuity.test.js
+  tests/river-lake-only.test.js
   tests/river-visual-tributaries.test.js
   tests/weather-worker.test.js
   tests/weather-fronts.test.js
