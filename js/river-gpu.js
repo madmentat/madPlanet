@@ -22,7 +22,7 @@
 
 const RIVER_GPU_MODEL=11;
 const RIVER_TEX_UNIT=2;
-const RIVER_LOOP_TEX_UNIT=8;
+const RIVER_LOOP_TEX_UNIT=1;
 const RIVER_LOOP_FILTER_MODEL=7;
 const RIVER_LOOP_MIN_N=96;
 const RIVER_LOOP_MAX_N=192;
@@ -155,6 +155,8 @@ function riverLoopNeighborIndex(face,x,y,dx,dy,N,tmpDir,tmpUv){
    fragment shader segment search. Rebuild only when geography changes. */
 function riverLoopEnsureTexture(N){
   const maxUnits=Number(gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS))||8;
+  // Unit 1 is reserved for painted rivers, unit 2 for lakes. This also
+  // works on WebGL2 mobile GPUs exposing the minimum eight texture units.
   riverLoopSupported=!riverLoopSamplerFailed&&webglVersion>=2&&maxUnits>RIVER_LOOP_TEX_UNIT;
   if(!riverLoopSupported){riverLoopReady=false;return false;}
   if(riverLoopTex&&riverLoopN===N)return true;
@@ -188,7 +190,7 @@ function riverLoopBuildMask(core){
   // Fixed geographical detail: mobile uses a smaller atlas, but the same
   // normalized river widths and shapes, never the current camera zoom.
   const mobile=typeof mobileDevice!=='undefined'&&mobileDevice;
-  const M=mobile?512:768;
+  const M=mobile?384:576;
   if(!riverLoopEnsureTexture(M))return false;
   const sig=[RIVER_LOOP_FILTER_MODEL,N,...world.seedS,state.cont,
     Number(state.sea).toFixed(3),state.tect,state.isle,state.lake,M].join('|');
