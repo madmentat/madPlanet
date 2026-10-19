@@ -53,7 +53,7 @@ function run(N,seed){
   }
   const net=ctx.riverDrainageBuild(h,water,wet,grid.neighbors,grid.area,
     {sourceArea:2*(N/160)**2,sourceInset:3});
-  const M=N*2,atlas=ctx.riverDrainageRaster(grid,net,M);
+  const M=Math.round(N*2.5),atlas=ctx.riverDrainageRaster(grid,net,M);
   const geometry=ctx.riverDrainageCurveGeometry(grid,net);
   const steps=vm.runInContext('RIVER_DRAINAGE_CURVE_STEPS',ctx);
   const audit=ctx.riverDrainageDiagnostics(net);
