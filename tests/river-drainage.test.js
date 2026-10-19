@@ -29,7 +29,7 @@ function check(h,w,m,nb,options={sourceArea:1,sourceInset:2}){
   const audit=ctx.riverDrainageDiagnostics(r);
   assert.equal(audit.uphill,0);
   assert.equal(audit.dangling,0);
-  assert.equal(audit.basins,audit.mouths,'one mouth per basin');
+  assert.ok(audit.basins<=audit.mouths,'several independent river mouths may enter the same lake cell');
   return r;
 }
 function line(h,wet,moist=h.map(()=>0.65),options){
