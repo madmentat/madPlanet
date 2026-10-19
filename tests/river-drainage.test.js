@@ -64,26 +64,36 @@ for(let i=0;i<n;i++)if(network.channel[i]){
   assert.ok(water[network.down[i]]||network.channel[network.down[i]]);
 }
 const raster=ctx.riverDrainageRaster(grid,network,56);assert.ok(raster.segments>100);
-const upstream=ctx.riverDrainagePrimaryUpstream(network);
-let foundCurvature=false;
-for(let i=0;i<network.down.length;i++)if(network.channel[i]){
-  const j=network.down[i],a=grid.dirs.subarray(3*i,3*i+3),b=grid.dirs.subarray(3*j,3*j+3);
-  const start=new Float64Array(3),end=new Float64Array(3),middle=new Float64Array(3),repeat=new Float64Array(3);
-  ctx.riverDrainageCurvePoint(grid,network,i,j,upstream,0,start);
-  ctx.riverDrainageCurvePoint(grid,network,i,j,upstream,1,end);
-  ctx.riverDrainageCurvePoint(grid,network,i,j,upstream,0.5,middle);
-  ctx.riverDrainageCurvePoint(grid,network,i,j,upstream,0.5,repeat);
-  for(let k=0;k<3;k++){
-    assert.ok(Math.abs(start[k]-a[k])<1e-12&&Math.abs(end[k]-b[k])<1e-12,
-      'curves must join at exact drainage vertices');
-    assert.equal(middle[k],repeat[k],'river geometry must be deterministic');
-  }
-  assert.ok(Math.abs(Math.hypot(...middle)-1)<1e-12,'curve must stay on the planet sphere');
-  const linear=Array.from(a,(v,k)=>0.5*(v+b[k])),len=Math.hypot(...linear);
-  const delta=Math.hypot(...middle.map((v,k)=>v-linear[k]/len));
-  if(delta>1e-4)foundCurvature=true;
+// Each visible branch shares its endpoint with every branch at the junction.
+// The tiny offsets are cached per vertex and deterministic across builds.
+const copy=ctx.riverDrainageGrid(14);
+let offsetVertices=0;
+for(let i=0;i<n;i++){
+  const orig=grid.dirs.subarray(3*i,3*i+3),art=grid.artDirs.subarray(3*i,3*i+3);
+  const delta=Math.hypot(...orig.map((v,k)=>v-art[k]));
+  assert.ok(delta<0.04,'artistic vertex must remain within its drainage cell');
+  if(delta>1e-5)offsetVertices++;
+  for(let k=0;k<3;k++)assert.equal(art[k],copy.artDirs[3*i+k],
+    'the same seed/grid must draw the same river vertices');
 }
-assert.ok(foundCurvature,'routed rivers should have organic bends, not only straight grid edges');
+assert.ok(offsetVertices>n*0.8,'artistic offsets should break D8 compass-line regularity');
+for(let i=0;i<n;i++)if(network.channel[i]){
+  const j=network.down[i];
+  assert.ok(j>=0&&network.reachesWater[i]&&!network.water[i]);
+  assert.ok(network.height[j]<=network.height[i]);
+  // Only the final edge may enter water; no river flows out of any ocean/lake.
+  if(network.water[j])assert.equal(network.down[j],-1);
+}
+
+// The GPU adds two low-cost, smooth polynomial meanders to each stored edge.
+// Both vanish with zero slope at junctions; the centreline cannot jump into
+// another basin or suddenly create a second estuary.
+const shader=fs.readFileSync(path.join(__dirname,'../shaders/river-channels.glsl'),'utf8');
+assert.match(shader,/float envelope=16\.0\*t\*t\*\(1\.0-t\)\*\(1\.0-t\)/,
+  'smooth endpoint-constrained bends must stay in the river shader');
+assert.match(shader,/float bow=span\*envelope/,'bend amplitude must scale with edge length');
+assert.doesNotMatch(ctx.riverDrainageRaster.toString(),/subdivisions|riverDrainageCurvePoint/,
+  'the costly subdivided rasterizer must not return');
 
 for(let f=0;f<6;f++)for(let k=0;k<raster.faces[f].length;k+=4){
   const a=raster.faces[f],bin=Math.floor(a[k]/8+0.5);if(!bin)continue;
