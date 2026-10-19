@@ -386,10 +386,8 @@ function riverGpuPaintVisualBranches(core,tmp){
    Retain the API/unused legacy paint helpers for compatibility, but do NOT
    spend every Weather Core tick tracing and painting invisible river edges. */
 function riverGpuReadCurrent(core){
-  for(let f=0;f<6;f++){
-    riverGpuCurrRiver[f].fill(0);
-    riverGpuCurrLake[f].fill(0);
-  }
+  // Legacy river arrays stay zero after allocation; only lakes are dynamic.
+  for(let f=0;f<6;f++)riverGpuCurrLake[f].fill(0);
   const tmp={face:0,u:0,v:0};
   for(let i=0;i<core.count;i++){
     const lake=riverGpuClamp(core.riverLakeFraction?.[i]||0,0,1);
@@ -402,15 +400,20 @@ function riverGpuReadCurrent(core){
 
 function riverGpuCollapseVisible(blend){
   for(let f=0;f<6;f++){
-    const pr=riverGpuPrevRiver[f],pl=riverGpuPrevLake[f],cr=riverGpuCurrRiver[f],cl=riverGpuCurrLake[f];
-    for(let i=0;i<pr.length;i++){pr[i]+=(cr[i]-pr[i])*blend;pl[i]+=(cl[i]-pl[i])*blend;}
+    const pl=riverGpuPrevLake[f],cl=riverGpuCurrLake[f];
+    for(let i=0;i<pl.length;i++)pl[i]+=(cl[i]-pl[i])*blend;
   }
 }
 function riverGpuPackUpload(){
   const N=riverGpuN;gl.activeTexture(gl.TEXTURE0+RIVER_TEX_UNIT);gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverGpuTex);
   for(let f=0;f<6;f++){
-    const pix=riverGpuFaces[f],pr=riverGpuPrevRiver[f],pl=riverGpuPrevLake[f],cr=riverGpuCurrRiver[f],cl=riverGpuCurrLake[f];
-    for(let i=0;i<pr.length;i++){const p=i*4;pix[p]=riverGpuByte(pr[i]);pix[p+1]=riverGpuByte(pl[i]);pix[p+2]=riverGpuByte(cr[i]);pix[p+3]=riverGpuByte(cl[i]);}
+    const pix=riverGpuFaces[f],pl=riverGpuPrevLake[f],cl=riverGpuCurrLake[f];
+    for(let i=0;i<pl.length;i++){
+      const p=i*4;
+      // R/B are retired (zero); do not convert them at every weather tick.
+      pix[p]=0;pix[p+1]=riverGpuByte(pl[i]);
+      pix[p+2]=0;pix[p+3]=riverGpuByte(cl[i]);
+    }
     gl.texSubImage2D(riverGpuFaceTarget(f),0,0,0,N,N,gl.RGBA,gl.UNSIGNED_BYTE,pix);
   }
   gl.activeTexture(gl.TEXTURE0);
@@ -419,7 +422,7 @@ function riverGpuUpload(core){
   if(!core?.N||!core?.riverChannelStrength)return false;riverGpuEnsure(riverGpuDisplayN(core.N));
   riverLoopBuildMask(core);
   const now=riverGpuNowMs(),seed=core.seed|0,seedChanged=Number.isFinite(riverGpuLastSeed)&&riverGpuLastSeed!==seed;
-  if(!riverGpuHasFrame||seedChanged){riverGpuReadCurrent(core);for(let f=0;f<6;f++){riverGpuPrevRiver[f].set(riverGpuCurrRiver[f]);riverGpuPrevLake[f].set(riverGpuCurrLake[f]);}riverGpuBlendDurationMs=1;riverGpuBlendStartMs=now;riverGpuHasFrame=true;}
+  if(!riverGpuHasFrame||seedChanged){riverGpuReadCurrent(core);for(let f=0;f<6;f++){riverGpuPrevLake[f].set(riverGpuCurrLake[f]);}riverGpuBlendDurationMs=1;riverGpuBlendStartMs=now;riverGpuHasFrame=true;}
   else{riverGpuCollapseVisible(riverGpuBlendAt(now));riverGpuReadCurrent(core);const interval=Number.isFinite(riverGpuLastUploadMs)?Math.max(1,now-riverGpuLastUploadMs):RIVER_BLEND_DEFAULT_MS;riverGpuBlendDurationMs=Math.max(RIVER_BLEND_MIN_MS,Math.min(RIVER_BLEND_MAX_MS,interval));riverGpuBlendStartMs=now;}
   riverGpuPackUpload();riverGpuLastUploadMs=now;riverGpuLastSeed=seed;core.riverGpuModel=RIVER_GPU_MODEL;return true;
 }
