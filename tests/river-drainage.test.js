@@ -63,6 +63,19 @@ assert.equal(line([0.12,0.04,0.30],[2]).channel.reduce((a,b)=>a+b),0,
 const h=[0.08,0.15,0.3,0.15,0.3],w=[1,0,0,0,0],nb=[[1,1,3,1],[0,1,2,1],[1,1],[0,1,4,1],[3,1]];
 const lake=check(h,w,h.map(()=>0.7),nb);assert.ok(lake.channel[1]&&lake.channel[3]);assert.equal(lake.down[0],-1);
 
+// At a confluence the largest upstream contributor is the main stem; side
+// tributaries keep their narrow width until they meet it.
+{
+  const h=[-0.1,0.1,0.25,0.45,0.25],w=[1,0,0,0,0];
+  const nb=[[1,1],[0,1,2,1,4,1],[1,1,3,1],[2,1],[1,1]];
+  const net=check(h,w,[0.7,0.7,0.7,0.7,0.7],nb);
+  const primary=ctx.riverDrainagePrimaryUpstream(net);
+  assert.equal(primary[1],2,'longer/main stem must be continuous across a tributary junction');
+  assert.ok(net.flow[1]>net.flow[2]&&net.flow[2]>net.flow[4],
+    'downstream flow includes contributions from the smaller side tributary');
+  assert.ok(ctx.riverDrainageWidthBin(net.flow[1])>=ctx.riverDrainageWidthBin(net.flow[2]));
+}
+
 // Actual cubed sphere, including polar seams, monotonic drainage and endpoint
 // storage. These assertions concern topology/geometry, not source-text shape.
 const grid=ctx.riverDrainageGrid(14),n=grid.area.length;
