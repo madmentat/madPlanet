@@ -23,7 +23,7 @@
 const RIVER_GPU_MODEL=10;
 const RIVER_TEX_UNIT=2;
 const RIVER_LOOP_TEX_UNIT=8;
-const RIVER_LOOP_FILTER_MODEL=5;
+const RIVER_LOOP_FILTER_MODEL=6;
 const RIVER_LOOP_MIN_N=96;
 const RIVER_LOOP_MAX_N=192;
 const RIVER_GPU_UPSCALE=16;
@@ -382,7 +382,7 @@ function riverGpuPaintVisualBranches(core,tmp){
 
 /* The current surface shader consumes only G/A lake channels from this
    historical RGBA8 texture. All visible river strokes are drawn separately
-   from the packed terrain-drainage atlas (RIVER_LOOP_FILTER_MODEL=5).
+   from the packed terrain-drainage atlas (RIVER_LOOP_FILTER_MODEL=6).
    Retain the API/unused legacy paint helpers for compatibility, but do NOT
    spend every Weather Core tick tracing and painting invisible river edges. */
 function riverGpuReadCurrent(core){
