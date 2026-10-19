@@ -271,7 +271,9 @@ function riverDrainageRaster(grid,network,M){
   for(let i=0;i<down.length;i++){
     if(!channel[i])continue;
     const j=down[i];if(j<0)continue;segments++;
-    const binA=riverDrainageWidthBin(flow[i]);
+    // A headwater begins as an almost subpixel trickle, not a thick line
+    // that suddenly materializes with a round cap in the middle of a field.
+    const binA=mainUpstream[i]<0?1:riverDrainageWidthBin(flow[i]);
     const binB=!water?.[j]&&mainUpstream[j]===i?riverDrainageWidthBin(flow[j]):binA;
     for(let part=0;part<steps;part++){
       riverDrainageCurvePoint(geometry,i,j,part/steps,a);
