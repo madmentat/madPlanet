@@ -8,6 +8,7 @@ function check(h,w,m,nb,options={sourceArea:1,sourceInset:2}){
     assert.equal(w[i],0,'water must never supply a surface river');
     const j=r.down[i];assert.ok(j>=0,'every visible segment has a receiver');
     assert.ok(h[j]<=h[i],'no uphill flow, including into lakes and the ocean');
+    assert.equal(r.basin[i],r.basin[j],'each river stays within its own outlet basin');
     assert.ok(w[j]||r.channel[j],'a river cannot vanish before reaching water');incoming[j]++;
     const seen=new Set([i]);let k=j;
     while(!w[k]){assert.ok(!seen.has(k),'no cycles');seen.add(k);k=r.down[k];assert.ok(k>=0);}
@@ -25,12 +26,25 @@ function check(h,w,m,nb,options={sourceArea:1,sourceInset:2}){
     }
     assert.equal(contacts,1,'each visible river system has exactly one mouth');
   }
+  const audit=ctx.riverDrainageDiagnostics(r);
+  assert.equal(audit.uphill,0);
+  assert.equal(audit.dangling,0);
+  assert.equal(audit.basins,audit.mouths,'one mouth per basin');
   return r;
 }
 function line(h,wet,moist=h.map(()=>0.65),options){
   const w=h.map((_,i)=>wet.includes(i)?1:0),nb=h.map((_,i)=>[...(i?[i-1,1]:[]),...(i+1<h.length?[i+1,1]:[])]);
   return check(h,w,moist,nb,options);
 }
+// Physical proxy W = k * Q^b must stay monotonic, deterministic, and
+// become visibly wider from trickles to the large river downstream.
+const widthQs=[0,1,4,16,64,256,1024,4096];
+const widthBins=widthQs.map(q=>ctx.riverDrainageWidthBin(q));
+assert.ok(widthBins.every((w,i)=>w>=1&&w<=15&&(!i||w>=widthBins[i-1])));
+assert.ok(widthBins[widthBins.length-1]-widthBins[0]>=10,
+  'small streams and large rivers must have different sizes');
+assert.equal(ctx.riverDrainageWidthBin(16),ctx.riverDrainageWidthBin(16));
+
 // Two shores of the same landmass: the watershed splits two distinct basins.
 const split=line([-0.1,0.03,0.12,0.25,0.40,0.25,0.12,0.03,-0.1],[0,8]);
 assert.equal(split.down[2],1);assert.equal(split.down[6],7);
@@ -92,12 +106,19 @@ const shader=fs.readFileSync(path.join(__dirname,'../shaders/river-channels.glsl
 assert.match(shader,/float envelope=16\.0\*t\*t\*\(1\.0-t\)\*\(1\.0-t\)/,
   'smooth endpoint-constrained bends must stay in the river shader');
 assert.match(shader,/float bow=span\*envelope/,'bend amplitude must scale with edge length');
+assert.match(shader,/widthBin=mix\(widthA,widthB,smoothT\)/,
+  'shader must interpolate two distinct discharge-derived endpoint widths');
+assert.match(shader,/ink\*=mix\(prominence,1\.0,close\)/,
+  'global view should prioritize main stems and reveal small tributaries when zoomed');
 assert.doesNotMatch(ctx.riverDrainageRaster.toString(),/subdivisions|riverDrainageCurvePoint/,
   'the costly subdivided rasterizer must not return');
 
 for(let f=0;f<6;f++)for(let k=0;k<raster.faces[f].length;k+=4){
-  const a=raster.faces[f],bin=Math.floor(a[k]/8+0.5);if(!bin)continue;
-  assert.ok(bin>=1&&bin<=15);assert.ok(Math.abs(a[k]-bin*8)<1.5);
+  const a=raster.faces[f],code=Math.floor(a[k]/8+0.5);if(!code)continue;
+  const binA=code%16,binB=Math.floor(code/16);
+  assert.ok(binA>=1&&binA<=15&&binB>=1&&binB<=15);
+  assert.ok(binB>=binA,'downstream discharge cannot shrink at a confluence');
+  assert.ok(Math.abs(a[k]-code*8)<1.5,'two width bins must preserve cube UV');
   for(let j=0;j<4;j++)assert.ok(Number.isFinite(a[k+j]));
 }
 for(let i=0;i<n;i++){
