@@ -137,25 +137,75 @@ function riverDrainageProject(face,x,y,z){
   return [x/z,-y/z];
 }
 
-/* The surface shader supplies smooth S-bends analytically. Store exactly
-   ONE short edge for each D8 receiver, as before the expensive spline pass:
-   no subdivided arcs, no per-sample terrain queries, no time-step physics.
-   Cache the subtly offset art vertices on the cube-sphere grid once.
-   The real drainage graph still decides basin ownership and the outlet. */
+/* One RGBA32F pixel holds TWO independent nearby segments, in the SAME
+   texture/sample count as the original renderer. Coordinates are quantized to
+   10 bits over face UV [-1.125,1.125], enough for a <0.5 atlas-pixel error at
+   the highest supported N=192 (M=384). Each of the four float channels is an
+   exactly representable 24-bit unsigned integer:
+     bits  0.. 9: endpoint coordinate, closest segment
+     bits 10..19: endpoint coordinate, second-nearest different segment
+     bits 20..23: one 4-bit width
+   R,G store first-segment start/end widths, B,A store second-segment widths.
+   No additional cubemap or GPU texture-unit requirement. */
+const RIVER_DRAINAGE_UV_RANGE=1.125;
+const RIVER_DRAINAGE_COORD_MAX=1023;
+const RIVER_DRAINAGE_SECOND_SHIFT=1024;
+const RIVER_DRAINAGE_WIDTH_SHIFT=1048576;
+function riverDrainageEncodeUV(uv){
+  return Math.round((Math.max(-RIVER_DRAINAGE_UV_RANGE,
+    Math.min(RIVER_DRAINAGE_UV_RANGE,uv))+RIVER_DRAINAGE_UV_RANGE)
+    *RIVER_DRAINAGE_COORD_MAX/(2*RIVER_DRAINAGE_UV_RANGE));
+}
+function riverDrainageDecodeUV(bits){
+  return bits*2*RIVER_DRAINAGE_UV_RANGE/RIVER_DRAINAGE_COORD_MAX-RIVER_DRAINAGE_UV_RANGE;
+}
+function riverDrainagePackSegment(data,offset,slot,uv,binA,binB){
+  if(slot===0){
+    // Keep secondary coordinates in bits 10..19 and widths in B/A.
+    data[offset]=(Math.floor(data[offset])&0xffc00)|uv[0]|binA*RIVER_DRAINAGE_WIDTH_SHIFT;
+    data[offset+1]=(Math.floor(data[offset+1])&0xffc00)|uv[1]|binB*RIVER_DRAINAGE_WIDTH_SHIFT;
+    data[offset+2]=(Math.floor(data[offset+2])&0xfff00000)|uv[2]|(Math.floor(data[offset+2])&0xffc00);
+    data[offset+3]=(Math.floor(data[offset+3])&0xfff00000)|uv[3]|(Math.floor(data[offset+3])&0xffc00);
+  }else{
+    // Keep primary coordinates in bits 0..9 and widths in R/G.
+    data[offset]=(Math.floor(data[offset])&0xf00fff)|uv[0]*RIVER_DRAINAGE_SECOND_SHIFT;
+    data[offset+1]=(Math.floor(data[offset+1])&0xf00fff)|uv[1]*RIVER_DRAINAGE_SECOND_SHIFT;
+    data[offset+2]=(Math.floor(data[offset+2])&0x0003ff)
+      |uv[2]*RIVER_DRAINAGE_SECOND_SHIFT|binA*RIVER_DRAINAGE_WIDTH_SHIFT;
+    data[offset+3]=(Math.floor(data[offset+3])&0x0003ff)
+      |uv[3]*RIVER_DRAINAGE_SECOND_SHIFT|binB*RIVER_DRAINAGE_WIDTH_SHIFT;
+  }
+}
+function riverDrainageShiftPrimaryToSecondary(data,offset){
+  const r=Math.floor(data[offset]),g=Math.floor(data[offset+1]);
+  const b=Math.floor(data[offset+2]),a=Math.floor(data[offset+3]);
+  const wa=Math.floor(r/RIVER_DRAINAGE_WIDTH_SHIFT);
+  const wb=Math.floor(g/RIVER_DRAINAGE_WIDTH_SHIFT);
+  data[offset]=(r&0xfff000ff)|((r&1023)*RIVER_DRAINAGE_SECOND_SHIFT);
+  data[offset+1]=(g&0xfff000ff)|((g&1023)*RIVER_DRAINAGE_SECOND_SHIFT);
+  data[offset+2]=(b&1023)|((b&1023)*RIVER_DRAINAGE_SECOND_SHIFT)
+    |wa*RIVER_DRAINAGE_WIDTH_SHIFT;
+  data[offset+3]=(a&1023)|((a&1023)*RIVER_DRAINAGE_SECOND_SHIFT)
+    |wb*RIVER_DRAINAGE_WIDTH_SHIFT;
+}
+
+/* The two nearest DIFFERENT drainage edges are cached per atlas texel.
+   Minor tributaries can no longer be overwritten by a trunk occupying the
+   same pixel. Only graph connectivity controls confluences and outlets. */
 function riverDrainageRaster(grid,network,M){
   const {down,channel,flow,water}=network;
   const dirs=grid.artDirs||grid.dirs,realDirs=grid.dirs;
   const faces=Array.from({length:6},()=>new Float32Array(M*M*4));
   const best=Array.from({length:6},()=>new Float32Array(M*M).fill(Infinity));
+  const second=Array.from({length:6},()=>new Float32Array(M*M).fill(Infinity));
+  const owner=Array.from({length:6},()=>new Int32Array(M*M).fill(-1));
   const seen=new Set(),padding=3,scale=M*0.5;
   const mainUpstream=riverDrainagePrimaryUpstream(network);
-  let segments=0;
+  let segments=0,secondSlots=0,replacedSecond=0;
+  const coords=[0,0,0,0];
   for(let i=0;i<down.length;i++){
     if(!channel[i])continue;
     const j=down[i];if(j<0)continue;segments++;
-    // Anchor the final two coastal cells to the actual terrain grid. Tiny
-    // artistic offsets are only permitted inland, not across a narrow isthmus
-    // or a shoreline the channel must not alter.
     const coast=network.coastDistance;
     const aDir=coast?.[i]<=2?realDirs:dirs;
     const bDir=water?.[j]||coast?.[j]<=2?realDirs:dirs;
@@ -165,24 +215,36 @@ function riverDrainageRaster(grid,network,M){
       if(Math.abs(p[axis])>=Math.max(Math.abs(p[0]),Math.abs(p[1]),Math.abs(p[2]))-6/M)
         seen.add(axis*2+(p[axis]<0?1:0));
     const binA=riverDrainageWidthBin(flow[i]);
-    // At the receiving node, width reflects its new accumulated discharge;
-    // both adjacent main-stem edges use that same value, so confluences no
-    // longer create one-width-step discontinuities at the graph vertices.
     const binB=!water?.[j]&&mainUpstream[j]===i?riverDrainageWidthBin(flow[j]):binA;
-    const widthCode=binA+16*binB;
     for(const face of seen){
       const av=riverDrainageProject(face,...a),bv=riverDrainageProject(face,...b);
       const ax=(av[0]+1)*scale,ay=(1-av[1])*scale,bx=(bv[0]+1)*scale,by=(1-bv[1])*scale;
+      coords[0]=riverDrainageEncodeUV(av[0]);coords[1]=riverDrainageEncodeUV(av[1]);
+      coords[2]=riverDrainageEncodeUV(bv[0]);coords[3]=riverDrainageEncodeUV(bv[1]);
       const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
       const x0=Math.max(0,Math.floor(Math.min(ax,bx)-padding)),x1=Math.min(M-1,Math.ceil(Math.max(ax,bx)+padding));
       const y0=Math.max(0,Math.floor(Math.min(ay,by)-padding)),y1=Math.min(M-1,Math.ceil(Math.max(ay,by)+padding));
       for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
         const t=Math.max(0,Math.min(1,((x+0.5-ax)*dx+(y+0.5-ay)*dy)/Math.max(1e-12,len2)));
         const dist=(x+0.5-ax-t*dx)**2+(y+0.5-ay-t*dy)**2,k=y*M+x;
-        if(dist>=best[face][k])continue;
-        best[face][k]=dist;faces[face].set([av[0]+8*widthCode,av[1],bv[0],bv[1]],4*k);
+        if(dist>9.5||owner[face][k]===i)continue;
+        const off=4*k,data=faces[face];
+        if(dist<best[face][k]){
+          if(owner[face][k]>=0){
+            if(!Number.isFinite(second[face][k]))secondSlots++;
+            riverDrainageShiftPrimaryToSecondary(data,off);
+            second[face][k]=best[face][k];
+            replacedSecond++;
+          }
+          best[face][k]=dist;owner[face][k]=i;
+          riverDrainagePackSegment(data,off,0,coords,binA,binB);
+        }else if(dist<second[face][k]){
+          if(!Number.isFinite(second[face][k]))secondSlots++;
+          second[face][k]=dist;
+          riverDrainagePackSegment(data,off,1,coords,binA,binB);
+        }
       }
     }
   }
-  return {faces,segments};
+  return {faces,segments,secondSlots};
 }
