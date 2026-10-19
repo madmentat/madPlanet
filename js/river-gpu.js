@@ -23,7 +23,7 @@
 const RIVER_GPU_MODEL=10;
 const RIVER_TEX_UNIT=2;
 const RIVER_LOOP_TEX_UNIT=8;
-const RIVER_LOOP_FILTER_MODEL=4;
+const RIVER_LOOP_FILTER_MODEL=5;
 const RIVER_LOOP_MIN_N=96;
 const RIVER_LOOP_MAX_N=192;
 const RIVER_GPU_UPSCALE=16;
@@ -190,6 +190,7 @@ function riverLoopBuildMask(core){
   riverLoopSignature=sig;riverLoopReady=true;
   core.riverLoopFilterModel=RIVER_LOOP_FILTER_MODEL;
   core.riverLoopSampling='gpu-terrain';core.riverDrainageSegments=raster.segments;
+  core.riverDrainageSecondSlots=raster.secondSlots;
   // Stored once per terrain revision for topology diagnostics, not each frame.
   core.riverDrainageAudit=riverDrainageDiagnostics(network);
   return true;
@@ -458,6 +459,7 @@ if(typeof window!=='undefined')window.__madPlanetRiverLoopFilter={
   get resolution(){return riverLoopN;},
   get failed(){return riverLoopSamplerFailed;},
   get segments(){return Number((typeof weatherCore!=='undefined'&&weatherCore)?.riverDrainageSegments)||0;},
+  get secondSlots(){return Number((typeof weatherCore!=='undefined'&&weatherCore)?.riverDrainageSecondSlots)||0;},
   get diagnostics(){return (typeof weatherCore!=='undefined'&&weatherCore)?.riverDrainageAudit||null;},
   get shaderActive(){return !!(typeof U!=='undefined'&&U?.uRiverLoopOn!=null);}
 };
