@@ -16,4 +16,19 @@ trap 'rm -f "$shader"' EXIT
   printf 'vec2 channel=riverChannelSample(d,0.001);fragColor=vec4(channel,0.0,1.0);}\n'
 } > "$shader"
 glslangValidator -S frag "$shader"
-echo 'river-glsl-syntax: OK'
+# Validate the exact production combination, not merely the isolated river
+# helper. The build uses this order for the fullscreen planet fragment stage.
+full_shader="$(mktemp --suffix=.frag)"
+trap 'rm -f "$shader" "$full_shader"' EXIT
+{
+  printf '#version 300 es\n'
+  for file in header noise terrain weather-cloud-prelude clouds weather-cloud-visual \
+              atmosphere rings fog lightning surface-artifact-prelude river-channels \
+              surface surface-artifact-postlude sphere thermal main; do
+    cat "shaders/$file.glsl"
+    printf '\n'
+  done
+} > "$full_shader"
+glslangValidator -S frag "$full_shader"
+echo 'river-glsl-syntax: OK (isolated and production fragment)'
+
