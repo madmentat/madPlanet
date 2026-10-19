@@ -27,7 +27,7 @@ vec2 riverChannelSample(vec3 d,float footprint){
     vec2 cell=base+vec2(float(x),float(y));
     vec2 p=(cell+0.5)/size*2.0-1.0;p.y=-p.y;
     vec3 query=riverFaceDirection(face,p);
-    vec4 edge=texture(uRiverLoopTex,query);
+    uvec4 edge=texture(uRiverLoopTex,query);
     int edgeFace=face;
     if(any(greaterThan(abs(p),vec2(1.0)))){
       vec3 aq=abs(query);
@@ -35,14 +35,17 @@ vec2 riverChannelSample(vec3 d,float footprint){
       else if(aq.y>=aq.z)edgeFace=query.y>=0.0?2:3;
       else edgeFace=query.z>=0.0?4:5;
     }
-    // One RGBA32F texel stores one segment and TWO 4-bit widths.
-    // The visible line grows smoothly with accumulated upstream discharge.
-    float widthCode=floor(edge.r/8.0+0.5);
-    if(widthCode<0.5)continue;
-    float widthA=mod(widthCode,16.0),widthB=floor(widthCode/16.0);
-    if(widthA<0.5||widthB<0.5)continue;
-    vec3 a=riverFaceDirection(edgeFace,vec2(edge.r-widthCode*8.0,edge.g));
-    vec3 b=riverFaceDirection(edgeFace,edge.ba),ab=b-a;
+    // Each RGBA32UI texel holds two independent edges without extra reads.
+    // 14-bit UV coordinates preserve junction positions at regional zoom.
+    for(int slot=0;slot<2;slot++){
+      uint wa=slot==0?(edge.r>>28u):(edge.b>>28u);
+      uint wb=slot==0?(edge.g>>28u):(edge.a>>28u);
+      if(wa==0u||wb==0u)continue;
+      uvec4 quant=slot==0?(edge&uvec4(16383u)):((edge>>uvec4(14u))&uvec4(16383u));
+      vec4 uv4=vec4(quant)*(2.25/16383.0)-1.125;
+      float widthA=float(wa),widthB=float(wb);
+      vec3 a=riverFaceDirection(edgeFace,uv4.rg);
+      vec3 b=riverFaceDirection(edgeFace,uv4.ba),ab=b-a;
     float t=clamp(dot(d-a,ab)/max(dot(ab,ab),1e-12),0.0,1.0);
     vec3 center=normalize(a+ab*t);
     float distance=length(d-center);
@@ -81,6 +84,7 @@ vec2 riverChannelSample(vec3 d,float footprint){
     ink*=mix(prominence,1.0,close);
     float plain=1.0-smoothstep(halfWidth*2.0,halfWidth*8.0+aa,distance);
     result=max(result,vec2(ink,plain));
+    }
   }
   return result;
 }
