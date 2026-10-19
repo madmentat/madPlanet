@@ -207,7 +207,7 @@ function riverDrainageRaster(grid,network,M){
   const owner=Array.from({length:6},()=>new Int32Array(M*M).fill(-1));
   const seen=new Set(),padding=3,scale=M*0.5;
   const mainUpstream=riverDrainagePrimaryUpstream(network);
-  let segments=0,secondSlots=0,replacedSecond=0;
+  let segments=0,secondSlots=0;
   const coords=[0,0,0,0];
   for(let i=0;i<down.length;i++){
     if(!channel[i])continue;
@@ -236,15 +236,16 @@ function riverDrainageRaster(grid,network,M){
         if(dist>9.5||owner[face][k]===i)continue;
         const off=4*k,data=faces[face];
         if(dist<best[face][k]){
-          if(owner[face][k]>=0){
+          if(owner[face][k]>=0&&best[face][k]<=2.25){
             if(!Number.isFinite(second[face][k]))secondSlots++;
             riverDrainageShiftPrimaryToSecondary(data,off);
             second[face][k]=best[face][k];
-            replacedSecond++;
           }
           best[face][k]=dist;owner[face][k]=i;
           riverDrainagePackSegment(data,off,0,coords,binA,binB);
-        }else if(dist<second[face][k]){
+        }else if(dist<=2.25&&dist<second[face][k]){
+          // Secondary edges are useful only near the actual visible line.
+          // Avoid doubling per-fragment geometry work in wide empty margins.
           if(!Number.isFinite(second[face][k]))secondSlots++;
           second[face][k]=dist;
           riverDrainagePackSegment(data,off,1,coords,binA,binB);
