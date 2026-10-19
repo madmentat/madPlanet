@@ -34,4 +34,24 @@ vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/river-gpu.js'),'utf8'
   assert.ok(sample.water.every(x=>x===1));
   assert.ok(sample.height.length===96&&sample.height.every(h=>Math.abs(h)<0.0001),'16-bit elevation decode');
 }
+// Regression: the first surface bake can return "pending" while the full
+// shader links; a cubemap allocated at that point must be retried afterwards
+// without spinning an expensive terrain rebuild every frame.
+{
+  const idle=[];
+  let rebuilt=0;
+  ctx.requestIdleCallback=fn=>{idle.push(fn);return idle.length;};
+  ctx.riverLoopBuildMask=()=>{rebuilt++;return false;};
+  vm.runInContext('riverLoopSupported=true;riverLoopReady=false;riverLoopSamplerFailed=false;riverLoopLastRetryMs=-1e12;',ctx);
+  ctx.pendingProgram={};
+  ctx.riverLoopMaybeRetry({N:32});
+  assert.equal(idle.length,0,'cannot build a river atlas while planet shader is linking');
+  ctx.pendingProgram=null;
+  ctx.riverLoopMaybeRetry({N:32});
+  ctx.riverLoopMaybeRetry({N:32});
+  assert.equal(idle.length,1,'one idle rebuild rather than work every frame');
+  idle.shift()();
+  assert.equal(rebuilt,1,'the terrain sampling must resume after shader linking');
+}
+
 console.log('river-loop-topology.test.js: OK');
