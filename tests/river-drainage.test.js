@@ -7,7 +7,7 @@ function check(h,w,m,nb,options={sourceArea:1,sourceInset:2}){
   for(let i=0;i<h.length;i++)if(r.channel[i]){
     assert.equal(w[i],0,'water must never supply a surface river');
     const j=r.down[i];assert.ok(j>=0,'every visible segment has a receiver');
-    assert.ok(w[j]||h[j]<h[i]||(h[j]===h[i]&&j<i),'no uphill flow');
+    assert.ok(h[j]<=h[i],'no uphill flow, including into lakes and the ocean');
     assert.ok(w[j]||r.channel[j],'a river cannot vanish before reaching water');incoming[j]++;
     const seen=new Set([i]);let k=j;
     while(!w[k]){assert.ok(!seen.has(k),'no cycles');seen.add(k);k=r.down[k];assert.ok(k>=0);}
@@ -43,6 +43,8 @@ assert.equal(line([-0.1,0.3,0.1,0.2,0.4],[0]).channel[3],0);
 const dry=line([-0.1,0.03,0.08,0.12,0.2,0.3],[0],[0,0,0,0.8,0.8,0.8]);
 assert.ok(dry.channel[1]&&dry.channel[2]);assert.ok(dry.flow[1]>=dry.flow[3]);
 assert.equal(line([0.1,0.2,0.3],[]).channel.reduce((a,b)=>a+b),0,'no invented outlets on a dry planet');
+assert.equal(line([0.12,0.04,0.30],[2]).channel.reduce((a,b)=>a+b),0,
+  'a high inland lake must not pull water uphill from a lower depression');
 // Inland lake accepts two tributaries but is never used as an ocean source.
 const h=[0.08,0.15,0.3,0.15,0.3],w=[1,0,0,0,0],nb=[[1,1,3,1],[0,1,2,1],[1,1],[0,1,4,1],[3,1]];
 const lake=check(h,w,h.map(()=>0.7),nb);assert.ok(lake.channel[1]&&lake.channel[3]);assert.equal(lake.down[0],-1);
@@ -58,10 +60,31 @@ for(let i=0;i<n;i++){
 const network=ctx.riverDrainageBuild(heights,water,moisture,grid.neighbors,grid.area,{sourceArea:1,sourceInset:2});
 assert.ok(network.channel.reduce((a,b)=>a+b)>100);
 for(let i=0;i<n;i++)if(network.channel[i]){
-  assert.ok(water[network.down[i]]||heights[network.down[i]]<=heights[i]);
+  assert.ok(heights[network.down[i]]<=heights[i]);
   assert.ok(water[network.down[i]]||network.channel[network.down[i]]);
 }
 const raster=ctx.riverDrainageRaster(grid,network,56);assert.ok(raster.segments>100);
+const upstream=ctx.riverDrainagePrimaryUpstream(network);
+let foundCurvature=false;
+for(let i=0;i<network.down.length;i++)if(network.channel[i]){
+  const j=network.down[i],a=grid.dirs.subarray(3*i,3*i+3),b=grid.dirs.subarray(3*j,3*j+3);
+  const start=new Float64Array(3),end=new Float64Array(3),middle=new Float64Array(3),repeat=new Float64Array(3);
+  ctx.riverDrainageCurvePoint(grid,network,i,j,upstream,0,start);
+  ctx.riverDrainageCurvePoint(grid,network,i,j,upstream,1,end);
+  ctx.riverDrainageCurvePoint(grid,network,i,j,upstream,0.5,middle);
+  ctx.riverDrainageCurvePoint(grid,network,i,j,upstream,0.5,repeat);
+  for(let k=0;k<3;k++){
+    assert.ok(Math.abs(start[k]-a[k])<1e-12&&Math.abs(end[k]-b[k])<1e-12,
+      'curves must join at exact drainage vertices');
+    assert.equal(middle[k],repeat[k],'river geometry must be deterministic');
+  }
+  assert.ok(Math.abs(Math.hypot(...middle)-1)<1e-12,'curve must stay on the planet sphere');
+  const linear=Array.from(a,(v,k)=>0.5*(v+b[k])),len=Math.hypot(...linear);
+  const delta=Math.hypot(...middle.map((v,k)=>v-linear[k]/len));
+  if(delta>1e-4)foundCurvature=true;
+}
+assert.ok(foundCurvature,'routed rivers should have organic bends, not only straight grid edges');
+
 for(let f=0;f<6;f++)for(let k=0;k<raster.faces[f].length;k+=4){
   const a=raster.faces[f],bin=Math.floor(a[k]/8+0.5);if(!bin)continue;
   assert.ok(bin>=1&&bin<=15);assert.ok(Math.abs(a[k]-bin*8)<1.5);
