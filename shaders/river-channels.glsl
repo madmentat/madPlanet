@@ -60,10 +60,14 @@ vec2 riverChannelSample(vec3 d,float footprint){
       center=normalize(center+sideways*inversesqrt(axis2)*bow);
       distance=length(d-center);
     }
-    float halfWidth=mix(0.000008,0.00012,pow(widthBin/15.0,1.6));
-    float aa=max(0.000004,footprint*0.60);
-    float ink=(1.0-smoothstep(max(0.0,halfWidth-aa),halfWidth+aa,distance));
-    ink*=clamp(halfWidth/aa,0.32,1.0);
+    // From orbit, a realistic sub-pixel channel vanishes completely.
+    // Keep a 1..2 pixel cartographic stroke without widening the rivers in
+    // world metres, and fade it naturally when the camera zooms closer.
+    float physicalHalfWidth=mix(0.000008,0.00012,pow(widthBin/15.0,1.6));
+    float halfWidth=max(physicalHalfWidth,footprint*mix(0.46,0.75,widthBin/15.0));
+    float aa=max(0.000004,footprint*0.48);
+    float ink=1.0-smoothstep(max(0.0,halfWidth-aa),halfWidth+aa,distance);
+    ink*=clamp(halfWidth/max(aa,0.000004),0.66,1.0);
     float plain=1.0-smoothstep(halfWidth*2.0,halfWidth*8.0+aa,distance);
     result=max(result,vec2(ink,plain));
   }
