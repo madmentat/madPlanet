@@ -131,7 +131,7 @@ for(let i=0;i<n;i++)if(network.channel[i]&&network.coastDistance[i]>3){
 }
 assert.ok(inspected>100&&curved>inspected*0.20,
   'most rivers must smoothly depart from D8 straight-line chords');
-assert.equal(ctx.RIVER_DRAINAGE_CURVE_STEPS,2,
+assert.equal(vm.runInContext('RIVER_DRAINAGE_CURVE_STEPS',ctx),2,
   'two coherent chords per DEM edge prevent atlas collisions and preserve detail');
 assert.doesNotMatch(shader,/float bow=span\*envelope/,
   'no independent shader jitter that breaks smooth river tangents');
