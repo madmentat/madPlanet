@@ -166,7 +166,14 @@ function riverLoopEnsureTexture(N){
   gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
   if(webglVersion>=2)gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_R,gl.CLAMP_TO_EDGE);
   for(let f=0;f<6;f++)gl.texImage2D(riverGpuFaceTarget(f),0,gl.RGBA32UI,N,N,0,gl.RGBA_INTEGER,gl.UNSIGNED_INT,null);
+  const atlasError=gl.getError();
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);
+  if(atlasError!==gl.NO_ERROR){
+    gl.deleteTexture(riverLoopTex);riverLoopTex=null;
+    riverLoopSupported=false;riverLoopReady=false;riverLoopN=0;
+    console.warn('[madPlanet] Packed integer river atlas unavailable:',atlasError);
+    return false;
+  }
   riverLoopReady=false;return true;
 }
 function riverLoopBuildMask(core){
@@ -186,7 +193,13 @@ function riverLoopBuildMask(core){
   const raster=riverDrainageRaster(grid,network,M);riverLoopFaces=raster.faces;
   gl.activeTexture(gl.TEXTURE0+RIVER_LOOP_TEX_UNIT);gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverLoopTex);
   for(let f=0;f<6;f++)gl.texSubImage2D(riverGpuFaceTarget(f),0,0,0,M,M,gl.RGBA_INTEGER,gl.UNSIGNED_INT,riverLoopFaces[f]);
+  const uploadError=gl.getError();
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);
+  if(uploadError!==gl.NO_ERROR){
+    riverLoopReady=false;riverLoopSamplerFailed=true;
+    console.warn('[madPlanet] Packed river atlas upload failed:',uploadError);
+    return false;
+  }
   riverLoopSignature=sig;riverLoopReady=true;
   core.riverLoopFilterModel=RIVER_LOOP_FILTER_MODEL;
   core.riverLoopSampling='gpu-terrain';core.riverDrainageSegments=raster.segments;
