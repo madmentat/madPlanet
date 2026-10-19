@@ -95,6 +95,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
 
   vec2 drainage=riverChannelSample(normalize(sN),tHit*uPixA);
   float riverGeom=drainage.x;
+  // Flatten the *appearance* of land lighting directly beneath water.
+  // The river itself is a fixed painted world-space mask; we do not deform
+  // shoreline topology, or let normal bumps make thin water look broken.
+  nS=normalize(mix(nS,n0,clamp(riverGeom*0.92,0.0,1.0)));
   // Do not shade a concentric near-black band around every rendered river.
   // The old drainage.y floodplain expanded to eight river radii and made
   // double dark "worms" even when the water itself was a thin stream.
