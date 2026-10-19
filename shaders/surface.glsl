@@ -262,6 +262,15 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     alb = mix(alb, inlandIce, frozenRv*0.96);
   }
 
+  // Riverbeds are part of geography, not an instruction to create water.
+  // A hot planet retains the same excavated channel as an exposed dusty/
+  // sedimentary bed. Ordinary/cold planets keep water or ice below.
+  // Craters and natural depressions remain controlled by the terrain field.
+  float dryChannel = riverGeom*land*(1.0-hotLiquidGate);
+  vec3 bedSediment = mix(vec3(0.39,0.30,0.20),vec3(0.49,0.39,0.27),
+                         ss(0.25,0.85,mo2));
+  alb = mix(alb,bedSediment,dryChannel*0.78*(1.0-snowM));
+
   alb = mix(alb, snowC, snowM);
 
   float volc = 0.0;
