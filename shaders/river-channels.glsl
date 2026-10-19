@@ -40,11 +40,34 @@ vec2 riverChannelSample(vec3 d,float footprint){
     vec3 a=riverFaceDirection(edgeFace,vec2(edge.r-widthBin*8.0,edge.g));
     vec3 b=riverFaceDirection(edgeFace,edge.ba),ab=b-a;
     float t=clamp(dot(d-a,ab)/max(dot(ab,ab),1e-12),0.0,1.0);
-    float distance=length(d-normalize(a+ab*t));
-    float halfWidth=mix(0.000008,0.00012,pow(widthBin/15.0,1.6));
-    float aa=max(0.000004,footprint*0.60);
-    float ink=(1.0-smoothstep(max(0.0,halfWidth-aa),halfWidth+aa,distance));
-    ink*=clamp(halfWidth/aa,0.32,1.0);
+    vec3 center=normalize(a+ab*t);
+    float distance=length(d-center);
+    // An inexpensive hand-drawn channel: a few polynomial bends inside the
+    // original drainage edge. No new edges or intermediate CPU raster passes.
+    // Stay in a small corridor and vanish at the junctions, so tributaries
+    // meet at their shared graph vertices and cannot bridge other shores.
+    float span=length(ab);
+    if(distance>0.17*span+0.001)continue;
+    vec3 sideways=cross(a,b);
+    float axis2=dot(sideways,sideways);
+    if(axis2>1e-12){
+      float jitter=fract(dot(a,vec3(71.37,153.17,43.23))+
+                        dot(b,vec3(109.83,29.73,197.61)));
+      float jitter2=fract(jitter*3.173+0.417);
+      float envelope=16.0*t*t*(1.0-t)*(1.0-t);
+      float bow=span*envelope*(0.18*(jitter-0.5)+
+                               0.10*(jitter2-0.5)*(2.0*t-1.0));
+      center=normalize(center+sideways*inversesqrt(axis2)*bow);
+      distance=length(d-center);
+    }
+    // From orbit, a realistic sub-pixel channel vanishes completely.
+    // Keep a 1..2 pixel cartographic stroke without widening the rivers in
+    // world metres, and fade it naturally when the camera zooms closer.
+    float physicalHalfWidth=mix(0.000008,0.00012,pow(widthBin/15.0,1.6));
+    float halfWidth=max(physicalHalfWidth,footprint*mix(0.46,0.75,widthBin/15.0));
+    float aa=max(0.000004,footprint*0.48);
+    float ink=1.0-smoothstep(max(0.0,halfWidth-aa),halfWidth+aa,distance);
+    ink*=clamp(halfWidth/max(aa,0.000004),0.66,1.0);
     float plain=1.0-smoothstep(halfWidth*2.0,halfWidth*8.0+aa,distance);
     result=max(result,vec2(ink,plain));
   }

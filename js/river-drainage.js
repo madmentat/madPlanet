@@ -23,8 +23,10 @@ function riverDrainageBuild(height,water,moisture,neighbors,area,options={}){
     const edges=neighbors[i];
     for(let k=0;k<edges.length;k+=2){
       const j=edges[k],distance=edges[k+1];
-      if(!water[j]&&!(height[j]<height[i]||(height[j]===height[i]&&j<i)))continue;
-      const drop=water[j]?Math.max(0.00001,height[i]-height[j]):height[i]-height[j];
+      // A lake is an outlet, not permission to climb into its surface.
+      if(water[j]){if(height[j]>height[i])continue;}
+      else if(!(height[j]<height[i]||(height[j]===height[i]&&j<i)))continue;
+      const drop=water[j]?Math.max(0,height[i]-height[j]):height[i]-height[j];
       const slope=drop/Math.max(1e-9,distance);
       if(slope>best||(slope===best&&j<down[i])){best=slope;down[i]=j;}
     }
@@ -42,15 +44,23 @@ function riverDrainageBuild(height,water,moisture,neighbors,area,options={}){
     flow[j]+=flow[i];
     if(channel[i]&&!water[j])channel[j]=1;
   }
-  return {down,flow,channel,reachesWater,coastDistance,order};
+  return {down,flow,channel,reachesWater,coastDistance,order,height,water};
 }
 
 function riverDrainageGrid(N){
-  const count=6*N*N,dirs=new Float64Array(count*3),area=new Float64Array(count);
+  const count=6*N*N,dirs=new Float64Array(count*3),artDirs=new Float32Array(count*3),area=new Float64Array(count);
   const neighbors=new Array(count),d=[0,0,0],uv={};
   for(let f=0;f<6;f++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){
     const i=riverLoopIndex(f,x,y,N),u=2*(x+0.5)/N-1,v=2*(y+0.5)/N-1;
     riverLoopFaceDir(f,x+0.5,y+0.5,N,d);dirs.set(d,3*i);
+    // Tiny repeatable within-cell offsets break the map's 8 compass tracks.
+    // Every tributary uses exactly the same cached vertex at a junction.
+    let h=Math.imul(i+1,0x9e3779b1)^0x6c8e9cf5;
+    h^=h>>>16;h=Math.imul(h,0x7feb352d);h^=h>>>15;
+    const dx=((h>>>0)/4294967296-0.5)*0.36;
+    h=Math.imul(h^0x85ebca6b,0x846ca68b);h^=h>>>16;
+    const dy=((h>>>0)/4294967296-0.5)*0.36;
+    riverLoopFaceDir(f,x+0.5+dx,y+0.5+dy,N,d);artDirs.set(d,3*i);
     area[i]=1/Math.pow(1+u*u+v*v,1.5);
   }
   for(let f=0;f<6;f++)for(let y=0;y<N;y++)for(let x=0;x<N;x++){
@@ -64,7 +74,7 @@ function riverDrainageGrid(N){
     }
     neighbors[i]=Float64Array.from(edges);
   }
-  return {N,dirs,area,neighbors};
+  return {N,dirs,artDirs,area,neighbors};
 }
 
 // Project an endpoint onto the selected cube face, including seam margins.
@@ -77,13 +87,14 @@ function riverDrainageProject(face,x,y,z){
   return [x/z,-y/z];
 }
 
-/* Each display texel stores a nearby segment, not a water-filled pixel.
-   The fragment shader computes distance to that segment analytically, so a
-   50-km grid cell can contain a 200-m river without becoming a blue blot.
-   R packs a 1..15 width bin in multiples of 8 plus endpoint A's face U;
-   G/B/A hold A.V/B.U/B.V. RGBA32F + NEAREST preserves endpoint precision. */
+/* The surface shader supplies smooth S-bends analytically. Store exactly
+   ONE short edge for each D8 receiver, as before the expensive spline pass:
+   no subdivided arcs, no per-sample terrain queries, no time-step physics.
+   Cache the subtly offset art vertices on the cube-sphere grid once.
+   The real drainage graph still decides basin ownership and the outlet. */
 function riverDrainageRaster(grid,network,M){
-  const {dirs}=grid,{down,channel,flow}=network;
+  const {down,channel,flow,water}=network;
+  const dirs=grid.artDirs||grid.dirs,realDirs=grid.dirs;
   const faces=Array.from({length:6},()=>new Float32Array(M*M*4));
   const best=Array.from({length:6},()=>new Float32Array(M*M).fill(Infinity));
   const seen=new Set(),padding=3,scale=M*0.5;
@@ -91,8 +102,10 @@ function riverDrainageRaster(grid,network,M){
   for(let i=0;i<down.length;i++){
     if(!channel[i])continue;
     const j=down[i];if(j<0)continue;segments++;
-    const a=dirs.subarray(3*i,3*i+3),b=dirs.subarray(3*j,3*j+3);
-    // A small seam overlap includes both faces (three at cube corners).
+    const a=dirs.subarray(3*i,3*i+3);
+    // An estuary points into water but is not allowed to redraw the coast.
+    const source=water?.[j]?realDirs:dirs;
+    const b=source.subarray(3*j,3*j+3);
     seen.clear();
     for(const p of [a,b])for(let axis=0;axis<3;axis++)
       if(Math.abs(p[axis])>=Math.max(Math.abs(p[0]),Math.abs(p[1]),Math.abs(p[2]))-6/M)

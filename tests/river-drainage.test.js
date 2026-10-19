@@ -7,7 +7,7 @@ function check(h,w,m,nb,options={sourceArea:1,sourceInset:2}){
   for(let i=0;i<h.length;i++)if(r.channel[i]){
     assert.equal(w[i],0,'water must never supply a surface river');
     const j=r.down[i];assert.ok(j>=0,'every visible segment has a receiver');
-    assert.ok(w[j]||h[j]<h[i]||(h[j]===h[i]&&j<i),'no uphill flow');
+    assert.ok(h[j]<=h[i],'no uphill flow, including into lakes and the ocean');
     assert.ok(w[j]||r.channel[j],'a river cannot vanish before reaching water');incoming[j]++;
     const seen=new Set([i]);let k=j;
     while(!w[k]){assert.ok(!seen.has(k),'no cycles');seen.add(k);k=r.down[k];assert.ok(k>=0);}
@@ -43,6 +43,8 @@ assert.equal(line([-0.1,0.3,0.1,0.2,0.4],[0]).channel[3],0);
 const dry=line([-0.1,0.03,0.08,0.12,0.2,0.3],[0],[0,0,0,0.8,0.8,0.8]);
 assert.ok(dry.channel[1]&&dry.channel[2]);assert.ok(dry.flow[1]>=dry.flow[3]);
 assert.equal(line([0.1,0.2,0.3],[]).channel.reduce((a,b)=>a+b),0,'no invented outlets on a dry planet');
+assert.equal(line([0.12,0.04,0.30],[2]).channel.reduce((a,b)=>a+b),0,
+  'a high inland lake must not pull water uphill from a lower depression');
 // Inland lake accepts two tributaries but is never used as an ocean source.
 const h=[0.08,0.15,0.3,0.15,0.3],w=[1,0,0,0,0],nb=[[1,1,3,1],[0,1,2,1],[1,1],[0,1,4,1],[3,1]];
 const lake=check(h,w,h.map(()=>0.7),nb);assert.ok(lake.channel[1]&&lake.channel[3]);assert.equal(lake.down[0],-1);
@@ -58,10 +60,41 @@ for(let i=0;i<n;i++){
 const network=ctx.riverDrainageBuild(heights,water,moisture,grid.neighbors,grid.area,{sourceArea:1,sourceInset:2});
 assert.ok(network.channel.reduce((a,b)=>a+b)>100);
 for(let i=0;i<n;i++)if(network.channel[i]){
-  assert.ok(water[network.down[i]]||heights[network.down[i]]<=heights[i]);
+  assert.ok(heights[network.down[i]]<=heights[i]);
   assert.ok(water[network.down[i]]||network.channel[network.down[i]]);
 }
 const raster=ctx.riverDrainageRaster(grid,network,56);assert.ok(raster.segments>100);
+// Each visible branch shares its endpoint with every branch at the junction.
+// The tiny offsets are cached per vertex and deterministic across builds.
+const copy=ctx.riverDrainageGrid(14);
+let offsetVertices=0;
+for(let i=0;i<n;i++){
+  const orig=grid.dirs.subarray(3*i,3*i+3),art=grid.artDirs.subarray(3*i,3*i+3);
+  const delta=Math.hypot(...orig.map((v,k)=>v-art[k]));
+  assert.ok(delta<0.04,'artistic vertex must remain within its drainage cell');
+  if(delta>1e-5)offsetVertices++;
+  for(let k=0;k<3;k++)assert.equal(art[k],copy.artDirs[3*i+k],
+    'the same seed/grid must draw the same river vertices');
+}
+assert.ok(offsetVertices>n*0.8,'artistic offsets should break D8 compass-line regularity');
+for(let i=0;i<n;i++)if(network.channel[i]){
+  const j=network.down[i];
+  assert.ok(j>=0&&network.reachesWater[i]&&!network.water[i]);
+  assert.ok(network.height[j]<=network.height[i]);
+  // Only the final edge may enter water; no river flows out of any ocean/lake.
+  if(network.water[j])assert.equal(network.down[j],-1);
+}
+
+// The GPU adds two low-cost, smooth polynomial meanders to each stored edge.
+// Both vanish with zero slope at junctions; the centreline cannot jump into
+// another basin or suddenly create a second estuary.
+const shader=fs.readFileSync(path.join(__dirname,'../shaders/river-channels.glsl'),'utf8');
+assert.match(shader,/float envelope=16\.0\*t\*t\*\(1\.0-t\)\*\(1\.0-t\)/,
+  'smooth endpoint-constrained bends must stay in the river shader');
+assert.match(shader,/float bow=span\*envelope/,'bend amplitude must scale with edge length');
+assert.doesNotMatch(ctx.riverDrainageRaster.toString(),/subdivisions|riverDrainageCurvePoint/,
+  'the costly subdivided rasterizer must not return');
+
 for(let f=0;f<6;f++)for(let k=0;k<raster.faces[f].length;k+=4){
   const a=raster.faces[f],bin=Math.floor(a[k]/8+0.5);if(!bin)continue;
   assert.ok(bin>=1&&bin<=15);assert.ok(Math.abs(a[k]-bin*8)<1.5);
