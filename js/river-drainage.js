@@ -195,60 +195,120 @@ function riverDrainageShiftPrimaryToSecondary(data,offset){
   }
 }
 
+/* Build a coherent tangent at every junction before rasterizing any edge.
+   The original D8 grid decides topology, but the displayed centerline uses
+   a cubic Hermite path through shared vertices instead of independently
+   bending each straight 50–100 km edge. Incoming tributaries share exactly
+   the same downstream junction and tangent as their receiver. */
+const RIVER_DRAINAGE_CURVE_STEPS=3;
+function riverDrainageCurveGeometry(grid,network){
+  const {down,channel,coastDistance}=network,n=down.length;
+  const main=riverDrainagePrimaryUpstream(network);
+  const src=grid.artDirs||grid.dirs,real=grid.dirs;
+  const pos=new Float64Array(3*n),tangent=new Float64Array(3*n);
+  for(let i=0;i<n;i++){
+    const k=3*i,dirs=coastDistance?.[i]<=2?real:src;
+    pos[k]=dirs[k];pos[k+1]=dirs[k+1];pos[k+2]=dirs[k+2];
+  }
+  for(let i=0;i<n;i++){
+    if(!channel[i])continue;
+    const j=down[i];if(j<0)continue;
+    const k=3*i,dk=3*j,u=main[i],uk=3*u;
+    // The same tangent is used for the end of every incoming edge and the
+    // start of the outgoing edge. That removes sharp D8 bends at confluences.
+    let x=pos[dk]-(u>=0?pos[uk]:pos[k]);
+    let y=pos[dk+1]-(u>=0?pos[uk+1]:pos[k+1]);
+    let z=pos[dk+2]-(u>=0?pos[uk+2]:pos[k+2]);
+    const dot=x*pos[k]+y*pos[k+1]+z*pos[k+2];
+    x-=dot*pos[k];y-=dot*pos[k+1];z-=dot*pos[k+2];
+    const len=Math.hypot(x,y,z)||1;
+    const edgeLength=Math.hypot(pos[dk]-pos[k],pos[dk+1]-pos[k+1],pos[dk+2]-pos[k+2]);
+    const upLength=u>=0?
+      Math.hypot(pos[uk]-pos[k],pos[uk+1]-pos[k+1],pos[uk+2]-pos[k+2]):edgeLength;
+    const scale=0.8*Math.min(edgeLength,upLength);
+    tangent[k]=x/len*scale;tangent[k+1]=y/len*scale;tangent[k+2]=z/len*scale;
+  }
+  return {pos,tangent,channel:network.channel,coastDistance:network.coastDistance,
+    height:network.height,main};
+}
+function riverDrainageCurvePoint(geometry,i,j,t,out){
+  const {pos,tangent,channel,coastDistance,height}=geometry;
+  const k=3*i,l=3*j,u=1-t;
+  const h0=2*t*t*t-3*t*t+1,h1=t*t*t-2*t*t+t;
+  const h2=-2*t*t*t+3*t*t,h3=t*t*t-t*t;
+  const steep=Math.abs((height?.[i]||0)-(height?.[j]||0));
+  // Strong mountain slopes and estuaries should stay near the DEM edge.
+  const curveStrength=coastDistance?.[i]<=2||coastDistance?.[j]<=2?
+    0:Math.max(0.24,1-4.0*steep);
+  const bx=pos[l]-pos[k],by=pos[l+1]-pos[k+1],bz=pos[l+2]-pos[k+2];
+  const inX=tangent[k],inY=tangent[k+1],inZ=tangent[k+2];
+  const outX=channel[j]?tangent[l]:bx*0.8;
+  const outY=channel[j]?tangent[l+1]:by*0.8;
+  const outZ=channel[j]?tangent[l+2]:bz*0.8;
+  const linearX=u*pos[k]+t*pos[l],linearY=u*pos[k+1]+t*pos[l+1],linearZ=u*pos[k+2]+t*pos[l+2];
+  const x=linearX+curveStrength*(h0*pos[k]+h1*inX+h2*pos[l]+h3*outX-linearX);
+  const y=linearY+curveStrength*(h0*pos[k+1]+h1*inY+h2*pos[l+1]+h3*outY-linearY);
+  const z=linearZ+curveStrength*(h0*pos[k+2]+h1*inZ+h2*pos[l+2]+h3*outZ-linearZ);
+  const len=Math.hypot(x,y,z)||1;
+  out[0]=x/len;out[1]=y/len;out[2]=z/len;
+  return out;
+}
+
 /* The two nearest DIFFERENT drainage edges are cached per atlas texel.
    Minor tributaries can no longer be overwritten by a trunk occupying the
    same pixel. Only graph connectivity controls confluences and outlets. */
 function riverDrainageRaster(grid,network,M){
   const {down,channel,flow,water}=network;
-  const dirs=grid.artDirs||grid.dirs,realDirs=grid.dirs;
+  const geometry=riverDrainageCurveGeometry(grid,network);
   const faces=Array.from({length:6},()=>new Uint32Array(M*M*4));
   const best=Array.from({length:6},()=>new Float32Array(M*M).fill(Infinity));
   const second=Array.from({length:6},()=>new Float32Array(M*M).fill(Infinity));
   const owner=Array.from({length:6},()=>new Int32Array(M*M).fill(-1));
   const seen=new Set(),padding=3,scale=M*0.5;
-  const mainUpstream=riverDrainagePrimaryUpstream(network);
+  const mainUpstream=geometry.main,steps=RIVER_DRAINAGE_CURVE_STEPS;
   let segments=0,secondSlots=0;
-  const coords=[0,0,0,0];
+  const coords=[0,0,0,0],a=[0,0,0],b=[0,0,0];
   for(let i=0;i<down.length;i++){
     if(!channel[i])continue;
     const j=down[i];if(j<0)continue;segments++;
-    const coast=network.coastDistance;
-    const aDir=coast?.[i]<=2?realDirs:dirs;
-    const bDir=water?.[j]||coast?.[j]<=2?realDirs:dirs;
-    const a=aDir.subarray(3*i,3*i+3),b=bDir.subarray(3*j,3*j+3);
-    seen.clear();
-    for(const p of [a,b])for(let axis=0;axis<3;axis++)
-      if(Math.abs(p[axis])>=Math.max(Math.abs(p[0]),Math.abs(p[1]),Math.abs(p[2]))-6/M)
-        seen.add(axis*2+(p[axis]<0?1:0));
     const binA=riverDrainageWidthBin(flow[i]);
     const binB=!water?.[j]&&mainUpstream[j]===i?riverDrainageWidthBin(flow[j]):binA;
-    for(const face of seen){
-      const av=riverDrainageProject(face,...a),bv=riverDrainageProject(face,...b);
-      const ax=(av[0]+1)*scale,ay=(1-av[1])*scale,bx=(bv[0]+1)*scale,by=(1-bv[1])*scale;
-      coords[0]=riverDrainageEncodeUV(av[0]);coords[1]=riverDrainageEncodeUV(av[1]);
-      coords[2]=riverDrainageEncodeUV(bv[0]);coords[3]=riverDrainageEncodeUV(bv[1]);
-      const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
-      const x0=Math.max(0,Math.floor(Math.min(ax,bx)-padding)),x1=Math.min(M-1,Math.ceil(Math.max(ax,bx)+padding));
-      const y0=Math.max(0,Math.floor(Math.min(ay,by)-padding)),y1=Math.min(M-1,Math.ceil(Math.max(ay,by)+padding));
-      for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
-        const t=Math.max(0,Math.min(1,((x+0.5-ax)*dx+(y+0.5-ay)*dy)/Math.max(1e-12,len2)));
-        const dist=(x+0.5-ax-t*dx)**2+(y+0.5-ay-t*dy)**2,k=y*M+x;
-        if(dist>9.5||owner[face][k]===i)continue;
-        const off=4*k,data=faces[face];
-        if(dist<best[face][k]){
-          if(owner[face][k]>=0&&best[face][k]<=2.25){
+    for(let part=0;part<steps;part++){
+      riverDrainageCurvePoint(geometry,i,j,part/steps,a);
+      riverDrainageCurvePoint(geometry,i,j,(part+1)/steps,b);
+      seen.clear();
+      for(const p of [a,b])for(let axis=0;axis<3;axis++)
+        if(Math.abs(p[axis])>=Math.max(Math.abs(p[0]),Math.abs(p[1]),Math.abs(p[2]))-6/M)
+          seen.add(axis*2+(p[axis]<0?1:0));
+      const width0=Math.round(binA+(binB-binA)*part/steps);
+      const width1=Math.round(binA+(binB-binA)*(part+1)/steps);
+      const segmentId=i*steps+part;
+      for(const face of seen){
+        const av=riverDrainageProject(face,...a),bv=riverDrainageProject(face,...b);
+        const ax=(av[0]+1)*scale,ay=(1-av[1])*scale,bx=(bv[0]+1)*scale,by=(1-bv[1])*scale;
+        coords[0]=riverDrainageEncodeUV(av[0]);coords[1]=riverDrainageEncodeUV(av[1]);
+        coords[2]=riverDrainageEncodeUV(bv[0]);coords[3]=riverDrainageEncodeUV(bv[1]);
+        const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
+        const x0=Math.max(0,Math.floor(Math.min(ax,bx)-padding)),x1=Math.min(M-1,Math.ceil(Math.max(ax,bx)+padding));
+        const y0=Math.max(0,Math.floor(Math.min(ay,by)-padding)),y1=Math.min(M-1,Math.ceil(Math.max(ay,by)+padding));
+        for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+          const t=Math.max(0,Math.min(1,((x+0.5-ax)*dx+(y+0.5-ay)*dy)/Math.max(1e-12,len2)));
+          const dist=(x+0.5-ax-t*dx)**2+(y+0.5-ay-t*dy)**2,k=y*M+x;
+          if(dist>9.5||owner[face][k]===segmentId)continue;
+          const off=4*k,data=faces[face];
+          if(dist<best[face][k]){
+            if(owner[face][k]>=0&&best[face][k]<=2.25){
+              if(!Number.isFinite(second[face][k]))secondSlots++;
+              riverDrainageShiftPrimaryToSecondary(data,off);
+              second[face][k]=best[face][k];
+            }
+            best[face][k]=dist;owner[face][k]=segmentId;
+            riverDrainagePackSegment(data,off,0,coords,width0,width1);
+          }else if(dist<=2.25&&dist<second[face][k]){
             if(!Number.isFinite(second[face][k]))secondSlots++;
-            riverDrainageShiftPrimaryToSecondary(data,off);
-            second[face][k]=best[face][k];
+            second[face][k]=dist;
+            riverDrainagePackSegment(data,off,1,coords,width0,width1);
           }
-          best[face][k]=dist;owner[face][k]=i;
-          riverDrainagePackSegment(data,off,0,coords,binA,binB);
-        }else if(dist<=2.25&&dist<second[face][k]){
-          // Secondary edges are useful only near the actual visible line.
-          // Avoid doubling per-fragment geometry work in wide empty margins.
-          if(!Number.isFinite(second[face][k]))secondSlots++;
-          second[face][k]=dist;
-          riverDrainagePackSegment(data,off,1,coords,binA,binB);
         }
       }
     }
