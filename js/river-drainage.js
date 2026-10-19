@@ -23,8 +23,10 @@ function riverDrainageBuild(height,water,moisture,neighbors,area,options={}){
     const edges=neighbors[i];
     for(let k=0;k<edges.length;k+=2){
       const j=edges[k],distance=edges[k+1];
-      if(!water[j]&&!(height[j]<height[i]||(height[j]===height[i]&&j<i)))continue;
-      const drop=water[j]?Math.max(0.00001,height[i]-height[j]):height[i]-height[j];
+      // A lake is an outlet, not permission to climb into its surface.
+      if(water[j]){if(height[j]>height[i])continue;}
+      else if(!(height[j]<height[i]||(height[j]===height[i]&&j<i)))continue;
+      const drop=water[j]?Math.max(0,height[i]-height[j]):height[i]-height[j];
       const slope=drop/Math.max(1e-9,distance);
       if(slope>best||(slope===best&&j<down[i])){best=slope;down[i]=j;}
     }
@@ -42,7 +44,7 @@ function riverDrainageBuild(height,water,moisture,neighbors,area,options={}){
     flow[j]+=flow[i];
     if(channel[i]&&!water[j])channel[j]=1;
   }
-  return {down,flow,channel,reachesWater,coastDistance,order};
+  return {down,flow,channel,reachesWater,coastDistance,order,height};
 }
 
 function riverDrainageGrid(N){
@@ -82,33 +84,88 @@ function riverDrainageProject(face,x,y,z){
    50-km grid cell can contain a 200-m river without becoming a blue blot.
    R packs a 1..15 width bin in multiples of 8 plus endpoint A's face U;
    G/B/A hold A.V/B.U/B.V. RGBA32F + NEAREST preserves endpoint precision. */
+/* Main-stem tangent: retain the largest donor for smooth junctions. */
+function riverDrainagePrimaryUpstream(network){
+  const {down,channel,flow}=network;
+  const up=new Int32Array(down.length).fill(-1);
+  for(let i=0;i<down.length;i++){
+    if(!channel[i])continue;
+    const j=down[i];if(j<0||!channel[j])continue;
+    if(up[j]<0||flow[i]>flow[up[j]])up[j]=i;
+  }
+  return up;
+}
+
+/* Spherical Catmull-Rom with bounded, deterministic lowland curvature.
+   Endpoints remain fixed on the drainage graph; bends cannot connect shores
+   or cross basin boundaries by inventing new edges. */
+function riverDrainageCurvePoint(grid,network,i,j,upstream,t,out){
+  const {dirs}=grid,down=network.down;
+  const prev=upstream[i]>=0?upstream[i]:i,next=down[j]>=0?down[j]:j;
+  const a=3*prev,b=3*i,c=3*j,d=3*next;
+  const h=network.height,drop=h?Math.max(0,h[i]-h[j]):0;
+  const bendSupport=1/(1+16*drop);
+  const mouth=h&&h[j]<=0?0.28:1;
+  const tension=0.78*bendSupport*mouth,t2=t*t,t3=t2*t;
+  for(let q=0;q<3;q++){
+    const p0=dirs[a+q],p1=dirs[b+q],p2=dirs[c+q],p3=dirs[d+q];
+    const straight=p1+(p2-p1)*t;
+    const spline=0.5*(2*p1+(-p0+p2)*t+(2*p0-5*p1+4*p2-p3)*t2+
+      (-p0+3*p1-3*p2+p3)*t3);
+    out[q]=straight+(spline-straight)*tension;
+  }
+  const nx=dirs[b+1]*dirs[c+2]-dirs[b+2]*dirs[c+1];
+  const ny=dirs[b+2]*dirs[c]-dirs[b]*dirs[c+2];
+  const nz=dirs[b]*dirs[c+1]-dirs[b+1]*dirs[c];
+  const nlen=Math.hypot(nx,ny,nz);
+  if(nlen>1e-12&&t>0&&t<1){
+    let hash=Math.imul(i+1,0x45d9f3b)^Math.imul(j+1,0x119de1f3);
+    hash^=hash>>>16;hash=Math.imul(hash,0x7feb352d);hash^=hash>>>15;
+    const phase=(hash>>>0)/4294967296*6.283185307179586;
+    const arc=Math.hypot(dirs[b]-dirs[c],dirs[b+1]-dirs[c+1],dirs[b+2]-dirs[c+2]);
+    const envelope=Math.sin(Math.PI*t)**2;
+    const meander=0.12*arc*bendSupport*mouth*envelope*Math.sin(2*Math.PI*t+phase);
+    out[0]+=nx/nlen*meander;out[1]+=ny/nlen*meander;out[2]+=nz/nlen*meander;
+  }
+  const len=Math.hypot(out[0],out[1],out[2])||1;
+  out[0]/=len;out[1]/=len;out[2]/=len;
+  return out;
+}
+
+/* Each texel stores the nearest SHORT analytic segment of a smoothed river.
+   Smoothing is geometry only: topology, discharge and sinks remain physical. */
 function riverDrainageRaster(grid,network,M){
-  const {dirs}=grid,{down,channel,flow}=network;
+  const {down,channel,flow}=network;
   const faces=Array.from({length:6},()=>new Float32Array(M*M*4));
   const best=Array.from({length:6},()=>new Float32Array(M*M).fill(Infinity));
+  const upstream=riverDrainagePrimaryUpstream(network);
   const seen=new Set(),padding=3,scale=M*0.5;
+  const subdivisions=4,curve=new Float64Array((subdivisions+1)*3);
   let segments=0;
   for(let i=0;i<down.length;i++){
     if(!channel[i])continue;
     const j=down[i];if(j<0)continue;segments++;
-    const a=dirs.subarray(3*i,3*i+3),b=dirs.subarray(3*j,3*j+3);
-    // A small seam overlap includes both faces (three at cube corners).
-    seen.clear();
-    for(const p of [a,b])for(let axis=0;axis<3;axis++)
-      if(Math.abs(p[axis])>=Math.max(Math.abs(p[0]),Math.abs(p[1]),Math.abs(p[2]))-6/M)
-        seen.add(axis*2+(p[axis]<0?1:0));
     const bin=Math.max(1,Math.min(15,Math.round(1+3*Math.log2(1+flow[i]/10))));
-    for(const face of seen){
-      const av=riverDrainageProject(face,...a),bv=riverDrainageProject(face,...b);
-      const ax=(av[0]+1)*scale,ay=(1-av[1])*scale,bx=(bv[0]+1)*scale,by=(1-bv[1])*scale;
-      const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
-      const x0=Math.max(0,Math.floor(Math.min(ax,bx)-padding)),x1=Math.min(M-1,Math.ceil(Math.max(ax,bx)+padding));
-      const y0=Math.max(0,Math.floor(Math.min(ay,by)-padding)),y1=Math.min(M-1,Math.ceil(Math.max(ay,by)+padding));
-      for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
-        const t=Math.max(0,Math.min(1,((x+0.5-ax)*dx+(y+0.5-ay)*dy)/Math.max(1e-12,len2)));
-        const dist=(x+0.5-ax-t*dx)**2+(y+0.5-ay-t*dy)**2,k=y*M+x;
-        if(dist>=best[face][k])continue;
-        best[face][k]=dist;faces[face].set([av[0]+8*bin,av[1],bv[0],bv[1]],4*k);
+    for(let s=0;s<=subdivisions;s++)
+      riverDrainageCurvePoint(grid,network,i,j,upstream,s/subdivisions,curve.subarray(3*s,3*s+3));
+    for(let s=0;s<subdivisions;s++){
+      const a=curve.subarray(3*s,3*s+3),b=curve.subarray(3*(s+1),3*(s+1)+3);
+      seen.clear();
+      for(const p of [a,b])for(let axis=0;axis<3;axis++)
+        if(Math.abs(p[axis])>=Math.max(Math.abs(p[0]),Math.abs(p[1]),Math.abs(p[2]))-6/M)
+          seen.add(axis*2+(p[axis]<0?1:0));
+      for(const face of seen){
+        const av=riverDrainageProject(face,...a),bv=riverDrainageProject(face,...b);
+        const ax=(av[0]+1)*scale,ay=(1-av[1])*scale,bx=(bv[0]+1)*scale,by=(1-bv[1])*scale;
+        const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
+        const x0=Math.max(0,Math.floor(Math.min(ax,bx)-padding)),x1=Math.min(M-1,Math.ceil(Math.max(ax,bx)+padding));
+        const y0=Math.max(0,Math.floor(Math.min(ay,by)-padding)),y1=Math.min(M-1,Math.ceil(Math.max(ay,by)+padding));
+        for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+          const t=Math.max(0,Math.min(1,((x+0.5-ax)*dx+(y+0.5-ay)*dy)/Math.max(1e-12,len2)));
+          const dist=(x+0.5-ax-t*dx)**2+(y+0.5-ay-t*dy)**2,k=y*M+x;
+          if(dist>=best[face][k])continue;
+          best[face][k]=dist;faces[face].set([av[0]+8*bin,av[1],bv[0],bv[1]],4*k);
+        }
       }
     }
   }
