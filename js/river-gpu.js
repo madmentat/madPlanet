@@ -415,9 +415,37 @@ const weatherCoreCreateBeforeRiverGpu=weatherCoreCreate;
 weatherCoreCreate=function(seed,N,climate,axis){const core=weatherCoreCreateBeforeRiverGpu(seed,N,climate,axis);riverGpuUpload(core);return core;};
 const weatherCoreStepBeforeRiverGpu=weatherCoreStep;
 weatherCoreStep=function(core,dtSec,climate,axis){weatherCoreStepBeforeRiverGpu(core,dtSec,climate,axis);riverGpuUpload(core);return core;};
+/* A newly allocated cubemap may be empty while the full planet shader is
+   compiling. Weather ticks are not guaranteed to run immediately afterwards:
+   retry terrain sampling once the compiler is free, in a browser idle turn.
+   Never rebuild the terrain in each drawFrame. */
+let riverLoopRetryScheduled=false,riverLoopLastRetryMs=-1e12;
+function riverLoopMaybeRetry(core){
+  if(riverLoopReady||riverLoopSamplerFailed||!riverLoopSupported||riverLoopRetryScheduled)return;
+  if(typeof pendingProgram!=='undefined'&&pendingProgram)return;
+  const now=riverGpuNowMs();
+  if(now-riverLoopLastRetryMs<900)return;
+  riverLoopLastRetryMs=now;riverLoopRetryScheduled=true;
+  const run=()=>{
+    riverLoopRetryScheduled=false;
+    if(riverLoopReady||riverLoopSamplerFailed)return;
+    const current=(typeof weatherCoreEnsure==='function')?weatherCoreEnsure():core;
+    if(!current?.N)return;
+    if(typeof pendingProgram!=='undefined'&&pendingProgram)return;
+    const ready=riverLoopBuildMask(current);
+    if(ready&&typeof console!=='undefined')
+      console.info('[madPlanet] Terrain rivers ready:',current.riverDrainageSegments,'segments');
+  };
+  if(typeof requestIdleCallback==='function')requestIdleCallback(run,{timeout:1500});
+  else setTimeout(run,80);
+}
 function riverGpuEnsureCurrent(){
-  const core=(typeof weatherCoreEnsure==='function')?weatherCoreEnsure():null;if(!core)return null;
-  if(!riverGpuTex||riverGpuN!==riverGpuDisplayN(core.N)||riverGpuLastSeed!==(core.seed|0))riverGpuUpload(core);return core;
+  const core=(typeof weatherCoreEnsure==='function')?weatherCoreEnsure():null;
+  if(!core)return null;
+  if(!riverGpuTex||riverGpuN!==riverGpuDisplayN(core.N)||riverGpuLastSeed!==(core.seed|0))
+    riverGpuUpload(core);
+  riverLoopMaybeRetry(core);
+  return core;
 }
 
 if(typeof window!=='undefined')window.__madPlanetRiverLoopFilter={
