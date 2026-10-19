@@ -1,11 +1,11 @@
-VERSION 0.5.180
-Changes: terrain-routed rivers with inland headwaters and terminal water outlets.
-  - Replaced noise-contour channels with a directed downhill drainage graph sampled from the rendered terrain.
-  - Inland runoff accumulation selects headwaters; tributaries merge and carry water through dry downstream reaches.
-  - Seas and lakes are terminal receivers, never river sources. Closed dry depressions are not breached uphill.
-  - Analytic segment rendering keeps channels narrow independently of cubemap resolution; width grows with catchment supply.
-  - No procedural channels are shown while the terrain sampler is unavailable or linking.
-Validation: Node regression suite and GPU terrain/drainage/rendering probe.
+VERSION 0.5.181
+Changes: reliably visible, artistically routed surface rivers.
+  - Catchment-based D8 topology routes only downhill, including lake mouths.
+  - Small cached offsets break rigid cell-grid river paths; inexpensive shader bends keep common junctions.
+  - Deferred river atlas generation resumes after asynchronous terrain shader compilation.
+  - Orbital display uses a limited screen-space line-width floor so real rivers are not subpixel-invisible.
+  - Single analytic raster segment per drainage edge; no expensive multi-segment CPU spline passes.
+Validation: Node regression suite, deferred-atlas retry regression, synthetic one-mouth/downhill checks.
 Regression seeds: 8127344, 55807208, 5569959.
-Compatibility: analytic rivers require WebGL2 and texture unit 8. The labelled compatibility planet renderer remains available.
+Compatibility: routed rivers need WebGL2 and at least nine fragment texture units; fallback renderer has no rivers.
 Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
