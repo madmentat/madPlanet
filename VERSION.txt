@@ -1,11 +1,10 @@
-VERSION 0.5.183
-Changes: physically coherent curved rivers and no painted bank halos.
-  - Smooth main stems and tributaries along a shared tangent field on the terrain drainage graph.
-  - Rasterize two Hermite chords per terrain edge with the existing packed integer atlas (no extra GPU textures).
-  - Remove independent shader jitter, zoom-driven screen-space stroke widening and dark floodplain outlines.
-  - Use river widths in world coordinates; screen pixel size affects antialiasing only.
-  - Narrow isolated headwaters gradually instead of thick abruptly capped channels.
-  - Preserve one-outlet drainage topology, 14-bit cubemap endpoints and two candidate segments per atlas texel.
-  - Refresh continuity tests against the curved rather than straight channel geometries.
-Validation: full Node regressions, GLSL ES 300 shader compile, cube-seam atlas checks.
+VERSION 0.5.184
+Changes: restore river visibility at orbit/zoom while retaining the smooth 0.5.183 topology.
+  - Fix nearly invisible rivers introduced in 0.5.183 by multiplying subpixel river coverage by physical width divided by screen footprint.
+  - Keep flow-derived physical channel widths and the coherent two-chord Hermite river geometry.
+  - Smooth the river silhouette using footprint-based antialiasing but never fade the centerline toward zero at orbital zoom.
+  - Retain removal of artificial dark parallel riparian halos.
+  - Add orbital-to-close-up shader coverage regression to the mandatory CI suite.
+  - Keep WebGL2 integer atlas diagnostics; GPU runtime verification on desktop and Android remains necessary.
+Validation: Node regression suite, GLSL ES 300 compile and continuity tests.
 Release rule: increment patch version on each release and name archives madPlanet-X.Y.Z.zip.

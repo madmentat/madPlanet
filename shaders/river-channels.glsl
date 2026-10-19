@@ -56,14 +56,15 @@ vec2 riverChannelSample(vec3 d,float footprint){
     if(distance>max(0.001,footprint*1.2))continue;
     float smoothT=t*t*(3.0-2.0*t);
     float widthBin=mix(widthA,widthB,smoothT);
-    // Geometry has a fixed physical width independent of camera distance.
-    // Footprint only controls antialiasing/subpixel coverage: no 1-2 pixel
-    // cartographic widening, no zoom-dependent river-type appearance.
+    // Keep world-space channel widths stable: the accumulated flow chooses
+    // the bed, not the camera. The fragment footprint softens subpixel
+    // channels into a readable one-pixel antialiased trace when zoomed out.
+    // Do NOT multiply coverage by physicalHalfWidth/footprint: that used to
+    // reduce every real headwater/river to ~0% opacity at orbital zoom.
     float physicalHalfWidth=mix(0.000008,0.00060,pow(widthBin/15.0,2.3));
-    float aa=max(0.000001,footprint*0.65);
+    float aa=max(0.000001,footprint*0.55);
     float ink=1.0-smoothstep(max(0.0,physicalHalfWidth-aa),
                               physicalHalfWidth+aa,distance);
-    ink*=min(1.0,physicalHalfWidth/max(aa*0.6,0.000001));
     // Previous 'plain' was an artificial dark bank halo extending eight
     // channel radii. Real riparian terrain needs its own geographic model.
     result=max(result,vec2(ink,0.0));
