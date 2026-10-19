@@ -380,30 +380,26 @@ function riverGpuPaintVisualBranches(core,tmp){
   for(const branch of branches)riverGpuPaintVisualBranch(core,branch,tmp);
 }
 
+/* The current surface shader consumes only G/A lake channels from this
+   historical RGBA8 texture. All visible river strokes are drawn separately
+   from the packed terrain-drainage atlas (RIVER_LOOP_FILTER_MODEL=5).
+   Retain the API/unused legacy paint helpers for compatibility, but do NOT
+   spend every Weather Core tick tracing and painting invisible river edges. */
 function riverGpuReadCurrent(core){
-  for(let f=0;f<6;f++){riverGpuCurrRiver[f].fill(0);riverGpuCurrLake[f].fill(0);}
+  for(let f=0;f<6;f++){
+    riverGpuCurrRiver[f].fill(0);
+    riverGpuCurrLake[f].fill(0);
+  }
   const tmp={face:0,u:0,v:0};
-  const up=riverGpuBuildUpstream(core);
-
-  riverGpuPaintVisualBranches(core,tmp);
-
   for(let i=0;i<core.count;i++){
-    const strength=riverGpuClamp(core.riverChannelStrength?.[i]||0,0,1);
     const lake=riverGpuClamp(core.riverLakeFraction?.[i]||0,0,1);
-    const ix=core.dirX[i],iy=core.dirY[i],iz=core.dirZ[i];
-    if(lake>0.02){
-      const lr=0.95+3.2*Math.sqrt(lake);riverGpuPaintDir(riverGpuCurrLake,ix,iy,iz,lr,0.24+0.76*lake,tmp);
-    }
-    if(strength<0.008)continue;
-    const j=core.riverDownstream?.[i]|0;
-    if(j<0||j>=core.count){
-      const width=Math.max(0,Number(core.riverWidthM?.[i])||0),ws=riverGpuClamp(Math.log2(1+width/18)/7.0,0,1);
-      riverGpuPaintDir(riverGpuCurrRiver,ix,iy,iz,0.045+0.10*Math.pow(strength,0.9)+0.22*ws*ws,0.22+0.78*strength,tmp);
-      continue;
-    }
-    riverGpuPaintEdge(core,i,j,up,tmp);
+    if(lake<=0.02)continue;
+    const lr=0.95+3.2*Math.sqrt(lake);
+    riverGpuPaintDir(riverGpuCurrLake,core.dirX[i],core.dirY[i],core.dirZ[i],
+      lr,0.24+0.76*lake,tmp);
   }
 }
+
 function riverGpuCollapseVisible(blend){
   for(let f=0;f<6;f++){
     const pr=riverGpuPrevRiver[f],pl=riverGpuPrevLake[f],cr=riverGpuCurrRiver[f],cl=riverGpuCurrLake[f];
