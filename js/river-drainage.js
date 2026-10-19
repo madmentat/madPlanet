@@ -232,7 +232,9 @@ function riverDrainageRaster(grid,network,M){
     const wb=water[j]?wa:g.main[j]===i?riverDrainageWidthBin(flow[j])/15:wa;
     riverDrainageCurvePoint(g,i,j,0,p);riverDrainageCurvePoint(g,i,j,1,q);
     const length=Math.hypot(p[0]-q[0],p[1]-q[1],p[2]-q[2]);
-    const steps=Math.max(6,Math.min(60,Math.ceil(M*length*1.8)));
+    // About one brush sample per projected texel is enough for connected
+    // antialiased lines. Previous 1.8 oversampled short segments up to 3x.
+    const steps=Math.max(3,Math.min(48,Math.ceil(M*length*0.75)));
     for(let k=0;k<=steps;k++){
       const t=k/steps;
       riverDrainageCurvePoint(g,i,j,t,p);
