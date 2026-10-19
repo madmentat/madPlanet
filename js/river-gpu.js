@@ -190,6 +190,8 @@ function riverLoopBuildMask(core){
   riverLoopSignature=sig;riverLoopReady=true;
   core.riverLoopFilterModel=RIVER_LOOP_FILTER_MODEL;
   core.riverLoopSampling='gpu-terrain';core.riverDrainageSegments=raster.segments;
+  // Stored once per terrain revision for topology diagnostics, not each frame.
+  core.riverDrainageAudit=riverDrainageDiagnostics(network);
   return true;
 }
 function riverGpuNowMs(){return (typeof performance!=='undefined'&&performance&&typeof performance.now==='function')?performance.now():Date.now();}
@@ -456,5 +458,6 @@ if(typeof window!=='undefined')window.__madPlanetRiverLoopFilter={
   get resolution(){return riverLoopN;},
   get failed(){return riverLoopSamplerFailed;},
   get segments(){return Number((typeof weatherCore!=='undefined'&&weatherCore)?.riverDrainageSegments)||0;},
+  get diagnostics(){return (typeof weatherCore!=='undefined'&&weatherCore)?.riverDrainageAudit||null;},
   get shaderActive(){return !!(typeof U!=='undefined'&&U?.uRiverLoopOn!=null);}
 };
