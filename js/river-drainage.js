@@ -137,20 +137,20 @@ function riverDrainageProject(face,x,y,z){
   return [x/z,-y/z];
 }
 
-/* One RGBA32F pixel holds TWO independent nearby segments, in the SAME
-   texture/sample count as the original renderer. Coordinates are quantized to
-   10 bits over face UV [-1.125,1.125], enough for a <0.5 atlas-pixel error at
-   the highest supported N=192 (M=384). Each of the four float channels is an
-   exactly representable 24-bit unsigned integer:
-     bits  0.. 9: endpoint coordinate, closest segment
-     bits 10..19: endpoint coordinate, second-nearest different segment
-     bits 20..23: one 4-bit width
-   R,G store first-segment start/end widths, B,A store second-segment widths.
-   No additional cubemap or GPU texture-unit requirement. */
+/* Packed unsigned atlas: one RGBA32UI cubemap texel carries TWO nearby
+   segments. Each channel stores exactly 32 bits:
+      0..13 first segment's endpoint coordinate
+     14..27 second segment's same endpoint coordinate
+     28..31 one of four endpoint width bins.
+   R/G own first segment's two widths; B/A own second segment's widths.
+   14-bit face UV precision (<0.00014 normalized direction units) supports
+   close zoom better than highp float multipacking. No extra sampler/texture.
+   All four coordinates are encoded over [-1.125,1.125] for seam margins. */
 const RIVER_DRAINAGE_UV_RANGE=1.125;
-const RIVER_DRAINAGE_COORD_MAX=1023;
-const RIVER_DRAINAGE_SECOND_SHIFT=1024;
-const RIVER_DRAINAGE_WIDTH_SHIFT=1048576;
+const RIVER_DRAINAGE_COORD_MAX=16383;
+const RIVER_DRAINAGE_COORD_MASK=16383;
+const RIVER_DRAINAGE_SECOND_SHIFT=14;
+const RIVER_DRAINAGE_WIDTH_SHIFT=28;
 function riverDrainageEncodeUV(uv){
   return Math.round((Math.max(-RIVER_DRAINAGE_UV_RANGE,
     Math.min(RIVER_DRAINAGE_UV_RANGE,uv))+RIVER_DRAINAGE_UV_RANGE)
@@ -159,28 +159,39 @@ function riverDrainageEncodeUV(uv){
 function riverDrainageDecodeUV(bits){
   return bits*2*RIVER_DRAINAGE_UV_RANGE/RIVER_DRAINAGE_COORD_MAX-RIVER_DRAINAGE_UV_RANGE;
 }
+function riverDrainageUnpackSegment(data,off,slot){
+  const q=new Float64Array(4);
+  for(let c=0;c<4;c++){
+    const value=data[off+c]>>>0;
+    q[c]=riverDrainageDecodeUV(slot===0?
+      (value&RIVER_DRAINAGE_COORD_MASK):
+      ((value>>>RIVER_DRAINAGE_SECOND_SHIFT)&RIVER_DRAINAGE_COORD_MASK));
+  }
+  return {uv:q,widthA:data[off+(slot===0?0:2)]>>>RIVER_DRAINAGE_WIDTH_SHIFT,
+          widthB:data[off+(slot===0?1:3)]>>>RIVER_DRAINAGE_WIDTH_SHIFT};
+}
 function riverDrainagePackSegment(data,offset,slot,uv,binA,binB){
   for(let c=0;c<4;c++){
-    const n=Math.floor(data[offset+c]),lo=n%1024;
-    const hi=Math.floor(n/1024)%1024;
-    const oldWidth=Math.floor(n/RIVER_DRAINAGE_WIDTH_SHIFT);
+    const n=data[offset+c]>>>0;
+    const lo=n&RIVER_DRAINAGE_COORD_MASK;
+    const hi=(n>>>RIVER_DRAINAGE_SECOND_SHIFT)&RIVER_DRAINAGE_COORD_MASK;
+    const oldWidth=n>>>RIVER_DRAINAGE_WIDTH_SHIFT;
     const primary=slot===0?uv[c]:lo;
     const secondary=slot===1?uv[c]:hi;
     const nibble=slot===0?(c===0?binA:c===1?binB:oldWidth)
       :(c===2?binA:c===3?binB:oldWidth);
-    data[offset+c]=primary+secondary*RIVER_DRAINAGE_SECOND_SHIFT+
-      nibble*RIVER_DRAINAGE_WIDTH_SHIFT;
+    data[offset+c]=(primary|(secondary<<RIVER_DRAINAGE_SECOND_SHIFT)|
+      (nibble<<RIVER_DRAINAGE_WIDTH_SHIFT))>>>0;
   }
 }
 function riverDrainageShiftPrimaryToSecondary(data,offset){
-  const r=Math.floor(data[offset]),g=Math.floor(data[offset+1]);
-  const widthA=Math.floor(r/RIVER_DRAINAGE_WIDTH_SHIFT);
-  const widthB=Math.floor(g/RIVER_DRAINAGE_WIDTH_SHIFT);
+  const widthA=data[offset]>>>RIVER_DRAINAGE_WIDTH_SHIFT;
+  const widthB=data[offset+1]>>>RIVER_DRAINAGE_WIDTH_SHIFT;
   for(let c=0;c<4;c++){
-    const n=Math.floor(data[offset+c]),coord=n%1024;
+    const n=data[offset+c]>>>0,coord=n&RIVER_DRAINAGE_COORD_MASK;
     const nibble=c===0?widthA:c===1?widthB:c===2?widthA:widthB;
-    data[offset+c]=coord+coord*RIVER_DRAINAGE_SECOND_SHIFT+
-      nibble*RIVER_DRAINAGE_WIDTH_SHIFT;
+    data[offset+c]=(coord|(coord<<RIVER_DRAINAGE_SECOND_SHIFT)|
+      (nibble<<RIVER_DRAINAGE_WIDTH_SHIFT))>>>0;
   }
 }
 
@@ -190,7 +201,7 @@ function riverDrainageShiftPrimaryToSecondary(data,offset){
 function riverDrainageRaster(grid,network,M){
   const {down,channel,flow,water}=network;
   const dirs=grid.artDirs||grid.dirs,realDirs=grid.dirs;
-  const faces=Array.from({length:6},()=>new Float32Array(M*M*4));
+  const faces=Array.from({length:6},()=>new Uint32Array(M*M*4));
   const best=Array.from({length:6},()=>new Float32Array(M*M).fill(Infinity));
   const second=Array.from({length:6},()=>new Float32Array(M*M).fill(Infinity));
   const owner=Array.from({length:6},()=>new Int32Array(M*M).fill(-1));
