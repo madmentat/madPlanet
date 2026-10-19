@@ -453,5 +453,8 @@ if(typeof window!=='undefined')window.__madPlanetRiverLoopFilter={
   rebuild:()=>{riverLoopReady=false;const c=(typeof weatherCoreEnsure==='function')?weatherCoreEnsure():null;return c?riverLoopBuildMask(c):false;},
   get ready(){return riverLoopReady;},
   get supported(){return riverLoopSupported;},
-  get resolution(){return riverLoopN;}
+  get resolution(){return riverLoopN;},
+  get failed(){return riverLoopSamplerFailed;},
+  get segments(){return Number((typeof weatherCore!=='undefined'&&weatherCore)?.riverDrainageSegments)||0;},
+  get shaderActive(){return !!(typeof U!=='undefined'&&U?.uRiverLoopOn!=null);}
 };
