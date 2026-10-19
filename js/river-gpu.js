@@ -23,7 +23,7 @@
 const RIVER_GPU_MODEL=11;
 const RIVER_TEX_UNIT=2;
 const RIVER_LOOP_TEX_UNIT=1;
-const RIVER_LOOP_FILTER_MODEL=7;
+const RIVER_LOOP_FILTER_MODEL=8;
 const RIVER_LOOP_MIN_N=96;
 const RIVER_LOOP_MAX_N=192;
 const RIVER_GPU_UPSCALE=16;
@@ -190,7 +190,9 @@ function riverLoopBuildMask(core){
   // Fixed geographical detail: mobile uses a smaller atlas, but the same
   // normalized river widths and shapes, never the current camera zoom.
   const mobile=typeof mobileDevice!=='undefined'&&mobileDevice;
-  const M=mobile?384:576;
+  // The 384/576 atlas visibly blurred the banks at regional zoom.
+  // One-time geography bake, not an ongoing per-frame GPU cost.
+  const M=mobile?640:1024;
   if(!riverLoopEnsureTexture(M))return false;
   const sig=[RIVER_LOOP_FILTER_MODEL,N,...world.seedS,state.cont,
     Number(state.sea).toFixed(3),state.tect,state.isle,state.lake,M].join('|');
@@ -201,7 +203,13 @@ function riverLoopBuildMask(core){
     riverDrainageGridCache=riverDrainageGrid(N);
   const grid=riverDrainageGridCache;
   const network=riverDrainageBuild(sampled.height,sampled.water,sampled.moisture,
-    grid.neighbors,grid.area,{sourceArea:2*(N/160)**2});
+    grid.neighbors,grid.area,{
+      // A drainage area of just two cells created dozens of short,
+      // almost parallel coast-facing rivers (the screenshot 'rake').
+      // Retain only established watersheds and their side tributaries.
+      sourceArea:28*(N/160)**2,
+      sourceInset:Math.max(4,Math.round(N/28))
+    });
   const raster=riverDrainageRaster(grid,network,M);riverLoopFaces=raster.faces;
   gl.activeTexture(gl.TEXTURE0+RIVER_LOOP_TEX_UNIT);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverLoopTex);
