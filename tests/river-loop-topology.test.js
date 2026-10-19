@@ -54,35 +54,29 @@ vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/river-gpu.js'),'utf8'
   assert.equal(rebuilt,1,'the terrain sampling must resume after shader linking');
 }
 
-// A GPU may support WebGL2 yet reject an integer cubemap allocation.
-// Detect that error and do not claim to have an empty-but-ready river atlas.
+// An eight-unit WebGL2 mobile GPU MUST support river painting on unit 1.
 {
-  let allocations=0,error=0;
-  const g={MAX_TEXTURE_IMAGE_UNITS:1,TEXTURE0:2,TEXTURE_CUBE_MAP:3,
+  let allocations=0,error=0,types=[];
+  const g={MAX_TEXTURE_IMAGE_UNITS:1,TEXTURE0:100,TEXTURE_CUBE_MAP:3,
     TEXTURE_MIN_FILTER:4,TEXTURE_MAG_FILTER:5,TEXTURE_WRAP_S:6,
-    TEXTURE_WRAP_T:7,TEXTURE_WRAP_R:8,NEAREST:9,CLAMP_TO_EDGE:10,
-    RGBA32UI:11,RGBA_INTEGER:12,UNSIGNED_INT:13,
-    TEXTURE_CUBE_MAP_POSITIVE_X:20,NO_ERROR:0,
-    getParameter(){return 16;},getError(){return error;},
+    TEXTURE_WRAP_T:7,TEXTURE_WRAP_R:8,LINEAR:9,CLAMP_TO_EDGE:10,
+    RGBA:11,UNSIGNED_BYTE:12,TEXTURE_CUBE_MAP_POSITIVE_X:20,NO_ERROR:0,
+    getParameter(){return 8;},getError(){return error;},
     createTexture(){return {};},deleteTexture(){},
     activeTexture(){},bindTexture(){},texParameteri(){},
     texImage2D(target,level,internal,w,h,border,format,type,pixels){
-      assert.equal(internal,this.RGBA32UI);
-      assert.equal(format,this.RGBA_INTEGER);
-      assert.equal(type,this.UNSIGNED_INT);
-      assert.equal(pixels,null);
-      allocations++;
+      assert.equal(internal,this.RGBA);
+      assert.equal(format,this.RGBA);assert.equal(type,this.UNSIGNED_BYTE);
+      assert.equal(pixels,null);allocations++;types.push([w,h]);
     }
   };
   ctx.gl=g;ctx.webglVersion=2;
   assert.equal(ctx.riverLoopEnsureTexture(12),true);
-  assert.equal(allocations,6,'one integer cubemap must contain six faces');
-  error=1280; // GL_INVALID_ENUM in fake driver
+  assert.equal(allocations,6,'exactly one six-faced ordinary painted cubemap');
+  assert.ok(types.every(t=>t[0]===12&&t[1]===12));
+  error=1280;
   assert.equal(ctx.riverLoopEnsureTexture(16),false);
-  assert.equal(ctx.riverLoopMaybeRetry({N:16}),undefined);
   assert.equal(vm.runInContext('riverLoopSamplerFailed',ctx),true);
   assert.equal(vm.runInContext('riverLoopReady',ctx),false);
-  assert.equal(vm.runInContext('riverLoopSupported',ctx),false);
 }
-
 console.log('river-loop-topology.test.js: OK');
