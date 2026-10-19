@@ -8,6 +8,7 @@ function check(h,w,m,nb,options={sourceArea:1,sourceInset:2}){
     assert.equal(w[i],0,'water must never supply a surface river');
     const j=r.down[i];assert.ok(j>=0,'every visible segment has a receiver');
     assert.ok(h[j]<=h[i],'no uphill flow, including into lakes and the ocean');
+    assert.equal(r.basin[i],r.basin[j],'each river stays within its own outlet basin');
     assert.ok(w[j]||r.channel[j],'a river cannot vanish before reaching water');incoming[j]++;
     const seen=new Set([i]);let k=j;
     while(!w[k]){assert.ok(!seen.has(k),'no cycles');seen.add(k);k=r.down[k];assert.ok(k>=0);}
@@ -25,12 +26,25 @@ function check(h,w,m,nb,options={sourceArea:1,sourceInset:2}){
     }
     assert.equal(contacts,1,'each visible river system has exactly one mouth');
   }
+  const audit=ctx.riverDrainageDiagnostics(r);
+  assert.equal(audit.uphill,0);
+  assert.equal(audit.dangling,0);
+  assert.ok(audit.basins<=audit.mouths,'several independent river mouths may enter the same lake cell');
   return r;
 }
 function line(h,wet,moist=h.map(()=>0.65),options){
   const w=h.map((_,i)=>wet.includes(i)?1:0),nb=h.map((_,i)=>[...(i?[i-1,1]:[]),...(i+1<h.length?[i+1,1]:[])]);
   return check(h,w,moist,nb,options);
 }
+// Physical proxy W = k * Q^b must stay monotonic, deterministic, and
+// become visibly wider from trickles to the large river downstream.
+const widthQs=[0,1,4,16,64,256,1024,4096];
+const widthBins=widthQs.map(q=>ctx.riverDrainageWidthBin(q));
+assert.ok(widthBins.every((w,i)=>w>=1&&w<=15&&(!i||w>=widthBins[i-1])));
+assert.ok(widthBins[widthBins.length-1]-widthBins[0]>=10,
+  'small streams and large rivers must have different sizes');
+assert.equal(ctx.riverDrainageWidthBin(16),ctx.riverDrainageWidthBin(16));
+
 // Two shores of the same landmass: the watershed splits two distinct basins.
 const split=line([-0.1,0.03,0.12,0.25,0.40,0.25,0.12,0.03,-0.1],[0,8]);
 assert.equal(split.down[2],1);assert.equal(split.down[6],7);
@@ -48,6 +62,19 @@ assert.equal(line([0.12,0.04,0.30],[2]).channel.reduce((a,b)=>a+b),0,
 // Inland lake accepts two tributaries but is never used as an ocean source.
 const h=[0.08,0.15,0.3,0.15,0.3],w=[1,0,0,0,0],nb=[[1,1,3,1],[0,1,2,1],[1,1],[0,1,4,1],[3,1]];
 const lake=check(h,w,h.map(()=>0.7),nb);assert.ok(lake.channel[1]&&lake.channel[3]);assert.equal(lake.down[0],-1);
+
+// At a confluence the largest upstream contributor is the main stem; side
+// tributaries keep their narrow width until they meet it.
+{
+  const h=[-0.1,0.1,0.25,0.45,0.25],w=[1,0,0,0,0];
+  const nb=[[1,1],[0,1,2,1,4,1],[1,1,3,1],[2,1],[1,1]];
+  const net=check(h,w,[0.7,0.7,0.7,0.7,0.7],nb);
+  const primary=ctx.riverDrainagePrimaryUpstream(net);
+  assert.equal(primary[1],2,'longer/main stem must be continuous across a tributary junction');
+  assert.ok(net.flow[1]>net.flow[2]&&net.flow[2]>net.flow[4],
+    'downstream flow includes contributions from the smaller side tributary');
+  assert.ok(ctx.riverDrainageWidthBin(net.flow[1])>=ctx.riverDrainageWidthBin(net.flow[2]));
+}
 
 // Actual cubed sphere, including polar seams, monotonic drainage and endpoint
 // storage. These assertions concern topology/geometry, not source-text shape.
@@ -92,14 +119,61 @@ const shader=fs.readFileSync(path.join(__dirname,'../shaders/river-channels.glsl
 assert.match(shader,/float envelope=16\.0\*t\*t\*\(1\.0-t\)\*\(1\.0-t\)/,
   'smooth endpoint-constrained bends must stay in the river shader');
 assert.match(shader,/float bow=span\*envelope/,'bend amplitude must scale with edge length');
+assert.match(shader,/widthBin=mix\(widthA,widthB,smoothT\)/,
+  'shader must interpolate two distinct discharge-derived endpoint widths');
+assert.match(shader,/ink\*=mix\(prominence,1\.0,close\)/,
+  'global view should prioritize main stems and reveal small tributaries when zoomed');
 assert.doesNotMatch(ctx.riverDrainageRaster.toString(),/subdivisions|riverDrainageCurvePoint/,
   'the costly subdivided rasterizer must not return');
 
-for(let f=0;f<6;f++)for(let k=0;k<raster.faces[f].length;k+=4){
-  const a=raster.faces[f],bin=Math.floor(a[k]/8+0.5);if(!bin)continue;
-  assert.ok(bin>=1&&bin<=15);assert.ok(Math.abs(a[k]-bin*8)<1.5);
-  for(let j=0;j<4;j++)assert.ok(Number.isFinite(a[k+j]));
+// Two segments survive a collision within the SAME RGBA32UI atlas texel.
+// The layout uses all 128 bits, with 14-bit UVs and 4-bit endpoint widths.
+{
+  const arr=new Uint32Array(4),first=[0,1234,16383,8192],second=[16383,8184,14,700];
+  ctx.riverDrainagePackSegment(arr,0,0,first,3,9);
+  ctx.riverDrainagePackSegment(arr,0,1,second,12,15);
+  const unpack0=ctx.riverDrainageUnpackSegment(arr,0,0);
+  const unpack1=ctx.riverDrainageUnpackSegment(arr,0,1);
+  assert.equal(unpack0.widthA,3);assert.equal(unpack0.widthB,9);
+  assert.equal(unpack1.widthA,12);assert.equal(unpack1.widthB,15);
+  for(let c=0;c<4;c++){
+    assert.ok(Math.abs(unpack0.uv[c]-ctx.riverDrainageDecodeUV(first[c]))<1e-12);
+    assert.ok(Math.abs(unpack1.uv[c]-ctx.riverDrainageDecodeUV(second[c]))<1e-12);
+  }
+  ctx.riverDrainagePackSegment(arr,0,0,[42,43,44,45],6,7);
+  assert.equal(ctx.riverDrainageUnpackSegment(arr,0,1).widthA,12,
+    'replacing the main stem must not erase the tributary slot');
+  ctx.riverDrainageShiftPrimaryToSecondary(arr,0);
+  assert.equal(ctx.riverDrainageUnpackSegment(arr,0,1).widthA,6);
+  assert.equal(ctx.riverDrainageUnpackSegment(arr,0,1).widthB,7);
+  assert.equal(arr[0]>>>28,6);assert.equal(arr[2]>>>28,6);
 }
+let primaryTexels=0,secondaryTexels=0;
+for(let f=0;f<6;f++)for(let k=0;k<raster.faces[f].length;k+=4){
+  const a=raster.faces[f],p=ctx.riverDrainageUnpackSegment(a,k,0);
+  const q=ctx.riverDrainageUnpackSegment(a,k,1);
+  if(!p.widthA){assert.equal(q.widthA,0);continue;}
+  primaryTexels++;
+  assert.ok(p.widthA>=1&&p.widthA<=15&&p.widthB>=p.widthA&&p.widthB<=15);
+  if(q.widthA){
+    secondaryTexels++;
+    assert.ok(q.widthA>=1&&q.widthA<=15&&q.widthB>=q.widthA&&q.widthB<=15);
+  }
+  for(let c=0;c<4;c++){
+    assert.ok(Number.isFinite(p.uv[c])&&Math.abs(p.uv[c])<=1.125001);
+    if(q.widthA)assert.ok(Number.isFinite(q.uv[c])&&Math.abs(q.uv[c])<=1.125001);
+  }
+}
+assert.ok(secondaryTexels>0,'close confluences must retain multiple segments');
+assert.equal(secondaryTexels,raster.secondSlots);
+assert.ok(primaryTexels>secondaryTexels,'secondary candidates must not fill every margin');
+const header=fs.readFileSync(path.join(__dirname,'../shaders/header.glsl'),'utf8');
+assert.match(header,/uniform highp usamplerCube uRiverLoopTex;/);
+assert.match(shader,/uvec4 edge=texture\(uRiverLoopTex,query\)/,
+  'integer atlas should need only one cubemap read for two edges');
+assert.match(shader,/for\(int slot=0;slot<2;slot\+\+\)/,
+  'both confluence candidates must be considered');
+
 for(let i=0;i<n;i++){
   const d=grid.dirs.subarray(3*i,3*i+3),tmp={};ctx.riverGpuDirToFaceUV(...d,tmp);
   const p=ctx.riverDrainageProject(tmp.face,...d);

@@ -15,7 +15,7 @@ void main(){
   float lat=(uv.y-0.5)*3.14159265,lon=uv.x*6.2831853;
   d=vec3(cos(lon)*cos(lat),sin(lat),sin(lon)*cos(lat));
  }
- vec2 river=riverChannelSample(normalize(d),0.00001);
+ vec2 river=riverChannelSample(normalize(d),0.00005);
  if(testMode==1){fragColor=vec4(river,0.0,1.0);return;}
  float rock,mount,lee;float h=terrain(d,rock,mount,lee);
  vec3 color=h<0.0?vec3(0.18,0.34,0.50):mix(vec3(0.39,0.52,0.32),vec3(0.80,0.78,0.69),smoothstep(0.0,0.45,h));
@@ -54,13 +54,41 @@ function run(){try{
  gl.uniform4fv(loc('uPlateP'),world.plateP);gl.uniform4fv(loc('uPlateW'),world.plateW);
  const grid=riverDrainageGridCache;
  const net=riverDrainageBuild(sampled.height,sampled.water,sampled.moisture,grid.neighbors,grid.area,{sourceArea:2});
- const points=[];
- for(let i=0;i<net.down.length;i++)if(net.channel[i]){
-  const j=net.down[i];for(const t of [0.1,0.5,0.9]){
-   const a=grid.dirs.subarray(i*3,i*3+3),b=grid.dirs.subarray(j*3,j*3+3);
-   points.push(a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t,1);
+ // Check the curved centerlines of the actual packed atlas, not D8
+ // cell centres: those intentionally do not coincide with rendered rivers.
+ const points=[],samples={primary:0,secondary:0,seams:0};
+ function dirAt(f,u,v){
+  const out=[0,0,0];riverLoopFaceDir(f,(u+1)*0.5,(1-v)*0.5,1,out);return out;
+ }
+ function mid(a,b,t){
+  const dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],span=Math.hypot(dx,dy,dz);
+  let x=a[0]+dx*t,y=a[1]+dy*t,z=a[2]+dz*t;
+  const nx=a[1]*b[2]-a[2]*b[1],ny=a[2]*b[0]-a[0]*b[2],nz=a[0]*b[1]-a[1]*b[0];
+  const len=Math.hypot(nx,ny,nz);
+  if(len>1e-6){
+   const fract=v=>v-Math.floor(v);
+   const hash=fract(a[0]*71.37+a[1]*153.17+a[2]*43.23+
+                    b[0]*109.83+b[1]*29.73+b[2]*197.61);
+   const hash2=fract(hash*3.173+0.417),env=16*t*t*(1-t)*(1-t);
+   const bow=span*env*(0.18*(hash-0.5)+0.10*(hash2-0.5)*(2*t-1));
+   x+=nx/len*bow;y+=ny/len*bow;z+=nz/len*bow;
+  }
+  const r=Math.hypot(x,y,z);return [x/r,y/r,z/r];
+ }
+ const stride=Math.max(1,Math.ceil(6*riverLoopN*riverLoopN/24000));
+ for(let f=0;f<6;f++)for(let k=0;k<riverLoopN*riverLoopN;k+=stride){
+  for(const slot of [0,1]){
+   const p=riverDrainageUnpackSegment(riverLoopFaces[f],4*k,slot);
+   if(!p.widthA)continue;
+   const d=mid(dirAt(f,p.uv[0],p.uv[1]),dirAt(f,p.uv[2],p.uv[3]),0.5);
+   const loc={};riverGpuDirToFaceUV(d[0],d[1],d[2],loc);
+   if(loc.face!==f)continue; // overlapping seam copies are tested separately
+   if(Math.abs(loc.u)>0.98||Math.abs(loc.v)>0.98)samples.seams++;
+   if(slot)samples.secondary++;else samples.primary++;
+   points.push(d[0],d[1],d[2],1);
   }
  }
+ if(points.length<1200)throw Error('Not enough visible atlas channels to probe');
  const count=points.length/4,W=256,H=Math.ceil(count/W),data=new Float32Array(W*H*4);data.set(points);
  const tex=gl.createTexture();gl.activeTexture(gl.TEXTURE7);gl.bindTexture(gl.TEXTURE_2D,tex);
  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
@@ -70,7 +98,7 @@ function run(){try{
  let gaps=0;const failed=[];
  for(let i=0;i<count;i++)if(pixels[i*4]<8){gaps++;if(failed.length<12)failed.push({index:i,xyz:points.slice(i*4,i*4+3),value:pixels[i*4]});}
  if(gl.getError()!==gl.NO_ERROR)throw Error('WebGL error');
- results.push({seed:state.seed,samples:count,gaps,failed});
+ results.push({seed:state.seed,samples:count,primary:samples.primary,secondary:samples.secondary,seams:samples.seams,gaps,failed});
  gl.uniform1i(loc('testMode'),0);gl.viewport(0,0,1200,600);gl.drawArrays(gl.TRIANGLES,0,3);
  const copy=document.createElement('canvas');copy.width=1200;copy.height=600;copy.getContext('2d').drawImage(display,0,0);
  document.body.appendChild(document.createTextNode('Seed '+state.seed));document.body.appendChild(copy);gl.deleteTexture(tex);

@@ -27,5 +27,11 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Validate packed river shader with GLSL compiler
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends glslang-tools
+          bash tests/river-glsl-syntax.sh
+
       - name: Build and run regression suite
         run: bash tests/run-all.sh

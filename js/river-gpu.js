@@ -23,7 +23,7 @@
 const RIVER_GPU_MODEL=10;
 const RIVER_TEX_UNIT=2;
 const RIVER_LOOP_TEX_UNIT=8;
-const RIVER_LOOP_FILTER_MODEL=4;
+const RIVER_LOOP_FILTER_MODEL=5;
 const RIVER_LOOP_MIN_N=96;
 const RIVER_LOOP_MAX_N=192;
 const RIVER_GPU_UPSCALE=16;
@@ -153,11 +153,11 @@ function riverLoopNeighborIndex(face,x,y,dx,dy,N,tmpDir,tmpUv){
 }
 function riverLoopEnsureTexture(N){
   const maxUnits=Number(gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS))||8;
-  riverLoopSupported=webglVersion>=2&&maxUnits>RIVER_LOOP_TEX_UNIT;
+  riverLoopSupported=!riverLoopSamplerFailed&&webglVersion>=2&&maxUnits>RIVER_LOOP_TEX_UNIT;
   if(!riverLoopSupported){riverLoopReady=false;return false;}
   if(riverLoopTex&&riverLoopN===N)return true;
   if(riverLoopTex)gl.deleteTexture(riverLoopTex);
-  riverLoopN=N;riverLoopFaces=Array.from({length:6},()=>new Float32Array(N*N*4));
+  riverLoopN=N;riverLoopFaces=Array.from({length:6},()=>new Uint32Array(N*N*4));
   riverLoopTex=gl.createTexture();
   gl.activeTexture(gl.TEXTURE0+RIVER_LOOP_TEX_UNIT);gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverLoopTex);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
@@ -165,8 +165,15 @@ function riverLoopEnsureTexture(N){
   gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
   if(webglVersion>=2)gl.texParameteri(gl.TEXTURE_CUBE_MAP,gl.TEXTURE_WRAP_R,gl.CLAMP_TO_EDGE);
-  for(let f=0;f<6;f++)gl.texImage2D(riverGpuFaceTarget(f),0,gl.RGBA32F,N,N,0,gl.RGBA,gl.FLOAT,null);
+  for(let f=0;f<6;f++)gl.texImage2D(riverGpuFaceTarget(f),0,gl.RGBA32UI,N,N,0,gl.RGBA_INTEGER,gl.UNSIGNED_INT,null);
+  const atlasError=gl.getError();
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);
+  if(atlasError!==gl.NO_ERROR){
+    gl.deleteTexture(riverLoopTex);riverLoopTex=null;
+    riverLoopSupported=false;riverLoopReady=false;riverLoopSamplerFailed=true;riverLoopN=0;
+    console.warn('[madPlanet] Packed integer river atlas unavailable:',atlasError);
+    return false;
+  }
   riverLoopReady=false;return true;
 }
 function riverLoopBuildMask(core){
@@ -185,11 +192,20 @@ function riverLoopBuildMask(core){
     {sourceArea:2*(N/160)**2});
   const raster=riverDrainageRaster(grid,network,M);riverLoopFaces=raster.faces;
   gl.activeTexture(gl.TEXTURE0+RIVER_LOOP_TEX_UNIT);gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverLoopTex);
-  for(let f=0;f<6;f++)gl.texSubImage2D(riverGpuFaceTarget(f),0,0,0,M,M,gl.RGBA,gl.FLOAT,riverLoopFaces[f]);
+  for(let f=0;f<6;f++)gl.texSubImage2D(riverGpuFaceTarget(f),0,0,0,M,M,gl.RGBA_INTEGER,gl.UNSIGNED_INT,riverLoopFaces[f]);
+  const uploadError=gl.getError();
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);
+  if(uploadError!==gl.NO_ERROR){
+    riverLoopReady=false;riverLoopSupported=false;riverLoopSamplerFailed=true;
+    console.warn('[madPlanet] Packed river atlas upload failed:',uploadError);
+    return false;
+  }
   riverLoopSignature=sig;riverLoopReady=true;
   core.riverLoopFilterModel=RIVER_LOOP_FILTER_MODEL;
   core.riverLoopSampling='gpu-terrain';core.riverDrainageSegments=raster.segments;
+  core.riverDrainageSecondSlots=raster.secondSlots;
+  // Stored once per terrain revision for topology diagnostics, not each frame.
+  core.riverDrainageAudit=riverDrainageDiagnostics(network);
   return true;
 }
 function riverGpuNowMs(){return (typeof performance!=='undefined'&&performance&&typeof performance.now==='function')?performance.now():Date.now();}
@@ -364,41 +380,40 @@ function riverGpuPaintVisualBranches(core,tmp){
   for(const branch of branches)riverGpuPaintVisualBranch(core,branch,tmp);
 }
 
+/* The current surface shader consumes only G/A lake channels from this
+   historical RGBA8 texture. All visible river strokes are drawn separately
+   from the packed terrain-drainage atlas (RIVER_LOOP_FILTER_MODEL=5).
+   Retain the API/unused legacy paint helpers for compatibility, but do NOT
+   spend every Weather Core tick tracing and painting invisible river edges. */
 function riverGpuReadCurrent(core){
-  for(let f=0;f<6;f++){riverGpuCurrRiver[f].fill(0);riverGpuCurrLake[f].fill(0);}
+  // Legacy river arrays stay zero after allocation; only lakes are dynamic.
+  for(let f=0;f<6;f++)riverGpuCurrLake[f].fill(0);
   const tmp={face:0,u:0,v:0};
-  const up=riverGpuBuildUpstream(core);
-
-  riverGpuPaintVisualBranches(core,tmp);
-
   for(let i=0;i<core.count;i++){
-    const strength=riverGpuClamp(core.riverChannelStrength?.[i]||0,0,1);
     const lake=riverGpuClamp(core.riverLakeFraction?.[i]||0,0,1);
-    const ix=core.dirX[i],iy=core.dirY[i],iz=core.dirZ[i];
-    if(lake>0.02){
-      const lr=0.95+3.2*Math.sqrt(lake);riverGpuPaintDir(riverGpuCurrLake,ix,iy,iz,lr,0.24+0.76*lake,tmp);
-    }
-    if(strength<0.008)continue;
-    const j=core.riverDownstream?.[i]|0;
-    if(j<0||j>=core.count){
-      const width=Math.max(0,Number(core.riverWidthM?.[i])||0),ws=riverGpuClamp(Math.log2(1+width/18)/7.0,0,1);
-      riverGpuPaintDir(riverGpuCurrRiver,ix,iy,iz,0.045+0.10*Math.pow(strength,0.9)+0.22*ws*ws,0.22+0.78*strength,tmp);
-      continue;
-    }
-    riverGpuPaintEdge(core,i,j,up,tmp);
+    if(lake<=0.02)continue;
+    const lr=0.95+3.2*Math.sqrt(lake);
+    riverGpuPaintDir(riverGpuCurrLake,core.dirX[i],core.dirY[i],core.dirZ[i],
+      lr,0.24+0.76*lake,tmp);
   }
 }
+
 function riverGpuCollapseVisible(blend){
   for(let f=0;f<6;f++){
-    const pr=riverGpuPrevRiver[f],pl=riverGpuPrevLake[f],cr=riverGpuCurrRiver[f],cl=riverGpuCurrLake[f];
-    for(let i=0;i<pr.length;i++){pr[i]+=(cr[i]-pr[i])*blend;pl[i]+=(cl[i]-pl[i])*blend;}
+    const pl=riverGpuPrevLake[f],cl=riverGpuCurrLake[f];
+    for(let i=0;i<pl.length;i++)pl[i]+=(cl[i]-pl[i])*blend;
   }
 }
 function riverGpuPackUpload(){
   const N=riverGpuN;gl.activeTexture(gl.TEXTURE0+RIVER_TEX_UNIT);gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverGpuTex);
   for(let f=0;f<6;f++){
-    const pix=riverGpuFaces[f],pr=riverGpuPrevRiver[f],pl=riverGpuPrevLake[f],cr=riverGpuCurrRiver[f],cl=riverGpuCurrLake[f];
-    for(let i=0;i<pr.length;i++){const p=i*4;pix[p]=riverGpuByte(pr[i]);pix[p+1]=riverGpuByte(pl[i]);pix[p+2]=riverGpuByte(cr[i]);pix[p+3]=riverGpuByte(cl[i]);}
+    const pix=riverGpuFaces[f],pl=riverGpuPrevLake[f],cl=riverGpuCurrLake[f];
+    for(let i=0;i<pl.length;i++){
+      const p=i*4;
+      // R/B are retired (zero); do not convert them at every weather tick.
+      pix[p]=0;pix[p+1]=riverGpuByte(pl[i]);
+      pix[p+2]=0;pix[p+3]=riverGpuByte(cl[i]);
+    }
     gl.texSubImage2D(riverGpuFaceTarget(f),0,0,0,N,N,gl.RGBA,gl.UNSIGNED_BYTE,pix);
   }
   gl.activeTexture(gl.TEXTURE0);
@@ -407,7 +422,7 @@ function riverGpuUpload(core){
   if(!core?.N||!core?.riverChannelStrength)return false;riverGpuEnsure(riverGpuDisplayN(core.N));
   riverLoopBuildMask(core);
   const now=riverGpuNowMs(),seed=core.seed|0,seedChanged=Number.isFinite(riverGpuLastSeed)&&riverGpuLastSeed!==seed;
-  if(!riverGpuHasFrame||seedChanged){riverGpuReadCurrent(core);for(let f=0;f<6;f++){riverGpuPrevRiver[f].set(riverGpuCurrRiver[f]);riverGpuPrevLake[f].set(riverGpuCurrLake[f]);}riverGpuBlendDurationMs=1;riverGpuBlendStartMs=now;riverGpuHasFrame=true;}
+  if(!riverGpuHasFrame||seedChanged){riverGpuReadCurrent(core);for(let f=0;f<6;f++){riverGpuPrevLake[f].set(riverGpuCurrLake[f]);}riverGpuBlendDurationMs=1;riverGpuBlendStartMs=now;riverGpuHasFrame=true;}
   else{riverGpuCollapseVisible(riverGpuBlendAt(now));riverGpuReadCurrent(core);const interval=Number.isFinite(riverGpuLastUploadMs)?Math.max(1,now-riverGpuLastUploadMs):RIVER_BLEND_DEFAULT_MS;riverGpuBlendDurationMs=Math.max(RIVER_BLEND_MIN_MS,Math.min(RIVER_BLEND_MAX_MS,interval));riverGpuBlendStartMs=now;}
   riverGpuPackUpload();riverGpuLastUploadMs=now;riverGpuLastSeed=seed;core.riverGpuModel=RIVER_GPU_MODEL;return true;
 }
@@ -456,5 +471,7 @@ if(typeof window!=='undefined')window.__madPlanetRiverLoopFilter={
   get resolution(){return riverLoopN;},
   get failed(){return riverLoopSamplerFailed;},
   get segments(){return Number((typeof weatherCore!=='undefined'&&weatherCore)?.riverDrainageSegments)||0;},
+  get secondSlots(){return Number((typeof weatherCore!=='undefined'&&weatherCore)?.riverDrainageSecondSlots)||0;},
+  get diagnostics(){return (typeof weatherCore!=='undefined'&&weatherCore)?.riverDrainageAudit||null;},
   get shaderActive(){return !!(typeof U!=='undefined'&&U?.uRiverLoopOn!=null);}
 };

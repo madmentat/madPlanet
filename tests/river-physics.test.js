@@ -47,7 +47,7 @@ for(const file of [buildSh,buildPs]){
 }
 assert.match(header,/uniform samplerCube uRiverTex;/);
 assert.match(header,/uniform float uRiverBlend;/);
-assert.match(header,/uniform samplerCube uRiverLoopTex;/,'closed-loop kill mask sampler missing');
+assert.match(header,/uniform highp usamplerCube uRiverLoopTex;/,'packed river atlas integer sampler missing');
 assert.match(header,/uniform float uRiverLoopOn;/,'closed-loop kill mask switch missing');
 assert.match(shader,/riverHydroTex\s*=\s*texture\(uRiverTex/);
 /* Visible rivers follow the terrain drainage graph; the coarse weather
@@ -63,7 +63,7 @@ assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'river cubemap must resolve well below t
 assert.match(gpu,/Math\.min\(96,Math\.ceil\(Math\.max\(ang,cellAng\)\*riverGpuN\*3\.2\)\)/,'long physical graph links need dense spherical samples rather than chunky segments');
 assert.match(gpu,/const amp=cellAng\*\(0\.12\+0\.06\*Math\.abs\(h2\)\)/,'corridor meander must stay small: visible wiggles belong to the sub-grid channel');
 assert.ok(gpu.includes('riverGpuPaintVisualBranches'),'GPU bridge must paint the fine tributary overlay');
-assert.match(gpu,/RIVER_LOOP_FILTER_MODEL=4/,'terrain drainage model missing');
+assert.match(gpu,/RIVER_LOOP_FILTER_MODEL=5/,'terrain drainage model missing');
 assert.ok(gpu.includes('riverDrainageBuild')&&gpu.includes('riverDrainageRaster'));
 
 assert.doesNotMatch(shader,/riverGuide147|riverBasinPermit147|riverGeomProc\*physRiverHalo/,
