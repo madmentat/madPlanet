@@ -35,9 +35,13 @@ vec2 riverChannelSample(vec3 d,float footprint){
       else if(aq.y>=aq.z)edgeFace=query.y>=0.0?2:3;
       else edgeFace=query.z>=0.0?4:5;
     }
-    float widthBin=floor(edge.r/8.0+0.5);
-    if(widthBin<0.5)continue;
-    vec3 a=riverFaceDirection(edgeFace,vec2(edge.r-widthBin*8.0,edge.g));
+    // One RGBA32F texel stores one segment and TWO 4-bit widths.
+    // The visible line grows smoothly with accumulated upstream discharge.
+    float widthCode=floor(edge.r/8.0+0.5);
+    if(widthCode<0.5)continue;
+    float widthA=mod(widthCode,16.0),widthB=floor(widthCode/16.0);
+    if(widthA<0.5||widthB<0.5)continue;
+    vec3 a=riverFaceDirection(edgeFace,vec2(edge.r-widthCode*8.0,edge.g));
     vec3 b=riverFaceDirection(edgeFace,edge.ba),ab=b-a;
     float t=clamp(dot(d-a,ab)/max(dot(ab,ab),1e-12),0.0,1.0);
     vec3 center=normalize(a+ab*t);
@@ -63,11 +67,18 @@ vec2 riverChannelSample(vec3 d,float footprint){
     // From orbit, a realistic sub-pixel channel vanishes completely.
     // Keep a 1..2 pixel cartographic stroke without widening the rivers in
     // world metres, and fade it naturally when the camera zooms closer.
+    float smoothT=t*t*(3.0-2.0*t);
+    float widthBin=mix(widthA,widthB,smoothT);
     float physicalHalfWidth=mix(0.000008,0.00012,pow(widthBin/15.0,1.6));
     float halfWidth=max(physicalHalfWidth,footprint*mix(0.46,0.75,widthBin/15.0));
     float aa=max(0.000004,footprint*0.48);
     float ink=1.0-smoothstep(max(0.0,halfWidth-aa),halfWidth+aa,distance);
     ink*=clamp(halfWidth/max(aa,0.000004),0.66,1.0);
+    // On a continent-wide view favor main stems; closer in, show feeders.
+    // This is only cartographic visibility, not a change to the river graph.
+    float close=clamp(physicalHalfWidth/max(footprint*0.8,1e-6),0.0,1.0);
+    float prominence=0.18+0.82*widthBin/15.0;
+    ink*=mix(prominence,1.0,close);
     float plain=1.0-smoothstep(halfWidth*2.0,halfWidth*8.0+aa,distance);
     result=max(result,vec2(ink,plain));
   }
