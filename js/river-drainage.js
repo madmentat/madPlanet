@@ -140,7 +140,7 @@ function riverDrainageRaster(grid,network,M){
   const best=Array.from({length:6},()=>new Float32Array(M*M).fill(Infinity));
   const upstream=riverDrainagePrimaryUpstream(network);
   const seen=new Set(),padding=3,scale=M*0.5;
-  const subdivisions=4,curve=new Float64Array((subdivisions+1)*3);
+  const subdivisions=2,curve=new Float64Array((subdivisions+1)*3);
   let segments=0;
   for(let i=0;i<down.length;i++){
     if(!channel[i])continue;
