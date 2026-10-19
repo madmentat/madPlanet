@@ -153,7 +153,7 @@ function riverLoopNeighborIndex(face,x,y,dx,dy,N,tmpDir,tmpUv){
 }
 function riverLoopEnsureTexture(N){
   const maxUnits=Number(gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS))||8;
-  riverLoopSupported=webglVersion>=2&&maxUnits>RIVER_LOOP_TEX_UNIT;
+  riverLoopSupported=!riverLoopSamplerFailed&&webglVersion>=2&&maxUnits>RIVER_LOOP_TEX_UNIT;
   if(!riverLoopSupported){riverLoopReady=false;return false;}
   if(riverLoopTex&&riverLoopN===N)return true;
   if(riverLoopTex)gl.deleteTexture(riverLoopTex);
@@ -170,7 +170,7 @@ function riverLoopEnsureTexture(N){
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);
   if(atlasError!==gl.NO_ERROR){
     gl.deleteTexture(riverLoopTex);riverLoopTex=null;
-    riverLoopSupported=false;riverLoopReady=false;riverLoopN=0;
+    riverLoopSupported=false;riverLoopReady=false;riverLoopSamplerFailed=true;riverLoopN=0;
     console.warn('[madPlanet] Packed integer river atlas unavailable:',atlasError);
     return false;
   }
@@ -196,7 +196,7 @@ function riverLoopBuildMask(core){
   const uploadError=gl.getError();
   gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);gl.activeTexture(gl.TEXTURE0);
   if(uploadError!==gl.NO_ERROR){
-    riverLoopReady=false;riverLoopSamplerFailed=true;
+    riverLoopReady=false;riverLoopSupported=false;riverLoopSamplerFailed=true;
     console.warn('[madPlanet] Packed river atlas upload failed:',uploadError);
     return false;
   }
