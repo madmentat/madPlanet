@@ -79,7 +79,7 @@ function run(N,seed){
   allSamples+=samples;allSeams+=seams;allSecondary+=secondary;
   allMissing+=missing;allSegments+=atlas.segments;
 }
-for(const [N,seed] of [[20,8127344],[48,8127344],[96,8127344],
+for(const [N,seed] of [[20,8127344],[48,8127344],[96,8127344],[160,8127344],
                         [48,55807208],[48,5569959]])
   run(N,seed);
 assert.ok(allSeams>1000,'test must exercise actual cube seams');
