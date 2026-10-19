@@ -1,11 +1,12 @@
-VERSION 0.5.181
-Changes: reliably visible, artistically routed surface rivers.
-  - Catchment-based D8 topology routes only downhill, including lake mouths.
-  - Small cached offsets break rigid cell-grid river paths; inexpensive shader bends keep common junctions.
-  - Deferred river atlas generation resumes after asynchronous terrain shader compilation.
-  - Orbital display uses a limited screen-space line-width floor so real rivers are not subpixel-invisible.
-  - Single analytic raster segment per drainage edge; no expensive multi-segment CPU spline passes.
-Validation: Node regression suite, deferred-atlas retry regression, synthetic one-mouth/downhill checks.
-Regression seeds: 8127344, 55807208, 5569959.
-Compatibility: routed rivers need WebGL2 and at least nine fragment texture units; fallback renderer has no rivers.
-Release rule: every new archive increments patch version by 0.0.1 and is named madPlanet-X.Y.Z.zip.
+VERSION 0.5.182
+Changes: river hydrography and atlas-confluence reliability.
+  - Track cubed-sphere catchments and audit source, mouth, slope and continuity invariants.
+  - Derive river width from accumulated discharge and interpolate both endpoint widths.
+  - Keep two nearby tributaries in one 14-bit RGBA32UI cubemap texel, preserving narrow confluences.
+  - Test packed cubemap continuity across face seams and fixed seeds up to N=160.
+  - Prevent integer/float sampler unit aliasing; use an initialized integer fallback when rivers are unavailable.
+  - Retire obsolete CPU rasterization, blending and conversion of legacy weather-river pixels; preserve lakes.
+  - Validate isolated river shader and full GLSL ES 300 planet fragment in CI.
+Validation: GitHub Actions full regression, GLSL compiler, synthetic basin/shoreline tests.
+Compatibility: routed rivers require WebGL2; fallback mode retains planet/lakes without river overlay.
+Release rule: increment patch version on each release and name archives madPlanet-X.Y.Z.zip.
