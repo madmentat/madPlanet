@@ -54,6 +54,7 @@ function run(N,seed){
   const net=ctx.riverDrainageBuild(h,water,wet,grid.neighbors,grid.area,
     {sourceArea:2*(N/160)**2,sourceInset:3});
   const M=N*2,atlas=ctx.riverDrainageRaster(grid,net,M);
+  const geometry=ctx.riverDrainageCurveGeometry(grid,net);
   const audit=ctx.riverDrainageDiagnostics(net);
   assert.equal(audit.uphill,0);assert.equal(audit.dangling,0);
   assert.ok(atlas.segments>100,'scenario should contain rivers');
@@ -61,13 +62,16 @@ function run(N,seed){
   const missingExamples=[];
   for(let i=0;i<net.down.length;i++){
     if(!net.channel[i])continue;
-    const j=net.down[i],art=grid.artDirs,real=grid.dirs;
-    const aDirs=net.coastDistance[i]<=2?real:art;
-    const bDirs=net.water[j]||net.coastDistance[j]<=2?real:art;
-    const a=aDirs.subarray(3*i,3*i+3),b=bDirs.subarray(3*j,3*j+3);
+    const j=net.down[i];
     for(const t of [0.12,0.5,0.88]){
-      const v=[a[0]*(1-t)+b[0]*t,a[1]*(1-t)+b[1]*t,a[2]*(1-t)+b[2]*t];
-      const norm=Math.hypot(...v);for(let k=0;k<3;k++)v[k]/=norm;
+      const part=Math.min(ctx.RIVER_DRAINAGE_CURVE_STEPS-1,
+        Math.floor(t*ctx.RIVER_DRAINAGE_CURVE_STEPS));
+      const a=[0,0,0],b=[0,0,0],v=[0,0,0];
+      ctx.riverDrainageCurvePoint(geometry,i,j,
+        part/ctx.RIVER_DRAINAGE_CURVE_STEPS,a);
+      ctx.riverDrainageCurvePoint(geometry,i,j,
+        (part+1)/ctx.RIVER_DRAINAGE_CURVE_STEPS,b);
+      ctx.riverDrainageCurvePoint(geometry,i,j,t,v);
       const found=storedEdgeAvailable(atlas,M,v,a,b);
       samples++;if(found.seam)seams++;
       if(found.slot===1)secondary++;
