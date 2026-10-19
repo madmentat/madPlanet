@@ -142,14 +142,44 @@ function riverDrainageProject(face,x,y,z){
    Paths are cubic curves with shared vertices. No RGBA32UI bit packing,
    no distance-search fragment shader, no screen-dependent linewidths. */
 
+/* Distinct geography and paint:
+   D8 chooses ONLY which cells drain to the sea. The displayed river follows
+   a locally-smoothed continuous centerline, not the eight grid directions.
+   Interior bends are stable in world space; the coast remains anchored.
+   This is inexpensive: a few O(n) CPU passes only when terrain changes. */
 function riverDrainageCurveGeometry(grid,network){
   const n=network.down.length,main=riverDrainagePrimaryUpstream(network);
   const src=grid.artDirs||grid.dirs,real=grid.dirs,coast=network.coastDistance;
   const pos=new Float64Array(n*3),tangent=new Float64Array(n*3);
   for(let i=0;i<n;i++){
-    const k=i*3,p=coast[i]<=2?real:src;
+    const k=i*3,p=coast[i]<=1?real:src;
     pos[k]=p[k];pos[k+1]=p[k+1];pos[k+2]=p[k+2];
   }
+  // Smooth the principal upstream/downstream route across several nodes.
+  // This removes the staircase's obvious 45/90-degree kinks but changes
+  // vertex position by at most 0.45 cell, inside its original local valley.
+  const relax=new Float64Array(pos.length),maxShift=0.9/grid.N;
+  for(let pass=0;pass<3;pass++){
+    relax.set(pos);
+    for(let i=0;i<n;i++){
+      if(!network.channel[i]||coast[i]<=3||main[i]<0)continue;
+      const j=network.down[i],u=main[i];
+      if(j<0||!network.channel[j])continue;
+      const k=3*i,pk=3*u,qk=3*j;
+      let x=.52*pos[k]+.24*(pos[pk]+pos[qk]);
+      let y=.52*pos[k+1]+.24*(pos[pk+1]+pos[qk+1]);
+      let z=.52*pos[k+2]+.24*(pos[pk+2]+pos[qk+2]);
+      let inv=1/(Math.hypot(x,y,z)||1);x*=inv;y*=inv;z*=inv;
+      const dx=x-real[k],dy=y-real[k+1],dz=z-real[k+2];
+      const dist=Math.hypot(dx,dy,dz),limit=Math.min(1,maxShift/Math.max(1e-12,dist));
+      x=real[k]+dx*limit;y=real[k+1]+dy*limit;z=real[k+2]+dz*limit;
+      inv=1/(Math.hypot(x,y,z)||1);
+      relax[k]=x*inv;relax[k+1]=y*inv;relax[k+2]=z*inv;
+    }
+    pos.set(relax);
+  }
+  // Tangents are shared by every edge at a confluence. There is no
+  // independent bend or corner injected in the fragment shader.
   for(let i=0;i<n;i++)if(network.channel[i]){
     const j=network.down[i];if(j<0)continue;
     const k=3*i,d=3*j,u=main[i],z=3*u;
@@ -161,7 +191,7 @@ function riverDrainageCurveGeometry(grid,network){
     const len=Math.hypot(x,y,w)||1;
     const edge=Math.hypot(pos[d]-pos[k],pos[d+1]-pos[k+1],pos[d+2]-pos[k+2]);
     const prev=u>=0?Math.hypot(pos[z]-pos[k],pos[z+1]-pos[k+1],pos[z+2]-pos[k+2]):edge;
-    const strength=0.75*Math.min(edge,prev)/len;
+    const strength=0.92*Math.min(edge,prev)/len;
     tangent[k]=x*strength;tangent[k+1]=y*strength;tangent[k+2]=w*strength;
   }
   return {pos,tangent,channel:network.channel,coastDistance:coast,height:network.height,main};
@@ -171,8 +201,10 @@ function riverDrainageCurvePoint(g,i,j,t,out){
   const tt=t*t,ttt=tt*t,s=1-t;
   const h0=2*ttt-3*tt+1,h1=ttt-2*tt+t;
   const h2=-2*ttt+3*tt,h3=ttt-tt;
-  const strength=coastDistance[i]<=2||coastDistance[j]<=2?
-    0:Math.max(0.3,1-4*Math.abs(height[i]-height[j]));
+  // Smooth bends right to the river mouth; only the final ocean crossing
+  // is straighter. Previous coast<=2 made kilometer-long straight comb teeth.
+  const strength=coastDistance[j]===0?0.52:
+    Math.max(0.70,1-1.8*Math.abs(height[i]-height[j]));
   const d0=pos[l]-pos[k],d1=pos[l+1]-pos[k+1],d2=pos[l+2]-pos[k+2];
   const m0=tangent[k],m1=tangent[k+1],m2=tangent[k+2];
   const n0=channel[j]?tangent[l]:d0*0.75;
@@ -203,7 +235,7 @@ function riverDrainageDrawDab(faces,M,dir,radius){
     const y0=Math.max(0,Math.floor(y-r)),y1=Math.min(M-1,Math.ceil(y+r));
     for(let py=y0;py<=y1;py++)for(let px=x0;px<=x1;px++){
       const d=Math.hypot(px-x,py-y);
-      const cover=Math.min(1,Math.max(0,radius+0.65-d));
+      const cover=Math.min(1,Math.max(0,radius+0.42-d));
       if(cover<=0)continue;
       const k=(py*M+px)*4,alpha=Math.round(255*cover);
       if(buf[k]<alpha)buf[k]=alpha;
@@ -241,7 +273,7 @@ function riverDrainageRaster(grid,network,M){
       const w=wa+(wb-wa)*(t*t*(3-2*t));
       // Half width in cube-map UV: this is a fixed geographic width.
       // Trunks show up from orbit, narrow tributaries at regional zoom.
-      const radius=M*(0.00070+0.0060*Math.pow(w,2.2));
+      const radius=M*(0.00050+0.0040*Math.pow(w,2.0));
       riverDrainageDrawDab(faces,M,p,radius);
       painted++;
     }
