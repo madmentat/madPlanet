@@ -90,110 +90,56 @@ for(let i=0;i<n;i++)if(network.channel[i]){
   assert.ok(heights[network.down[i]]<=heights[i]);
   assert.ok(water[network.down[i]]||network.channel[network.down[i]]);
 }
-const raster=ctx.riverDrainageRaster(grid,network,56);assert.ok(raster.segments>100);
-// Each visible branch shares its endpoint with every branch at the junction.
-// The tiny offsets are cached per vertex and deterministic across builds.
-const copy=ctx.riverDrainageGrid(14);
-let offsetVertices=0;
-for(let i=0;i<n;i++){
-  const orig=grid.dirs.subarray(3*i,3*i+3),art=grid.artDirs.subarray(3*i,3*i+3);
-  const delta=Math.hypot(...orig.map((v,k)=>v-art[k]));
-  assert.ok(delta<0.04,'artistic vertex must remain within its drainage cell');
-  if(delta>1e-5)offsetVertices++;
-  for(let k=0;k<3;k++)assert.equal(art[k],copy.artDirs[3*i+k],
-    'the same seed/grid must draw the same river vertices');
+const shader=fs.readFileSync(path.join(__dirname,'../shaders/river-channels.glsl'),'utf8');
+const surface=fs.readFileSync(path.join(__dirname,'../shaders/surface.glsl'),'utf8');
+assert.match(shader,/texture\(uRiverLoopTex,normalize\(d\)\)\.r/,
+  'one ordinary prepainted RGBA8 mask lookup must draw the rivers');
+assert.doesNotMatch(shader,/uvec4|for\(int slot|widthBin|physicalHalfWidth/,
+  'no packed atlas or per-pixel analytic geometric searches');
+assert.doesNotMatch(surface,/float floodplain=drainage\.y/,
+  'do not reintroduce artificial dark bank halos');
+assert.match(surface,/float dryChannel = riverGeom\*land\*\(1\.0-hotLiquidGate\)/,
+  'same geographical channel should be represented by dry sediment at high heat');
+
+const raster=ctx.riverDrainageRaster(grid,network,96);
+assert.ok(raster.segments>100);
+assert.ok(raster.painted>raster.segments,'draw sampled curves, not angular D8 sticks');
+assert.equal(raster.resolution,96);
+let paintedPixels=0;
+const reds=new Set();
+for(const face of raster.faces){
+  assert.ok(face instanceof Uint8Array||face.constructor.name==='Uint8Array');
+  assert.equal(face.length,96*96*4);
+  for(let k=0;k<face.length;k+=4){
+    const r=face[k];
+    assert.equal(face[k+1],0);assert.equal(face[k+2],0);
+    assert.equal(face[k+3],255,'plain RGBA8 cubemap must be opaque');
+    if(r){paintedPixels++;reds.add(r);}
+  }
 }
-assert.ok(offsetVertices>n*0.8,'artistic offsets should break D8 compass-line regularity');
+assert.ok(paintedPixels>600,'actual GPU-uploadable river mask must contain visible pixels');
+assert.ok(reds.size>5,'mask must store smooth antialiasing rather than binary lines');
+
+// Geometry is static and repeatable, independent of camera and of water
+// phase; never recalculate channels in a per-pixel shader.
+const repeat=ctx.riverDrainageRaster(grid,network,96);
+for(let f=0;f<6;f++)
+  assert.deepEqual(Buffer.from(repeat.faces[f]),Buffer.from(raster.faces[f]),
+    'the same terrain/seed yields the same painted river map');
+
+// Width must be an attribute of discharge, not a constant on every river.
+// Every edge ends at water or another downhill channel in one outlet basin.
 for(let i=0;i<n;i++)if(network.channel[i]){
   const j=network.down[i];
-  assert.ok(j>=0&&network.reachesWater[i]&&!network.water[i]);
+  assert.equal(network.basin[i],network.basin[j]);
   assert.ok(network.height[j]<=network.height[i]);
-  // Only the final edge may enter water; no river flows out of any ocean/lake.
   if(network.water[j])assert.equal(network.down[j],-1);
 }
-
-// CPU builds coherent cubic centerlines with shared downstream tangents.
-// There are two analytic chords per terrain edge, with no random shader wiggle.
-const shader=fs.readFileSync(path.join(__dirname,'../shaders/river-channels.glsl'),'utf8');
-const geometry=ctx.riverDrainageCurveGeometry(grid,network);
-let curved=0,inspected=0;
-for(let i=0;i<n;i++)if(network.channel[i]&&network.coastDistance[i]>3){
-  const j=network.down[i];if(network.coastDistance[j]<=3)continue;
-  const a=[0,0,0],b=[0,0,0],m=[0,0,0];
-  ctx.riverDrainageCurvePoint(geometry,i,j,0,a);
-  ctx.riverDrainageCurvePoint(geometry,i,j,1,b);
-  ctx.riverDrainageCurvePoint(geometry,i,j,0.5,m);
-  const dot=a[0]*m[0]+a[1]*m[1]+a[2]*m[2];
-  const linear=[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
-  const len=Math.hypot(...linear);
-  const deviation=Math.hypot(m[0]-linear[0]/len,m[1]-linear[1]/len,m[2]-linear[2]/len);
-  inspected++;if(deviation>1e-6)curved++;
-}
-assert.ok(inspected>100&&curved>inspected*0.20,
-  'most rivers must smoothly depart from D8 straight-line chords');
-assert.equal(vm.runInContext('RIVER_DRAINAGE_CURVE_STEPS',ctx),2,
-  'two coherent chords per DEM edge prevent atlas collisions and preserve detail');
-assert.doesNotMatch(shader,/float bow=span\*envelope/,
-  'no independent shader jitter that breaks smooth river tangents');
-assert.match(shader,/physicalHalfWidth\+aa/,
-  'camera footprint may affect anti-aliasing but must not redefine river width');
-const surface=fs.readFileSync(path.join(__dirname,'../shaders/surface.glsl'),'utf8');
-assert.doesNotMatch(surface,/float floodplain=drainage\.y/,
-  'do not paint concentric dirty floodplain halos around every river');
-assert.match(shader,/widthBin=mix\(widthA,widthB,smoothT\)/,
-  'the main stem must preserve smoothly interpolated discharge widths');
-
-// Two segments survive a collision within the SAME RGBA32UI atlas texel.
-// The layout uses all 128 bits, with 14-bit UVs and 4-bit endpoint widths.
-{
-  const arr=new Uint32Array(4),first=[0,1234,16383,8192],second=[16383,8184,14,700];
-  ctx.riverDrainagePackSegment(arr,0,0,first,3,9);
-  ctx.riverDrainagePackSegment(arr,0,1,second,12,15);
-  const unpack0=ctx.riverDrainageUnpackSegment(arr,0,0);
-  const unpack1=ctx.riverDrainageUnpackSegment(arr,0,1);
-  assert.equal(unpack0.widthA,3);assert.equal(unpack0.widthB,9);
-  assert.equal(unpack1.widthA,12);assert.equal(unpack1.widthB,15);
-  for(let c=0;c<4;c++){
-    assert.ok(Math.abs(unpack0.uv[c]-ctx.riverDrainageDecodeUV(first[c]))<1e-12);
-    assert.ok(Math.abs(unpack1.uv[c]-ctx.riverDrainageDecodeUV(second[c]))<1e-12);
-  }
-  ctx.riverDrainagePackSegment(arr,0,0,[42,43,44,45],6,7);
-  assert.equal(ctx.riverDrainageUnpackSegment(arr,0,1).widthA,12,
-    'replacing the main stem must not erase the tributary slot');
-  ctx.riverDrainageShiftPrimaryToSecondary(arr,0);
-  assert.equal(ctx.riverDrainageUnpackSegment(arr,0,1).widthA,6);
-  assert.equal(ctx.riverDrainageUnpackSegment(arr,0,1).widthB,7);
-  assert.equal(arr[0]>>>28,6);assert.equal(arr[2]>>>28,6);
-}
-let primaryTexels=0,secondaryTexels=0;
-for(let f=0;f<6;f++)for(let k=0;k<raster.faces[f].length;k+=4){
-  const a=raster.faces[f],p=ctx.riverDrainageUnpackSegment(a,k,0);
-  const q=ctx.riverDrainageUnpackSegment(a,k,1);
-  if(!p.widthA){assert.equal(q.widthA,0);continue;}
-  primaryTexels++;
-  assert.ok(p.widthA>=1&&p.widthA<=15&&p.widthB>=p.widthA&&p.widthB<=15);
-  if(q.widthA){
-    secondaryTexels++;
-    assert.ok(q.widthA>=1&&q.widthA<=15&&q.widthB>=q.widthA&&q.widthB<=15);
-  }
-  for(let c=0;c<4;c++){
-    assert.ok(Number.isFinite(p.uv[c])&&Math.abs(p.uv[c])<=1.125001);
-    if(q.widthA)assert.ok(Number.isFinite(q.uv[c])&&Math.abs(q.uv[c])<=1.125001);
-  }
-}
-assert.ok(secondaryTexels>0,'close confluences must retain multiple segments');
-assert.equal(secondaryTexels,raster.secondSlots);
-assert.ok(primaryTexels>secondaryTexels,'secondary candidates must not fill every margin');
-const header=fs.readFileSync(path.join(__dirname,'../shaders/header.glsl'),'utf8');
-assert.match(header,/uniform highp usamplerCube uRiverLoopTex;/);
-assert.match(shader,/uvec4 edge=texture\(uRiverLoopTex,query\)/,
-  'integer atlas should need only one cubemap read for two edges');
-assert.match(shader,/for\(int slot=0;slot<2;slot\+\+\)/,
-  'both confluence candidates must be considered');
-
-for(let i=0;i<n;i++){
-  const d=grid.dirs.subarray(3*i,3*i+3),tmp={};ctx.riverGpuDirToFaceUV(...d,tmp);
-  const p=ctx.riverDrainageProject(tmp.face,...d);
-  assert.ok(Math.abs(p[0]-tmp.u)<1e-10&&Math.abs(p[1]-tmp.v)<1e-10,'endpoint projection must match the renderer at every cube face');
-}
-console.log('river-drainage.test.js: OK');
+const maskGpu=fs.readFileSync(path.join(__dirname,'../js/river-gpu.js'),'utf8');
+assert.match(maskGpu,/gl\.RGBA,gl\.UNSIGNED_BYTE,riverLoopFaces\[f\]/,
+  'the raw painted mask should upload as RGBA8, never uint encoded');
+assert.doesNotMatch(maskGpu,/RGBA32UI|gl\.RGBA_INTEGER|UNSIGNED_INT/,
+  'integer river atlas has been removed');
+console.log('river-drainage.test.js: OK',JSON.stringify({
+  channels:raster.segments,strokes:raster.painted,paintedPixels,shadeLevels:reds.size
+}));
