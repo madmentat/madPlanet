@@ -17,7 +17,7 @@ function run(){
   state.seed=seeds[next];state.sea=0.40;deriveWorld();
   const core={N:32,count:6144,seed:state.seed,h2oSurfaceSignature:'probe'};
   if(!riverLoopBuildMask(core)){setTimeout(run,250);return;}
-  if(core.riverLoopSampling!=='gpu-terrain')throw Error('GPU sampling unavailable');
+  if(core.riverLoopSampling!=='painted-rgba8')throw Error('GPU sampling unavailable');
   const grid=riverDrainageGridCache,N=grid.N;
   const network=riverDrainageBuild(sampled.height,sampled.water,sampled.moisture,grid.neighbors,grid.area,{sourceArea:2*(N/160)**2});
   const incoming=new Int32Array(network.down.length);let segments=0,mouths=0,sources=0;

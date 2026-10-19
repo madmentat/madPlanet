@@ -1,10 +1,11 @@
-VERSION 0.5.184
-Changes: restore river visibility at orbit/zoom while retaining the smooth 0.5.183 topology.
-  - Fix nearly invisible rivers introduced in 0.5.183 by multiplying subpixel river coverage by physical width divided by screen footprint.
-  - Keep flow-derived physical channel widths and the coherent two-chord Hermite river geometry.
-  - Smooth the river silhouette using footprint-based antialiasing but never fade the centerline toward zero at orbital zoom.
-  - Retain removal of artificial dark parallel riparian halos.
-  - Add orbital-to-close-up shader coverage regression to the mandatory CI suite.
-  - Keep WebGL2 integer atlas diagnostics; GPU runtime verification on desktop and Android remains necessary.
-Validation: Node regression suite, GLSL ES 300 compile and continuity tests.
+VERSION 0.5.185
+Changes: replace failed analytic river rendering with an ordinary geographic channel mask.
+  - Routes follow the displayed terrain downhill, terminate at a single water outlet, and never create ocean-to-ocean canals.
+  - Static mask painted from smooth curves with varying width, independent of camera zoom and Weather Core tick state.
+  - One RGBA8 cubemap on texture unit 1, supported by WebGL2 mobile GPUs with 8 texture units.
+  - Eliminate integer cubemap bitpacking, nearest-neighbor segment search, and 18 GLSL candidates per fragment.
+  - Land lighting flattens along channels; lakes/craters remain terrain-derived.
+  - Hot planets expose the same mask as sediment and dust instead of liquid water.
+  - No invented dark parallel riparian contour stripes.
+Validation: render/paint mask numeric tests, GLSL compile, regressions.
 Release rule: increment patch version on each release and name archives madPlanet-X.Y.Z.zip.

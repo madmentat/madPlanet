@@ -27,9 +27,12 @@ assert.match(visual,/\(basin\[j\]\|0\)!==b0/,'visual branches must stay inside t
 assert.match(visual,/dj<d0/,'visual branches must move toward a diagnosed receiver');
 assert.match(visual,/dj>d0/,'reverse feeder tracing must move away from the receiver before reversal');
 assert.match(visual,/kind:'feeder'/,'display graph needs explicit fine side feeders');
-assert.match(gpu,/RIVER_GPU_MODEL=10/);
-assert.match(gpu,/RIVER_GPU_UPSCALE=16/,'desktop authoritative river reconstruction is 16x');
-assert.ok(gpu.includes('riverGpuPaintVisualBranches')&&gpu.includes('riverVisualBranches'),'GPU bridge must rasterize fine tributaries');
+assert.match(gpu,/RIVER_GPU_MODEL=11/);
+assert.match(gpu,/RIVER_GPU_UPSCALE=16/);
+assert.ok(gpu.includes('riverDrainageBuild')&&gpu.includes('riverDrainageRaster'),
+  'visible river geography must use the terrain-constrained drainage painter');
+assert.doesNotMatch(gpu,/riverGpuPaintVisualBranches\(/,
+  'legacy tributaries no longer need to be painted every Weather Core tick');
 
 /* 0.5.142: the second shadeSurface wrapper was expensive on mobile because it
    duplicated river sampling and could call the 5-tap/two-texture fog sampler a
@@ -39,12 +42,9 @@ assert.ok(gpu.includes('riverGpuPaintVisualBranches')&&gpu.includes('riverVisual
 assert.doesNotMatch(surfacePre,/#define shadeSurface shadeSurfaceLegacy/,'surface shader must not be renamed for a second river pass');
 assert.doesNotMatch(surfacePost,/vec3 shadeSurface\s*\(/,'postlude must not add a duplicate surface shader pass');
 assert.doesNotMatch(surfacePost,/physicalFogSample|texture\s*\(\s*uRiverTex/,'postlude must not duplicate weather/river cubemap reads');
-assert.match(pacing,/RIVER_VISUAL_POLISH_MODEL=1/,'late river visual polish missing');
-assert.match(pacing,/return mobile\?Math\.max\(8,n\*6\):displayBefore\(coreN\)/,'mobile river display must use the cheaper 6x reconstruction');
-assert.match(pacing,/claimedReceiver/,'adjacent feeder receivers must be pruned to prevent comb patterns');
-assert.match(pacing,/cells\.length<3/,'one-cell feeder teeth must be rejected');
-assert.match(pacing,/0\.105\+0\.115\*Math\.sqrt\(strength\)/,'fine feeder brush must stay narrow');
-assert.match(pacing,/0\.46\+0\.36\*strength/,'fine river centre line must carry enough signal to survive the legacy surface gate');
+assert.match(pacing,/RIVER_VISUAL_POLISH_MODEL=1/,
+  'weather stream routing refinement remains available to physical diagnostics');
+assert.match(pacing,/return mobile\?Math\.max\(8,n\*6\):displayBefore\(coreN\)/);
 for(const build of [sh,ps]){
   assert.ok(build.indexOf('js/river-routing-refinement.js')<build.indexOf('js/river-visual-tributaries.js'));
   assert.ok(build.indexOf('js/river-visual-tributaries.js')<build.indexOf('js/river-gpu.js'));

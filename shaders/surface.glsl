@@ -95,6 +95,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
 
   vec2 drainage=riverChannelSample(normalize(sN),tHit*uPixA);
   float riverGeom=drainage.x;
+  // Flatten the *appearance* of land lighting directly beneath water.
+  // The river itself is a fixed painted world-space mask; we do not deform
+  // shoreline topology, or let normal bumps make thin water look broken.
+  nS=normalize(mix(nS,n0,clamp(riverGeom*0.92,0.0,1.0)));
   // Do not shade a concentric near-black band around every rendered river.
   // The old drainage.y floodplain expanded to eight river radii and made
   // double dark "worms" even when the water itself was a thin stream.
@@ -257,6 +261,15 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
     alb = mix(alb, inlandWater, inlandLiquid*0.90);
     alb = mix(alb, inlandIce, frozenRv*0.96);
   }
+
+  // Riverbeds are part of geography, not an instruction to create water.
+  // A hot planet retains the same excavated channel as an exposed dusty/
+  // sedimentary bed. Ordinary/cold planets keep water or ice below.
+  // Craters and natural depressions remain controlled by the terrain field.
+  float dryChannel = riverGeom*land*(1.0-hotLiquidGate);
+  vec3 bedSediment = mix(vec3(0.39,0.30,0.20),vec3(0.49,0.39,0.27),
+                         ss(0.25,0.85,mo2));
+  alb = mix(alb,bedSediment,dryChannel*0.78*(1.0-snowM));
 
   alb = mix(alb, snowC, snowM);
 

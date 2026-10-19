@@ -72,9 +72,8 @@ uniform float uCryosphereBlend;
 uniform samplerCube uRiverTex;
 uniform float uRiverBlend;
 uniform float uRiverPhysicsOn;
-/* Analytic drainage segments on the rendered terrain (RGBA32F endpoints).
-   No noise-contour rivers are drawn while this graph is unavailable. */
-uniform highp usamplerCube uRiverLoopTex;
+/* Static painted RGBA8 river mask, independent of camera zoom. */
+uniform samplerCube uRiverLoopTex;
 uniform float uRiverLoopOn;
 uniform vec4  uCycA[5];   /* 0.5.52 bridge: xyz lightning centre, w stays 0 */
 uniform vec4  uCycB[5];   /* x radius, y flash rate, z electrical strength, w phase */

@@ -1,6 +1,6 @@
 /* node tests/river-render-probe.js, then open /river-render.tmp.html.
-   Exercises the production GPU terrain sampler, routing, endpoint texture,
-   and actual riverChannelSample GLSL at points along every routed segment. */
+   Exercises the production GPU terrain sampler, routed painted mask,
+   and actual riverChannelSample GLSL at points along drawn curves. */
 const fs=require('node:fs'),path=require('node:path');
 const root=path.join(__dirname,'..'),read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const prefix=['#version 300 es',read('shaders/header.glsl'),read('shaders/noise.glsl'),read('shaders/terrain.glsl')].join('\n');
@@ -46,38 +46,34 @@ function run(){try{
  if(ext&&!gl.getProgramParameter(program,ext.COMPLETION_STATUS_KHR)){setTimeout(run,200);return;}
  if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));
  gl.useProgram(program);const loc=n=>gl.getUniformLocation(program,n);
- gl.uniform1i(loc('uRiverLoopTex'),8);gl.uniform1f(loc('uRiverLoopOn'),1);
- gl.activeTexture(gl.TEXTURE8);gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverLoopTex);
+ gl.uniform1i(loc('uRiverLoopTex'),1);gl.uniform1f(loc('uRiverLoopOn'),1);
+ gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_CUBE_MAP,riverLoopTex);
  gl.uniformMatrix3fv(loc('uRotS'),false,[1,0,0,0,1,0,0,0,1]);gl.uniform3fv(loc('uSeedS'),world.seedS);
  for(const [u,k] of [['uCont','cont'],['uSea','sea'],['uTect','tect'],['uIsle','isle'],['uLake','lake']])gl.uniform1f(loc(u),state[k]);
  gl.uniform1f(loc('uDraft'),1);gl.uniform1f(loc('uCamDist'),4);gl.uniform1i(loc('uPlateN'),world.plateN);
  gl.uniform4fv(loc('uPlateP'),world.plateP);gl.uniform4fv(loc('uPlateW'),world.plateW);
  const grid=riverDrainageGridCache;
  const net=riverDrainageBuild(sampled.height,sampled.water,sampled.moisture,grid.neighbors,grid.area,{sourceArea:2});
- // Check the curved centerlines of the actual packed atlas, not D8
- // cell centres: those intentionally do not coincide with rendered rivers.
- const points=[],samples={primary:0,secondary:0,seams:0};
- function dirAt(f,u,v){
-  const out=[0,0,0];riverLoopFaceDir(f,(u+1)*0.5,(1-v)*0.5,1,out);return out;
- }
- function mid(a,b,t){
-  const x=a[0]+(b[0]-a[0])*t,y=a[1]+(b[1]-a[1])*t,z=a[2]+(b[2]-a[2])*t;
-  const r=Math.hypot(x,y,z);return [x/r,y/r,z/r];
- }
- const stride=Math.max(1,Math.ceil(6*riverLoopN*riverLoopN/24000));
- for(let f=0;f<6;f++)for(let k=0;k<riverLoopN*riverLoopN;k+=stride){
-  for(const slot of [0,1]){
-   const p=riverDrainageUnpackSegment(riverLoopFaces[f],4*k,slot);
-   if(!p.widthA)continue;
-   const d=mid(dirAt(f,p.uv[0],p.uv[1]),dirAt(f,p.uv[2],p.uv[3]),0.5);
-   const loc={};riverGpuDirToFaceUV(d[0],d[1],d[2],loc);
-   if(loc.face!==f)continue; // overlapping seam copies are tested separately
-   if(Math.abs(loc.u)>0.98||Math.abs(loc.v)>0.98)samples.seams++;
-   if(slot)samples.secondary++;else samples.primary++;
-   points.push(d[0],d[1],d[2],1);
+ // Probe actual drawn curve centerlines, rather than obsolete RGBA32UI
+ // endpoint encodings. All sampled positions refer to the painted globe map.
+ const geometry=riverDrainageCurveGeometry(grid,net);
+ const points=[],samples={main:0,seams:0};
+ const countEdges=net.channel.reduce((sum,v)=>sum+v,0);
+ const stride=Math.max(1,Math.ceil(countEdges/11000));
+ let visited=0;
+ const pos=[0,0,0],project={};
+ for(let i=0;i<net.down.length;i++){
+  if(!net.channel[i])continue;
+  if(visited++%stride!==0)continue;
+  for(const t of [0.24,0.5,0.76]){
+   riverDrainageCurvePoint(geometry,i,net.down[i],t,pos);
+   riverGpuDirToFaceUV(pos[0],pos[1],pos[2],project);
+   if(Math.abs(project.u)>0.98||Math.abs(project.v)>0.98)samples.seams++;
+   samples.main++;
+   points.push(pos[0],pos[1],pos[2],1);
   }
  }
- if(points.length<1200)throw Error('Not enough visible atlas channels to probe');
+ if(points.length<1200)throw Error('Not enough painted channels to probe');
  const count=points.length/4,W=256,H=Math.ceil(count/W),data=new Float32Array(W*H*4);data.set(points);
  const tex=gl.createTexture();gl.activeTexture(gl.TEXTURE7);gl.bindTexture(gl.TEXTURE_2D,tex);
  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
@@ -87,11 +83,11 @@ function run(){try{
  let gaps=0;const failed=[];
  for(let i=0;i<count;i++)if(pixels[i*4]<8){gaps++;if(failed.length<12)failed.push({index:i,xyz:points.slice(i*4,i*4+3),value:pixels[i*4]});}
  if(gl.getError()!==gl.NO_ERROR)throw Error('WebGL error');
- results.push({seed:state.seed,samples:count,primary:samples.primary,secondary:samples.secondary,seams:samples.seams,gaps,failed});
+ results.push({seed:state.seed,samples:count,centerlineSamples:samples.main,seams:samples.seams,gaps,failed});
  gl.uniform1i(loc('testMode'),0);gl.viewport(0,0,1200,600);gl.drawArrays(gl.TRIANGLES,0,3);
  const copy=document.createElement('canvas');copy.width=1200;copy.height=600;copy.getContext('2d').drawImage(display,0,0);
  document.body.appendChild(document.createTextNode('Seed '+state.seed));document.body.appendChild(copy);gl.deleteTexture(tex);
- next++;out.textContent=(next===seeds.length?(results.some(r=>r.gaps)?'FAIL':'PASS'):'Running')+': actual channel shader continuity\\n'+JSON.stringify(results,null,2);
+ next++;out.textContent=(next===seeds.length?(results.some(r=>r.gaps)?'FAIL':'PASS'):'Running')+': actual painted-water shader continuity\\n'+JSON.stringify(results,null,2);
  if(next<seeds.length)setTimeout(run,100);
 }catch(e){out.textContent='FAIL: '+e.stack;}}
 run();
