@@ -200,7 +200,7 @@ function riverDrainageShiftPrimaryToSecondary(data,offset){
    a cubic Hermite path through shared vertices instead of independently
    bending each straight 50–100 km edge. Incoming tributaries share exactly
    the same downstream junction and tangent as their receiver. */
-const RIVER_DRAINAGE_CURVE_STEPS=3;
+const RIVER_DRAINAGE_CURVE_STEPS=2;
 function riverDrainageCurveGeometry(grid,network){
   const {down,channel,coastDistance}=network,n=down.length;
   const main=riverDrainagePrimaryUpstream(network);
