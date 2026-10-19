@@ -160,33 +160,28 @@ function riverDrainageDecodeUV(bits){
   return bits*2*RIVER_DRAINAGE_UV_RANGE/RIVER_DRAINAGE_COORD_MAX-RIVER_DRAINAGE_UV_RANGE;
 }
 function riverDrainagePackSegment(data,offset,slot,uv,binA,binB){
-  if(slot===0){
-    // Keep secondary coordinates in bits 10..19 and widths in B/A.
-    data[offset]=(Math.floor(data[offset])&0xffc00)|uv[0]|binA*RIVER_DRAINAGE_WIDTH_SHIFT;
-    data[offset+1]=(Math.floor(data[offset+1])&0xffc00)|uv[1]|binB*RIVER_DRAINAGE_WIDTH_SHIFT;
-    data[offset+2]=(Math.floor(data[offset+2])&0xfff00000)|uv[2]|(Math.floor(data[offset+2])&0xffc00);
-    data[offset+3]=(Math.floor(data[offset+3])&0xfff00000)|uv[3]|(Math.floor(data[offset+3])&0xffc00);
-  }else{
-    // Keep primary coordinates in bits 0..9 and widths in R/G.
-    data[offset]=(Math.floor(data[offset])&0xf00fff)|uv[0]*RIVER_DRAINAGE_SECOND_SHIFT;
-    data[offset+1]=(Math.floor(data[offset+1])&0xf00fff)|uv[1]*RIVER_DRAINAGE_SECOND_SHIFT;
-    data[offset+2]=(Math.floor(data[offset+2])&0x0003ff)
-      |uv[2]*RIVER_DRAINAGE_SECOND_SHIFT|binA*RIVER_DRAINAGE_WIDTH_SHIFT;
-    data[offset+3]=(Math.floor(data[offset+3])&0x0003ff)
-      |uv[3]*RIVER_DRAINAGE_SECOND_SHIFT|binB*RIVER_DRAINAGE_WIDTH_SHIFT;
+  for(let c=0;c<4;c++){
+    const n=Math.floor(data[offset+c]),lo=n%1024;
+    const hi=Math.floor(n/1024)%1024;
+    const oldWidth=Math.floor(n/RIVER_DRAINAGE_WIDTH_SHIFT);
+    const primary=slot===0?uv[c]:lo;
+    const secondary=slot===1?uv[c]:hi;
+    const nibble=slot===0?(c===0?binA:c===1?binB:oldWidth)
+      :(c===2?binA:c===3?binB:oldWidth);
+    data[offset+c]=primary+secondary*RIVER_DRAINAGE_SECOND_SHIFT+
+      nibble*RIVER_DRAINAGE_WIDTH_SHIFT;
   }
 }
 function riverDrainageShiftPrimaryToSecondary(data,offset){
   const r=Math.floor(data[offset]),g=Math.floor(data[offset+1]);
-  const b=Math.floor(data[offset+2]),a=Math.floor(data[offset+3]);
-  const wa=Math.floor(r/RIVER_DRAINAGE_WIDTH_SHIFT);
-  const wb=Math.floor(g/RIVER_DRAINAGE_WIDTH_SHIFT);
-  data[offset]=(r&0xfff000ff)|((r&1023)*RIVER_DRAINAGE_SECOND_SHIFT);
-  data[offset+1]=(g&0xfff000ff)|((g&1023)*RIVER_DRAINAGE_SECOND_SHIFT);
-  data[offset+2]=(b&1023)|((b&1023)*RIVER_DRAINAGE_SECOND_SHIFT)
-    |wa*RIVER_DRAINAGE_WIDTH_SHIFT;
-  data[offset+3]=(a&1023)|((a&1023)*RIVER_DRAINAGE_SECOND_SHIFT)
-    |wb*RIVER_DRAINAGE_WIDTH_SHIFT;
+  const widthA=Math.floor(r/RIVER_DRAINAGE_WIDTH_SHIFT);
+  const widthB=Math.floor(g/RIVER_DRAINAGE_WIDTH_SHIFT);
+  for(let c=0;c<4;c++){
+    const n=Math.floor(data[offset+c]),coord=n%1024;
+    const nibble=c===0?widthA:c===1?widthB:c===2?widthA:widthB;
+    data[offset+c]=coord+coord*RIVER_DRAINAGE_SECOND_SHIFT+
+      nibble*RIVER_DRAINAGE_WIDTH_SHIFT;
+  }
 }
 
 /* The two nearest DIFFERENT drainage edges are cached per atlas texel.
