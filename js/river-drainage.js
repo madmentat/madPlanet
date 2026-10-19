@@ -92,6 +92,21 @@ function riverDrainageWidthBin(Q){
   return Math.max(1,Math.min(15,Math.round(1+1.30*Math.pow(Math.max(0,Q),0.38))));
 }
 
+/* Pick one main donor at every confluence. Its visible edge widens
+   towards the combined downstream flow; smaller side streams remain narrow
+   right up to the junction instead of swelling into identical funnels. */
+function riverDrainagePrimaryUpstream(network){
+  const {down,channel,flow}=network,main=new Int32Array(down.length).fill(-1);
+  for(let i=0;i<down.length;i++){
+    if(!channel[i])continue;
+    const j=down[i];
+    if(j<0||!channel[j])continue;
+    const k=main[j];
+    if(k<0||flow[i]>flow[k]||(flow[i]===flow[k]&&i<k))main[j]=i;
+  }
+  return main;
+}
+
 /* Cheap, build-time hydrography audit. Never called from the fragment shader.
    Each channel has exactly one downstream path; a single outlet per physical
    catchment excludes rivers connecting two opposite ocean shores. */
@@ -133,6 +148,7 @@ function riverDrainageRaster(grid,network,M){
   const faces=Array.from({length:6},()=>new Float32Array(M*M*4));
   const best=Array.from({length:6},()=>new Float32Array(M*M).fill(Infinity));
   const seen=new Set(),padding=3,scale=M*0.5;
+  const mainUpstream=riverDrainagePrimaryUpstream(network);
   let segments=0;
   for(let i=0;i<down.length;i++){
     if(!channel[i])continue;
@@ -152,7 +168,7 @@ function riverDrainageRaster(grid,network,M){
     // At the receiving node, width reflects its new accumulated discharge;
     // both adjacent main-stem edges use that same value, so confluences no
     // longer create one-width-step discontinuities at the graph vertices.
-    const binB=water?.[j]?binA:riverDrainageWidthBin(flow[j]);
+    const binB=!water?.[j]&&mainUpstream[j]===i?riverDrainageWidthBin(flow[j]):binA;
     const widthCode=binA+16*binB;
     for(const face of seen){
       const av=riverDrainageProject(face,...a),bv=riverDrainageProject(face,...b);
