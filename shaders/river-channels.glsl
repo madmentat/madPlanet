@@ -49,41 +49,24 @@ vec2 riverChannelSample(vec3 d,float footprint){
     float t=clamp(dot(d-a,ab)/max(dot(ab,ab),1e-12),0.0,1.0);
     vec3 center=normalize(a+ab*t);
     float distance=length(d-center);
-    // An inexpensive hand-drawn channel: a few polynomial bends inside the
-    // original drainage edge. No new edges or intermediate CPU raster passes.
-    // Stay in a small corridor and vanish at the junctions, so tributaries
-    // meet at their shared graph vertices and cannot bridge other shores.
-    float span=length(ab);
-    if(distance>0.17*span+0.001)continue;
-    vec3 sideways=cross(a,b);
-    float axis2=dot(sideways,sideways);
-    if(axis2>1e-12){
-      float jitter=fract(dot(a,vec3(71.37,153.17,43.23))+
-                        dot(b,vec3(109.83,29.73,197.61)));
-      float jitter2=fract(jitter*3.173+0.417);
-      float envelope=16.0*t*t*(1.0-t)*(1.0-t);
-      float bow=span*envelope*(0.18*(jitter-0.5)+
-                               0.10*(jitter2-0.5)*(2.0*t-1.0));
-      center=normalize(center+sideways*inversesqrt(axis2)*bow);
-      distance=length(d-center);
-    }
-    // From orbit, a realistic sub-pixel channel vanishes completely.
-    // Keep a 1..2 pixel cartographic stroke without widening the rivers in
-    // world metres, and fade it naturally when the camera zooms closer.
+    // Spline curvature now comes from terrain-constrained shared tangents
+    // baked in the atlas. Random bends inside each tiny segment caused
+    // visible kinks and a different-looking river at changing scales.
+    // Reject fragments outside the physically-sized river footprint.
+    if(distance>max(0.001,footprint*1.2))continue;
     float smoothT=t*t*(3.0-2.0*t);
     float widthBin=mix(widthA,widthB,smoothT);
-    float physicalHalfWidth=mix(0.000008,0.00012,pow(widthBin/15.0,1.6));
-    float halfWidth=max(physicalHalfWidth,footprint*mix(0.46,0.75,widthBin/15.0));
-    float aa=max(0.000004,footprint*0.48);
-    float ink=1.0-smoothstep(max(0.0,halfWidth-aa),halfWidth+aa,distance);
-    ink*=clamp(halfWidth/max(aa,0.000004),0.66,1.0);
-    // On a continent-wide view favor main stems; closer in, show feeders.
-    // This is only cartographic visibility, not a change to the river graph.
-    float close=clamp(physicalHalfWidth/max(footprint*0.8,1e-6),0.0,1.0);
-    float prominence=0.18+0.82*widthBin/15.0;
-    ink*=mix(prominence,1.0,close);
-    float plain=1.0-smoothstep(halfWidth*2.0,halfWidth*8.0+aa,distance);
-    result=max(result,vec2(ink,plain));
+    // Geometry has a fixed physical width independent of camera distance.
+    // Footprint only controls antialiasing/subpixel coverage: no 1-2 pixel
+    // cartographic widening, no zoom-dependent river-type appearance.
+    float physicalHalfWidth=mix(0.000008,0.00060,pow(widthBin/15.0,2.3));
+    float aa=max(0.000001,footprint*0.65);
+    float ink=1.0-smoothstep(max(0.0,physicalHalfWidth-aa),
+                              physicalHalfWidth+aa,distance);
+    ink*=min(1.0,physicalHalfWidth/max(aa*0.6,0.000001));
+    // Previous 'plain' was an artificial dark bank halo extending eight
+    // channel radii. Real riparian terrain needs its own geographic model.
+    result=max(result,vec2(ink,0.0));
     }
   }
   return result;

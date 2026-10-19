@@ -23,7 +23,7 @@
 const RIVER_GPU_MODEL=10;
 const RIVER_TEX_UNIT=2;
 const RIVER_LOOP_TEX_UNIT=8;
-const RIVER_LOOP_FILTER_MODEL=5;
+const RIVER_LOOP_FILTER_MODEL=6;
 const RIVER_LOOP_MIN_N=96;
 const RIVER_LOOP_MAX_N=192;
 const RIVER_GPU_UPSCALE=16;
@@ -179,7 +179,10 @@ function riverLoopEnsureTexture(N){
 function riverLoopBuildMask(core){
   if(!core?.N||!world?.seedS)return false;
   const N=Math.max(RIVER_LOOP_MIN_N,Math.min(RIVER_LOOP_MAX_N,Math.round(core.N*5)));
-  const M=N*2;
+  // Two smooth chords per DEM edge need a slightly denser lookup atlas.
+  // 2.5x rather than 2x eliminates lost near-confluence segments without
+  // increasing the nine texture lookups in the fragment shader.
+  const M=Math.round(N*2.5);
   if(!riverLoopEnsureTexture(M))return false;
   const sig=[RIVER_LOOP_FILTER_MODEL,N,...world.seedS,state.cont,
     Number(state.sea).toFixed(3),state.tect,state.isle,state.lake].join('|');
@@ -382,7 +385,7 @@ function riverGpuPaintVisualBranches(core,tmp){
 
 /* The current surface shader consumes only G/A lake channels from this
    historical RGBA8 texture. All visible river strokes are drawn separately
-   from the packed terrain-drainage atlas (RIVER_LOOP_FILTER_MODEL=5).
+   from the packed terrain-drainage atlas (RIVER_LOOP_FILTER_MODEL=6).
    Retain the API/unused legacy paint helpers for compatibility, but do NOT
    spend every Weather Core tick tracing and painting invisible river edges. */
 function riverGpuReadCurrent(core){

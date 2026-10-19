@@ -95,7 +95,10 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
 
   vec2 drainage=riverChannelSample(normalize(sN),tHit*uPixA);
   float riverGeom=drainage.x;
-  float floodplain=drainage.y*(1.0-ss(0.14,0.32,h));
+  // Do not shade a concentric near-black band around every rendered river.
+  // The old drainage.y floodplain expanded to eight river radii and made
+  // double dark "worms" even when the water itself was a thin stream.
+  // A true floodplain needs terrain-aware broad landcover, not a line halo.
 
   float lakeN = fbm(sN*3.4 + uSeedS*3.7 + vec3(53.0), 4);
   float lth = mix(0.46, 0.20, uLake);
@@ -115,7 +118,7 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
   float mo3 = 0.5+0.5*fbm(sN*38.0 + uSeedS*1.5 + vec3(303.0), 2);
   float ecoPatch = clamp(0.42*mo1+0.36*mo2+0.22*mo3,0.0,1.0);
   float lowlandWet = coastal*coastal*(0.30+0.70*soilMoistPhys);
-  float hydroWet = clamp(max(floodplain*0.92,lakeMargin*0.82)+0.18*lowlandWet,0.0,1.0);
+  float hydroWet = clamp(lakeMargin*0.82+0.18*lowlandWet,0.0,1.0);
 
   float ecologyK = surfaceK + (ecoPatch-0.5)*5.0;
   float bioCold = ss(268.0,285.0,ecologyK);

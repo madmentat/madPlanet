@@ -112,19 +112,36 @@ for(let i=0;i<n;i++)if(network.channel[i]){
   if(network.water[j])assert.equal(network.down[j],-1);
 }
 
-// The GPU adds two low-cost, smooth polynomial meanders to each stored edge.
-// Both vanish with zero slope at junctions; the centreline cannot jump into
-// another basin or suddenly create a second estuary.
+// CPU builds coherent cubic centerlines with shared downstream tangents.
+// There are two analytic chords per terrain edge, with no random shader wiggle.
 const shader=fs.readFileSync(path.join(__dirname,'../shaders/river-channels.glsl'),'utf8');
-assert.match(shader,/float envelope=16\.0\*t\*t\*\(1\.0-t\)\*\(1\.0-t\)/,
-  'smooth endpoint-constrained bends must stay in the river shader');
-assert.match(shader,/float bow=span\*envelope/,'bend amplitude must scale with edge length');
+const geometry=ctx.riverDrainageCurveGeometry(grid,network);
+let curved=0,inspected=0;
+for(let i=0;i<n;i++)if(network.channel[i]&&network.coastDistance[i]>3){
+  const j=network.down[i];if(network.coastDistance[j]<=3)continue;
+  const a=[0,0,0],b=[0,0,0],m=[0,0,0];
+  ctx.riverDrainageCurvePoint(geometry,i,j,0,a);
+  ctx.riverDrainageCurvePoint(geometry,i,j,1,b);
+  ctx.riverDrainageCurvePoint(geometry,i,j,0.5,m);
+  const dot=a[0]*m[0]+a[1]*m[1]+a[2]*m[2];
+  const linear=[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+  const len=Math.hypot(...linear);
+  const deviation=Math.hypot(m[0]-linear[0]/len,m[1]-linear[1]/len,m[2]-linear[2]/len);
+  inspected++;if(deviation>1e-6)curved++;
+}
+assert.ok(inspected>100&&curved>inspected*0.20,
+  'most rivers must smoothly depart from D8 straight-line chords');
+assert.equal(vm.runInContext('RIVER_DRAINAGE_CURVE_STEPS',ctx),2,
+  'two coherent chords per DEM edge prevent atlas collisions and preserve detail');
+assert.doesNotMatch(shader,/float bow=span\*envelope/,
+  'no independent shader jitter that breaks smooth river tangents');
+assert.match(shader,/physicalHalfWidth\+aa/,
+  'camera footprint may affect anti-aliasing but must not redefine river width');
+const surface=fs.readFileSync(path.join(__dirname,'../shaders/surface.glsl'),'utf8');
+assert.doesNotMatch(surface,/float floodplain=drainage\.y/,
+  'do not paint concentric dirty floodplain halos around every river');
 assert.match(shader,/widthBin=mix\(widthA,widthB,smoothT\)/,
-  'shader must interpolate two distinct discharge-derived endpoint widths');
-assert.match(shader,/ink\*=mix\(prominence,1\.0,close\)/,
-  'global view should prioritize main stems and reveal small tributaries when zoomed');
-assert.doesNotMatch(ctx.riverDrainageRaster.toString(),/subdivisions|riverDrainageCurvePoint/,
-  'the costly subdivided rasterizer must not return');
+  'the main stem must preserve smoothly interpolated discharge widths');
 
 // Two segments survive a collision within the SAME RGBA32UI atlas texel.
 // The layout uses all 128 bits, with 14-bit UVs and 4-bit endpoint widths.

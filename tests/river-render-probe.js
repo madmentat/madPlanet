@@ -61,18 +61,7 @@ function run(){try{
   const out=[0,0,0];riverLoopFaceDir(f,(u+1)*0.5,(1-v)*0.5,1,out);return out;
  }
  function mid(a,b,t){
-  const dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2],span=Math.hypot(dx,dy,dz);
-  let x=a[0]+dx*t,y=a[1]+dy*t,z=a[2]+dz*t;
-  const nx=a[1]*b[2]-a[2]*b[1],ny=a[2]*b[0]-a[0]*b[2],nz=a[0]*b[1]-a[1]*b[0];
-  const len=Math.hypot(nx,ny,nz);
-  if(len>1e-6){
-   const fract=v=>v-Math.floor(v);
-   const hash=fract(a[0]*71.37+a[1]*153.17+a[2]*43.23+
-                    b[0]*109.83+b[1]*29.73+b[2]*197.61);
-   const hash2=fract(hash*3.173+0.417),env=16*t*t*(1-t)*(1-t);
-   const bow=span*env*(0.18*(hash-0.5)+0.10*(hash2-0.5)*(2*t-1));
-   x+=nx/len*bow;y+=ny/len*bow;z+=nz/len*bow;
-  }
+  const x=a[0]+(b[0]-a[0])*t,y=a[1]+(b[1]-a[1])*t,z=a[2]+(b[2]-a[2])*t;
   const r=Math.hypot(x,y,z);return [x/r,y/r,z/r];
  }
  const stride=Math.max(1,Math.ceil(6*riverLoopN*riverLoopN/24000));
