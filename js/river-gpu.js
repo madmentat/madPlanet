@@ -179,7 +179,10 @@ function riverLoopEnsureTexture(N){
 function riverLoopBuildMask(core){
   if(!core?.N||!world?.seedS)return false;
   const N=Math.max(RIVER_LOOP_MIN_N,Math.min(RIVER_LOOP_MAX_N,Math.round(core.N*5)));
-  const M=N*2;
+  // Two smooth chords per DEM edge need a slightly denser lookup atlas.
+  // 2.5x rather than 2x eliminates lost near-confluence segments without
+  // increasing the nine texture lookups in the fragment shader.
+  const M=Math.round(N*2.5);
   if(!riverLoopEnsureTexture(M))return false;
   const sig=[RIVER_LOOP_FILTER_MODEL,N,...world.seedS,state.cont,
     Number(state.sea).toFixed(3),state.tect,state.isle,state.lake].join('|');
