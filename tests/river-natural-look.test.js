@@ -36,7 +36,7 @@ assert.ok(after.segments>500,'retain flowing rivers and tributaries');
 assert.ok(after.sources>25,'do not make the planet barren');
 
 const geo=ctx.riverDrainageCurveGeometry(grid,cleaner),p=[0,0,0],q=[0,0,0],mid=[0,0,0];
-let curved=0,checked=0;
+let curved=0,checked=0,axisCount=0,axisAligned=0;
 for(let i=0;i<n;i++){
   if(!cleaner.channel[i]||cleaner.coastDistance[i]<=3)continue;
   const j=cleaner.down[i];
@@ -46,9 +46,22 @@ for(let i=0;i<n;i++){
   const v=p.map((x,k)=>x+q[k]),len=Math.hypot(...v);
   const deviation=Math.hypot(...mid.map((x,k)=>x-v[k]/len));
   checked++;if(deviation>1e-5)curved++;
+  // The previous look kept almost every stroke aligned to eight D8 compass
+  // directions. Measure the actual tangent through this rendered curved edge.
+  const v1=[0,0,0],v2=[0,0,0];
+  ctx.riverDrainageCurvePoint(geo,i,j,.2,v1);
+  ctx.riverDrainageCurvePoint(geo,i,j,.8,v2);
+  const face=Math.floor(i/(N*N));
+  const a=ctx.riverDrainageProject(face,...v1);
+  const b=ctx.riverDrainageProject(face,...v2);
+  const angle=Math.atan2(b[1]-a[1],b[0]-a[0]);
+  const error=Math.abs(((angle+Math.PI/8)%(Math.PI/4)+Math.PI/4)%(Math.PI/4)-Math.PI/8);
+  axisCount++;if(error<Math.PI/36)axisAligned++;
 }
 assert.ok(checked>150,'test must inspect real long rivers');
 assert.ok(curved/checked>.75,'river network needs flowing curves, not long straight/90-degree strokes');
+assert.ok(axisCount>150&&axisAligned/axisCount<.42,
+  'the network must not collapse back onto eight visible D8 compass directions');
 const mask=ctx.riverDrainageRaster(grid,cleaner,N*4);
 assert.ok(mask.painted>mask.segments);
 let paint=0;for(const face of mask.faces)for(let k=0;k<face.length;k+=4)
@@ -57,5 +70,5 @@ assert.ok(paint>2000,'enough visible riverbank pixels are painted');
 console.log('river-natural-look.test.js: OK',JSON.stringify({
   before:{segments:before.segments,mouths:before.mouths},
   after:{segments:after.segments,mouths:after.mouths},
-  inspected:checked,curved,paint
+  inspected:checked,curved,axisAligned,axisCount,paint
 }));
