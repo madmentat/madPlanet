@@ -258,7 +258,9 @@ vec3 shadeSurface(vec3 pos, vec3 rd, float tHit, out float dayOut){
 
     vec3 inlandWater=mix(vec3(0.022,0.062,0.090), vec3(0.045,0.135,0.155), ss(0.30,0.85,temp));
     vec3 inlandIce=vec3(0.76,0.82,0.88)*(0.90+0.10*mo3);
-    alb = mix(alb, inlandWater, inlandLiquid*0.90);
+    // Use true water colour inside the painted channel; blending 10% land
+    // back into fully wet pixels gave the rivers muddy, blurred-looking banks.
+    alb = mix(alb, inlandWater, inlandLiquid);
     alb = mix(alb, inlandIce, frozenRv*0.96);
   }
 
