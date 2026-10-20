@@ -26,7 +26,10 @@ function riverBindForFrame(){
   }
   if(U.uRiverBlend!=null)gl.uniform1f(U.uRiverBlend,riverGpuBlendAt(riverGpuNowMs()));
   if(U.uRiverPhysicsOn!=null)gl.uniform1f(U.uRiverPhysicsOn,1.0);
-  if(U.uRiverLoopOn!=null)gl.uniform1f(U.uRiverLoopOn,realAtlas?1.0:0.0);
+  // Diagnostic only: isolate river-mask defects from tectonic ridges and
+  // blurred terrain shorelines without changing any geometry/seed/camera.
+  const visible=typeof window==='undefined'||window.madPlanetHideRivers!==true;
+  if(U.uRiverLoopOn!=null)gl.uniform1f(U.uRiverLoopOn,realAtlas&&visible?1.0:0.0);
 }
 const drawFrameBeforeRiverRender=drawFrame;
 drawFrame=function(now){riverBindForFrame();drawFrameBeforeRiverRender(now);};
