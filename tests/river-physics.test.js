@@ -57,7 +57,7 @@ assert.match(shader,/float lthPhys = lth - 0\.22\*ss\(0\.15,0\.75,lakePhys\)/);
 assert.match(gpu,/RIVER_GPU_MODEL=11/);
 assert.match(gpu,/RIVER_GPU_UPSCALE=16/);
 assert.match(gpu,/RIVER_LOOP_TEX_UNIT=1/,'mobile WebGL2 can use texture unit 1');
-assert.match(gpu,/RIVER_LOOP_FILTER_MODEL=7/);
+assert.match(gpu,/RIVER_LOOP_FILTER_MODEL=8/);
 assert.ok(gpu.includes('riverDrainageBuild')&&gpu.includes('riverDrainageRaster'));
 assert.doesNotMatch(gpu,/RGBA32UI|RGBA_INTEGER/,'obsolete integer river format deleted');
 assert.match(gpu,/riverDrainagePainted/,'diagnostics report physically drawn samples');
