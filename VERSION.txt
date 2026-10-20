@@ -1,11 +1,11 @@
-VERSION 0.5.185
-Changes: replace failed analytic river rendering with an ordinary geographic channel mask.
-  - Routes follow the displayed terrain downhill, terminate at a single water outlet, and never create ocean-to-ocean canals.
-  - Static mask painted from smooth curves with varying width, independent of camera zoom and Weather Core tick state.
-  - One RGBA8 cubemap on texture unit 1, supported by WebGL2 mobile GPUs with 8 texture units.
-  - Eliminate integer cubemap bitpacking, nearest-neighbor segment search, and 18 GLSL candidates per fragment.
-  - Land lighting flattens along channels; lakes/craters remain terrain-derived.
-  - Hot planets expose the same mask as sediment and dust instead of liquid water.
-  - No invented dark parallel riparian contour stripes.
-Validation: render/paint mask numeric tests, GLSL compile, regressions.
+VERSION 0.5.186
+Changes: remove parallel coastal rake streams, angular D8 centerlines and blurry painted riverbanks.
+  - Raise the minimum upstream catchment and landward headwater inset: fewer but longer connected rivers and side tributaries, not dozens of short streams perpendicular to coasts.
+  - Build shared continuous river centerlines by relaxing several upstream/downstream nodes inside local terrain cells; no isolated straight D8 corner rendering.
+  - Restore smooth final coastal curves except the water-entry edge.
+  - Higher mask quality: 1024px per cubemap face on desktop, 640px on Android, sharper antialiased brush widths calculated from discharge.
+  - Draw full-water interiors without the old 10% land colour dilution.
+  - Preserve downhill one-outlet basin graph, dry sediment channels and the simple one-lookup RGBA8 shader architecture.
+  - Add quantitative coastal-rake, curvature, visibility and basin regressions in addition to shader compilation.
+Validation: GitHub Actions / numeric river-mask and GLSL checks; verify with screenshots on desktop/Android after deploy.
 Release rule: increment patch version on each release and name archives madPlanet-X.Y.Z.zip.
