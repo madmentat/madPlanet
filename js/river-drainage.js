@@ -273,7 +273,10 @@ function riverDrainageRaster(grid,network,M){
       const w=wa+(wb-wa)*(t*t*(3-2*t));
       // Half width in cube-map UV: this is a fixed geographic width.
       // Trunks show up from orbit, narrow tributaries at regional zoom.
-      const radius=M*(0.00050+0.0040*Math.pow(w,2.0));
+      // The physical brush can be subpixel on a coarse atlas. Rasterization
+      // still needs a ~1px footprint to avoid holes between paint samples;
+      // this is a baked-mask detail, never a zoom-dependent river width.
+      const radius=Math.max(0.80,M*(0.00050+0.0040*Math.pow(w,2.0)));
       riverDrainageDrawDab(faces,M,p,radius);
       painted++;
     }
