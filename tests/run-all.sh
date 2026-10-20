@@ -72,6 +72,7 @@ tests=(
   tests/river-lake-only.test.js
   tests/river-sampler-binding.test.js
   tests/river-subpixel-visibility.test.js
+  tests/river-natural-look.test.js
   tests/river-visual-tributaries.test.js
   tests/weather-worker.test.js
   tests/weather-fronts.test.js
