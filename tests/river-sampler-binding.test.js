@@ -32,6 +32,14 @@ assert.ok(units.some(([loc,u])=>loc==='painted'&&u===1),
   'the real mask must be bound to portable WebGL2 texture unit 1');
 assert.ok(binds.some(([u,t])=>u===1001&&t?.kind==='painted-river'));
 assert.ok(floats.some(([loc,val])=>loc==='river'&&val===1));
+// Disabling the mask for screenshot comparison must leave the underlying
+// land, lakes and atlas allocation unchanged.
+ctx.window={madPlanetHideRivers:true};
+ctx.riverBindForFrame();
+assert.deepEqual(floats.at(-1),['river',0]);
+ctx.window.madPlanetHideRivers=false;
+ctx.riverBindForFrame();
+assert.deepEqual(floats.at(-1),['river',1]);
 ctx.riverLoopSupported=false;ctx.riverLoopReady=false;
 ctx.riverBindForFrame();
 assert.deepEqual(units.at(-1),['painted',2]);
