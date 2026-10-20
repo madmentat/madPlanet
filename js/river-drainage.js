@@ -178,6 +178,30 @@ function riverDrainageCurveGeometry(grid,network){
     }
     pos.set(relax);
   }
+  // Coherent lateral meanders prevent the D8 graph from appearing as
+  // parallel 45/90-degree strokes. Same node => same location for every
+  // tributary; spatial waves bend whole reaches, never individual pixels.
+  // Displacement is constrained to 0.6 of the local DEM cell and fades
+  // gently to zero near the shoreline (no canals through coastlines).
+  for(let i=0;i<n;i++)if(network.channel[i]&&coast[i]>2&&main[i]>=0){
+    const j=network.down[i];if(j<0||!network.channel[j])continue;
+    const k=3*i,d=3*j,u=3*main[i];
+    const tx=pos[d]-pos[u],ty=pos[d+1]-pos[u+1],tz=pos[d+2]-pos[u+2];
+    const lx=pos[k+1]*tz-pos[k+2]*ty;
+    const ly=pos[k+2]*tx-pos[k]*tz;
+    const lz=pos[k]*ty-pos[k+1]*tx;
+    const inv=1/(Math.hypot(lx,ly,lz)||1);
+    const wave=0.70*Math.sin(grid.N*(.68*pos[k]+.32*pos[k+1]+.47*pos[k+2]))+
+      0.30*Math.sin(grid.N*(.31*pos[k]-.63*pos[k+1]+.29*pos[k+2])+2.1);
+    const shoreFade=Math.min(1,(coast[i]-2)/3);
+    const a=(1.0/grid.N)*wave*shoreFade*inv;
+    let px=pos[k]+lx*a,py=pos[k+1]+ly*a,pz=pos[k+2]+lz*a;
+    const dx=px-real[k],dy=py-real[k+1],dz=pz-real[k+2];
+    const lim=Math.min(1,(1.2/grid.N)/Math.max(1e-12,Math.hypot(dx,dy,dz)));
+    px=real[k]+dx*lim;py=real[k+1]+dy*lim;pz=real[k+2]+dz*lim;
+    const norm=1/(Math.hypot(px,py,pz)||1);
+    pos[k]=px*norm;pos[k+1]=py*norm;pos[k+2]=pz*norm;
+  }
   // Tangents are shared by every edge at a confluence. There is no
   // independent bend or corner injected in the fragment shader.
   for(let i=0;i<n;i++)if(network.channel[i]){
