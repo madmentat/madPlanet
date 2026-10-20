@@ -53,7 +53,7 @@ function run(){try{
  gl.uniform1f(loc('uDraft'),1);gl.uniform1f(loc('uCamDist'),4);gl.uniform1i(loc('uPlateN'),world.plateN);
  gl.uniform4fv(loc('uPlateP'),world.plateP);gl.uniform4fv(loc('uPlateW'),world.plateW);
  const grid=riverDrainageGridCache;
- const net=riverDrainageBuild(sampled.height,sampled.water,sampled.moisture,grid.neighbors,grid.area,{sourceArea:2});
+ const net=riverDrainageBuild(sampled.height,sampled.water,sampled.moisture,grid.neighbors,grid.area,{sourceArea:28*(grid.N/160)**2,sourceInset:Math.max(4,Math.round(grid.N/28))});
  // Probe actual drawn curve centerlines, rather than obsolete RGBA32UI
  // endpoint encodings. All sampled positions refer to the painted globe map.
  const geometry=riverDrainageCurveGeometry(grid,net);
