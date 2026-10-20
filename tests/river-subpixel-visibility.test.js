@@ -8,7 +8,7 @@ assert.match(shader,/return vec2\(texture\(uRiverLoopTex,normalize\(d\)\)\.r,0\.
 assert.doesNotMatch(shader,/footprint\s*\*|physicalHalfWidth|uvec4|for\s*\(int/,
  'the view must not change river width or reconstruct edges in the fragment shader');
 assert.match(cpu,/function riverDrainageDrawDab\(/);
-assert.match(cpu,/const radius=M\*\(0\.00070\+0\.0060\*Math\.pow\(w,2\.2\)\)/,
+assert.match(cpu,/const radius=M\*\(0\.00050\+0\.0040\*Math\.pow\(w,2\.0\)\)/,
  'brush width is determined by river discharge and atlas scale, never camera distance');
 assert.doesNotMatch(surface,/float floodplain=drainage\.y/);
 assert.match(surface,/float dryChannel = riverGeom\*land\*\(1\.0-hotLiquidGate\)/,
